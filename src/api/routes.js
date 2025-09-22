@@ -190,4 +190,52 @@ router.post('/crawl', async (req, res) => {
   }
 });
 
+// 清理异常数据
+router.post('/cleanup', async (req, res) => {
+  try {
+    console.log('🔍 开始检查异常数据...');
+    
+    // 查找所有数据
+    const allData = await Usage.find({ meter_id: '18100071580' }).sort({ collected_at: -1 });
+    console.log(`总数据条数: ${allData.length}`);
+    
+    // 查找异常数据（剩余电量大于1000的）
+    const abnormalData = await Usage.find({ 
+      meter_id: '18100071580',
+      remaining_kwh: { $gt: 1000 }
+    }).sort({ collected_at: -1 });
+    
+    console.log(`发现异常数据 ${abnormalData.length} 条`);
+    
+    if (abnormalData.length > 0) {
+      console.log('开始清理异常数据...');
+      
+      // 删除异常数据
+      const deleteResult = await Usage.deleteMany({
+        meter_id: '18100071580',
+        remaining_kwh: { $gt: 1000 }
+      });
+      
+      console.log(`已删除 ${deleteResult.deletedCount} 条异常数据`);
+      
+      res.json({ 
+        message: '数据清理完成',
+        deletedCount: deleteResult.deletedCount,
+        totalData: allData.length,
+        abnormalData: abnormalData.length
+      });
+    } else {
+      res.json({ 
+        message: '未发现异常数据',
+        totalData: allData.length,
+        abnormalData: 0
+      });
+    }
+    
+  } catch (error) {
+    console.error('清理过程中出现错误:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
