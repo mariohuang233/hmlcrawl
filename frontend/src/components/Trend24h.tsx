@@ -50,10 +50,14 @@ const Trend24h: React.FC = () => {
     },
     xAxis: {
       type: 'category',
-      data: data.map(item => new Date(item.time).toLocaleTimeString('zh-CN', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      }))
+      data: data.map(item => {
+        const date = new Date(item.time);
+        return date.toLocaleTimeString('zh-CN', { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          timeZone: 'Asia/Shanghai'
+        });
+      })
     },
     yAxis: {
       type: 'value',

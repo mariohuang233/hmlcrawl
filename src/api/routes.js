@@ -44,8 +44,11 @@ router.get('/trend/24h', async (req, res) => {
       const curr = data[i];
       const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
       
+      // 转换为北京时间显示
+      const beijingTime = new Date(curr.collected_at.getTime() + 8 * 60 * 60 * 1000);
+      
       trend.push({
-        time: curr.collected_at.toISOString(),
+        time: beijingTime.toISOString(),
         used_kwh: Math.round(usedKwh * 100) / 100,
         remaining_kwh: curr.remaining_kwh
       });
@@ -65,13 +68,15 @@ router.get('/trend/today', async (req, res) => {
     
     const data = await Usage.getUsageInRange('18100071580', today, now);
     
-    // 按小时统计
+    // 按小时统计（使用北京时间 UTC+8）
     const hourlyUsage = new Array(24).fill(0);
     
     for (let i = 1; i < data.length; i++) {
       const prev = data[i - 1];
       const curr = data[i];
-      const hour = curr.collected_at.getHours();
+      // 转换为北京时间 (UTC+8)
+      const beijingTime = new Date(curr.collected_at.getTime() + 8 * 60 * 60 * 1000);
+      const hour = beijingTime.getUTCHours();
       const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
       
       hourlyUsage[hour] += usedKwh;
