@@ -1,6 +1,7 @@
 import React from 'react';
 
 interface OverviewData {
+  current_remaining: number;
   today_usage: number;
   week_usage: number;
   month_usage: number;
@@ -20,6 +21,11 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
         gap: '24px' 
       }}>
+        <div className="stat-card">
+          <div className="stat-value" style={{ color: '#7c3aed' }}>{data.current_remaining.toFixed(2)}</div>
+          <div className="stat-label">当前剩余电量 (kWh)</div>
+        </div>
+        
         <div className="stat-card">
           <div className="stat-value" style={{ color: '#2563eb' }}>{data.today_usage.toFixed(2)}</div>
           <div className="stat-label">今日用电 (kWh)</div>

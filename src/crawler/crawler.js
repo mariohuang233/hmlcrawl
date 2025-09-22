@@ -65,44 +65,45 @@ class ElectricityCrawler {
       const document = dom.window.document;
       
       // 解析剩余电量数据
-      // 需要根据实际网页结构调整选择器
       let remainingKwh = null;
       
-      // 尝试多种可能的选择器
-      const selectors = [
-        '.remaining-kwh',
-        '.kwh-remaining', 
-        '.balance',
-        '.amount',
-        '[class*="kwh"]',
-        '[class*="remaining"]',
-        '[class*="balance"]'
-      ];
-
-      for (const selector of selectors) {
-        const elements = document.querySelectorAll(selector);
-        if (elements.length > 0) {
-          const text = elements[0].textContent.trim();
-          const match = text.match(/(\d+\.?\d*)/);
-          if (match) {
-            remainingKwh = parseFloat(match[1]);
-            break;
-          }
+      // 首先尝试查找所有数字，然后筛选出合理的电量值
+      const allText = document.body.textContent;
+      const numberMatches = allText.match(/\d+\.?\d*/g);
+      
+      if (numberMatches) {
+        // 筛选出合理的电量值（通常在0-1000之间，且包含小数点）
+        const validNumbers = numberMatches
+          .map(num => parseFloat(num))
+          .filter(num => num > 0 && num < 1000 && num.toString().includes('.'))
+          .sort((a, b) => b - a); // 按降序排列，取最大值
+        
+        if (validNumbers.length > 0) {
+          remainingKwh = validNumbers[0];
+          crawlerLogger.info(`从网页中找到电量数字: ${validNumbers.join(', ')}`);
         }
       }
 
-      // 如果上述选择器都没找到，尝试查找包含数字的文本
+      // 如果上述方法没找到，尝试查找包含特定关键词的元素
       if (remainingKwh === null) {
-        const allElements = document.querySelectorAll('*');
-        for (const element of allElements) {
-          const text = element.textContent.trim();
-          if (text.match(/\d+\.?\d*\s*(kWh|度|千瓦时)/i)) {
-            const match = text.match(/(\d+\.?\d*)/);
-            if (match) {
-              remainingKwh = parseFloat(match[1]);
-              break;
+        const keywords = ['剩余', '余额', '电量', 'kWh', '度'];
+        for (const keyword of keywords) {
+          const elements = document.querySelectorAll('*');
+          for (const element of elements) {
+            const text = element.textContent.trim();
+            if (text.includes(keyword)) {
+              const match = text.match(/(\d+\.?\d*)/);
+              if (match) {
+                const num = parseFloat(match[1]);
+                if (num > 0 && num < 1000) {
+                  remainingKwh = num;
+                  crawlerLogger.info(`通过关键词"${keyword}"找到电量: ${num}`);
+                  break;
+                }
+              }
             }
           }
+          if (remainingKwh !== null) break;
         }
       }
 

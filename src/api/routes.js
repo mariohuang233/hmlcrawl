@@ -11,13 +11,15 @@ router.get('/overview', async (req, res) => {
     weekStart.setDate(today.getDate() - today.getDay() + 1); // 本周一
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1); // 本月1号
 
-    const [todayStats, weekStats, monthStats] = await Promise.all([
+    const [todayStats, weekStats, monthStats, latestUsage] = await Promise.all([
       Usage.calculateUsageStats('18100071580', today, now),
       Usage.calculateUsageStats('18100071580', weekStart, now),
-      Usage.calculateUsageStats('18100071580', monthStart, now)
+      Usage.calculateUsageStats('18100071580', monthStart, now),
+      Usage.getLatestUsage('18100071580')
     ]);
 
     res.json({
+      current_remaining: latestUsage ? latestUsage.remaining_kwh : 0,
       today_usage: todayStats.totalUsage,
       week_usage: weekStats.totalUsage,
       month_usage: monthStats.totalUsage,

@@ -10,6 +10,7 @@ import './App.css';
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
 
 interface OverviewData {
+  current_remaining: number;
   today_usage: number;
   week_usage: number;
   month_usage: number;
