@@ -1,4 +1,5 @@
-const axios = require('axios');
+// 使用Node.js内置fetch替代axios
+const fetch = require('node-fetch');
 const cheerio = require('cheerio');
 const cron = require('node-cron');
 const Usage = require('../models/Usage');
@@ -57,8 +58,8 @@ class ElectricityCrawler {
   // 获取电力数据
   async fetchElectricityData() {
     try {
-      const response = await axios.get(this.url, {
-        timeout: 30000,
+      const response = await fetch(this.url, {
+        method: 'GET',
         headers: {
           'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -66,10 +67,12 @@ class ElectricityCrawler {
           'Accept-Encoding': 'gzip, deflate',
           'Connection': 'keep-alive',
           'Upgrade-Insecure-Requests': '1'
-        }
+        },
+        timeout: 30000
       });
 
-      const $ = cheerio.load(response.data);
+      const html = await response.text();
+      const $ = cheerio.load(html);
       
       // 解析剩余电量数据
       // 需要根据实际网页结构调整选择器

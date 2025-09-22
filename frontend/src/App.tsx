@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+// 使用fetch替代axios
 import Overview from './components/Overview';
 import Trend24h from './components/Trend24h';
 import TodayUsage from './components/TodayUsage';
@@ -28,8 +28,9 @@ function App() {
   const fetchOverview = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE}/api/overview`);
-      setOverview(response.data);
+      const response = await fetch(`${API_BASE}/api/overview`);
+      const data = await response.json();
+      setOverview(data);
       setError(null);
     } catch (err) {
       setError('获取数据失败，请检查网络连接');

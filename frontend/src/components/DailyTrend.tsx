@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
-import axios from 'axios';
+// 使用fetch替代axios
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
 
@@ -19,8 +19,9 @@ const DailyTrend: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      const response = await axios.get(`${API_BASE}/api/trend/30d`);
-      setData(response.data);
+      const response = await fetch(`${API_BASE}/api/trend/30d`);
+      const data = await response.json();
+      setData(data);
     } catch (error) {
       console.error('Error fetching daily trend:', error);
     } finally {
