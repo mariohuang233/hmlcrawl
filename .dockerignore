@@ -1,0 +1,15 @@
+node_modules
+frontend/node_modules
+frontend/build
+logs
+.git
+.gitignore
+README.md
+DEPLOYMENT.md
+test.js
+*.log
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
