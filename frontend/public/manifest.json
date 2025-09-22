@@ -1,6 +1,6 @@
 {
-  "short_name": "用电监控",
-  "name": "家庭用电监控系统",
+  "short_name": "电量监控",
+  "name": "雷神一二布布的电量监控",
   "icons": [
     {
       "src": "bubu.png",

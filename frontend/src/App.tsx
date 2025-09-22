@@ -85,7 +85,7 @@ function App() {
       <header style={{ backgroundColor: 'white', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', borderBottom: '1px solid #e5e7eb' }}>
         <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0' }}>
-            <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827' }}>家庭用电监控系统</h1>
+            <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827' }}>⚡️雷神一二布布的电量监控</h1>
             <button
               onClick={handleRefresh}
               style={{ 
