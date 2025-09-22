@@ -2,7 +2,7 @@
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
-const cheerio = require('cheerio');
+const { JSDOM } = require('jsdom');
 const cron = require('node-cron');
 const Usage = require('../models/Usage');
 const { crawlerLogger } = require('../utils/logger');
@@ -61,7 +61,8 @@ class ElectricityCrawler {
   async fetchElectricityData() {
     try {
       const html = await this.makeHttpRequest(this.url);
-      const $ = cheerio.load(html);
+      const dom = new JSDOM(html);
+      const document = dom.window.document;
       
       // 解析剩余电量数据
       // 需要根据实际网页结构调整选择器
@@ -75,16 +76,13 @@ class ElectricityCrawler {
         '.amount',
         '[class*="kwh"]',
         '[class*="remaining"]',
-        '[class*="balance"]',
-        'td:contains("剩余")',
-        'span:contains("kWh")',
-        'div:contains("度")'
+        '[class*="balance"]'
       ];
 
       for (const selector of selectors) {
-        const element = $(selector);
-        if (element.length > 0) {
-          const text = element.text().trim();
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) {
+          const text = elements[0].textContent.trim();
           const match = text.match(/(\d+\.?\d*)/);
           if (match) {
             remainingKwh = parseFloat(match[1]);
@@ -95,16 +93,17 @@ class ElectricityCrawler {
 
       // 如果上述选择器都没找到，尝试查找包含数字的文本
       if (remainingKwh === null) {
-        $('*').each(function() {
-          const text = $(this).text().trim();
+        const allElements = document.querySelectorAll('*');
+        for (const element of allElements) {
+          const text = element.textContent.trim();
           if (text.match(/\d+\.?\d*\s*(kWh|度|千瓦时)/i)) {
             const match = text.match(/(\d+\.?\d*)/);
             if (match) {
               remainingKwh = parseFloat(match[1]);
-              return false; // 跳出循环
+              break;
             }
           }
-        });
+        }
       }
 
       if (remainingKwh === null) {
