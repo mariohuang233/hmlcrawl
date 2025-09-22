@@ -1,5 +1,5 @@
 # 使用官方Node.js镜像
-FROM node:18-alpine
+FROM node:18.17.0-alpine
 
 # 设置工作目录
 WORKDIR /app
