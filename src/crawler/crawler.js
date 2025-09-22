@@ -1,5 +1,7 @@
-// 使用Node.js内置fetch替代axios
-const fetch = require('node-fetch');
+// 使用Node.js内置http模块，完全避免undici问题
+const http = require('http');
+const https = require('https');
+const { URL } = require('url');
 const cheerio = require('cheerio');
 const cron = require('node-cron');
 const Usage = require('../models/Usage');
@@ -58,20 +60,7 @@ class ElectricityCrawler {
   // 获取电力数据
   async fetchElectricityData() {
     try {
-      const response = await fetch(this.url, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-          'Accept-Encoding': 'gzip, deflate',
-          'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1'
-        },
-        timeout: 30000
-      });
-
-      const html = await response.text();
+      const html = await this.makeHttpRequest(this.url);
       const $ = cheerio.load(html);
       
       // 解析剩余电量数据
@@ -145,6 +134,53 @@ class ElectricityCrawler {
     } catch (error) {
       throw new Error(`数据库保存失败: ${error.message}`);
     }
+  }
+
+  // 使用Node.js内置http模块发送请求
+  makeHttpRequest(url) {
+    return new Promise((resolve, reject) => {
+      const urlObj = new URL(url);
+      const isHttps = urlObj.protocol === 'https:';
+      const httpModule = isHttps ? https : http;
+      
+      const options = {
+        hostname: urlObj.hostname,
+        port: urlObj.port || (isHttps ? 443 : 80),
+        path: urlObj.pathname + urlObj.search,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1'
+        },
+        timeout: 30000
+      };
+
+      const req = httpModule.request(options, (res) => {
+        let data = '';
+        
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        
+        res.on('end', () => {
+          resolve(data);
+        });
+      });
+
+      req.on('error', (error) => {
+        reject(error);
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+
+      req.end();
+    });
   }
 
   // 延迟函数
