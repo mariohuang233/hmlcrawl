@@ -21,8 +21,44 @@ const Trend24h: React.FC = () => {
   const fetchData = async () => {
     try {
       const response = await fetch(`${API_BASE}/api/trend/24h`);
-      const data = await response.json();
-      setData(data);
+      const rawData = await response.json();
+      
+      // 数据去重处理：按时间分组，取最真实的数值
+      const timeMap = new Map();
+      
+      rawData.forEach((item: any) => {
+        const date = new Date(item.time);
+        const timeKey = date.toLocaleTimeString('zh-CN', { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          timeZone: 'Asia/Shanghai'
+        });
+        
+        if (!timeMap.has(timeKey)) {
+          timeMap.set(timeKey, item);
+        } else {
+          const existingItem = timeMap.get(timeKey);
+          // 优先选择用电量不为0的数据
+          if (item.used_kwh > 0 && existingItem.used_kwh === 0) {
+            timeMap.set(timeKey, item);
+          } else if (item.used_kwh > existingItem.used_kwh) {
+            // 选择用电量更大的数据（更真实的用电记录）
+            timeMap.set(timeKey, item);
+          } else if (item.used_kwh === existingItem.used_kwh && item.used_kwh > 0) {
+            // 如果用电量相同且不为0，选择剩余电量较小的（更新的数据）
+            if (item.remaining_kwh < existingItem.remaining_kwh) {
+              timeMap.set(timeKey, item);
+            }
+          }
+        }
+      });
+      
+      // 转换回数组并按时间排序
+      const processedData = Array.from(timeMap.values()).sort((a, b) => 
+        new Date(a.time).getTime() - new Date(b.time).getTime()
+      );
+      
+      setData(processedData);
     } catch (error) {
       console.error('Error fetching 24h trend:', error);
     } finally {
