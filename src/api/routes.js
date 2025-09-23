@@ -1,19 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const Usage = require('../models/Usage');
-const { getBeijingHour } = require('../utils/timezone');
+const { getBeijingHour, getBeijingTodayStart, getBeijingTodayEnd } = require('../utils/timezone');
 
 // 获取总览数据
 router.get('/overview', async (req, res) => {
   try {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay() + 1); // 本周一
+    const todayStart = getBeijingTodayStart(now); // 使用北京时间计算今天开始时间
+    const todayEnd = getBeijingTodayEnd(now); // 使用北京时间计算今天结束时间
+    const weekStart = new Date(todayStart);
+    weekStart.setDate(todayStart.getDate() - todayStart.getDay() + 1); // 本周一
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1); // 本月1号
 
     const [todayStats, weekStats, monthStats, latestUsage] = await Promise.all([
-      Usage.calculateUsageStats('18100071580', today, now),
+      Usage.calculateUsageStats('18100071580', todayStart, now),
       Usage.calculateUsageStats('18100071580', weekStart, now),
       Usage.calculateUsageStats('18100071580', monthStart, now),
       Usage.getLatestUsage('18100071580')
@@ -63,9 +64,9 @@ router.get('/trend/24h', async (req, res) => {
 router.get('/trend/today', async (req, res) => {
   try {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayStart = getBeijingTodayStart(now); // 使用北京时间计算今天开始时间
     
-    const data = await Usage.getUsageInRange('18100071580', today, now);
+    const data = await Usage.getUsageInRange('18100071580', todayStart, now);
     
     // 按小时统计（使用本地时间）
     const hourlyUsage = new Array(24).fill(0);

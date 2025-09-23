@@ -75,11 +75,37 @@ function getBeijingHour(date) {
   return toBeijingTime(date).getUTCHours();
 }
 
+/**
+ * 获取北京时间的今天开始时间（北京时间0点）
+ * @param {Date} date 日期对象，默认为当前时间
+ * @returns {Date} 北京时间今天0点的UTC时间
+ */
+function getBeijingTodayStart(date = new Date()) {
+  const beijingTime = toBeijingTime(date);
+  const beijingToday = new Date(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth(), beijingTime.getUTCDate());
+  // 转换回UTC时间
+  return new Date(beijingToday.getTime() - 8 * 60 * 60 * 1000);
+}
+
+/**
+ * 获取北京时间的今天结束时间（北京时间23:59:59）
+ * @param {Date} date 日期对象，默认为当前时间
+ * @returns {Date} 北京时间今天23:59:59的UTC时间
+ */
+function getBeijingTodayEnd(date = new Date()) {
+  const beijingTime = toBeijingTime(date);
+  const beijingToday = new Date(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth(), beijingTime.getUTCDate(), 23, 59, 59, 999);
+  // 转换回UTC时间
+  return new Date(beijingToday.getTime() - 8 * 60 * 60 * 1000);
+}
+
 module.exports = {
   toBeijingTime,
   formatBeijingTime,
   getBeijingYear,
   getBeijingMonth,
   getBeijingDate,
-  getBeijingHour
+  getBeijingHour,
+  getBeijingTodayStart,
+  getBeijingTodayEnd
 };

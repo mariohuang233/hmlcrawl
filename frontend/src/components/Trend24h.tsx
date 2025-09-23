@@ -52,12 +52,11 @@ const Trend24h: React.FC = () => {
       type: 'category',
       data: data.map(item => {
         const date = new Date(item.time);
-        // 转换为北京时间显示 (UTC+8)
-        const beijingTime = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-        return beijingTime.toLocaleTimeString('zh-CN', { 
+        // 直接使用北京时间显示，后端返回的time已经是UTC时间
+        return date.toLocaleTimeString('zh-CN', { 
           hour: '2-digit', 
           minute: '2-digit',
-          timeZone: 'UTC'
+          timeZone: 'Asia/Shanghai'
         });
       })
     },
