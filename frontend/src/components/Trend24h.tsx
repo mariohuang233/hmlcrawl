@@ -33,17 +33,32 @@ const Trend24h: React.FC = () => {
   const chartOption = {
     title: {
       text: '过去24小时用电趋势',
-      left: 'center'
+      left: 'center',
+      textStyle: {
+        fontSize: 18,
+        fontWeight: 600,
+        color: 'var(--text-primary)',
+        fontFamily: 'var(--font-primary)'
+      },
+      top: 20
     },
     tooltip: {
       trigger: 'axis',
+      backgroundColor: 'var(--bg-secondary)',
+      borderColor: 'var(--border-light)',
+      borderWidth: 1,
+      borderRadius: 12,
+      textStyle: {
+        color: 'var(--text-primary)',
+        fontFamily: 'var(--font-primary)'
+      },
       formatter: (params: any) => {
         const point = params[0];
         return `
-          <div>
-            <div>时间: ${point.axisValue}</div>
-            <div>用电量: ${point.value} kWh</div>
-            <div>剩余电量: ${data[point.dataIndex]?.remaining_kwh} kWh</div>
+          <div style="padding: 4px;">
+            <div style="margin-bottom: 4px; font-weight: 600;">⏰ ${point.axisValue}</div>
+            <div style="margin-bottom: 4px;">⚡ 用电量: ${point.value} kWh</div>
+            <div>🔋 剩余电量: ${data[point.dataIndex]?.remaining_kwh} kWh</div>
           </div>
         `;
       }
@@ -52,17 +67,57 @@ const Trend24h: React.FC = () => {
       type: 'category',
       data: data.map(item => {
         const date = new Date(item.time);
-        // 直接使用北京时间显示，后端返回的time已经是UTC时间
         return date.toLocaleTimeString('zh-CN', { 
           hour: '2-digit', 
           minute: '2-digit',
           timeZone: 'Asia/Shanghai'
         });
-      })
+      }),
+      axisLabel: {
+        color: 'var(--text-secondary)',
+        fontFamily: 'var(--font-primary)',
+        fontSize: 12
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'var(--border-light)'
+        }
+      },
+      axisTick: {
+        lineStyle: {
+          color: 'var(--border-light)'
+        }
+      }
     },
     yAxis: {
       type: 'value',
-      name: '用电量 (kWh)'
+      name: '用电量 (kWh)',
+      nameTextStyle: {
+        color: 'var(--text-secondary)',
+        fontFamily: 'var(--font-primary)',
+        fontSize: 12
+      },
+      axisLabel: {
+        color: 'var(--text-secondary)',
+        fontFamily: 'var(--font-primary)',
+        fontSize: 12
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'var(--border-light)'
+        }
+      },
+      axisTick: {
+        lineStyle: {
+          color: 'var(--border-light)'
+        }
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'var(--border-light)',
+          type: 'dashed'
+        }
+      }
     },
     series: [
       {
@@ -70,8 +125,16 @@ const Trend24h: React.FC = () => {
         type: 'line',
         data: data.map(item => item.used_kwh),
         smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
         lineStyle: {
-          color: '#3b82f6'
+          color: 'var(--accent-blue)',
+          width: 3
+        },
+        itemStyle: {
+          color: 'var(--accent-blue)',
+          borderColor: '#fff',
+          borderWidth: 2
         },
         areaStyle: {
           color: {
@@ -81,17 +144,18 @@ const Trend24h: React.FC = () => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(59, 130, 246, 0.3)' },
-              { offset: 1, color: 'rgba(59, 130, 246, 0.1)' }
+              { offset: 0, color: 'rgba(74, 144, 226, 0.2)' },
+              { offset: 1, color: 'rgba(74, 144, 226, 0.05)' }
             ]
           }
         }
       }
     ],
     grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
+      left: '5%',
+      right: '5%',
+      bottom: '10%',
+      top: '15%',
       containLabel: true
     }
   };
@@ -99,7 +163,8 @@ const Trend24h: React.FC = () => {
   if (loading) {
     return (
       <div className="card">
-        <div className="flex items-center justify-center h-64">
+        <h2 className="card-title">过去24小时用电趋势</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px' }}>
           <div className="loading-spinner"></div>
         </div>
       </div>

@@ -32,25 +32,84 @@ const MonthlyTrend: React.FC = () => {
   const chartOption = {
     title: {
       text: '最近12个月用电趋势',
-      left: 'center'
+      left: 'center',
+      textStyle: {
+        fontSize: 18,
+        fontWeight: 600,
+        color: 'var(--text-primary)',
+        fontFamily: 'var(--font-primary)'
+      },
+      top: 20
     },
     tooltip: {
       trigger: 'axis',
+      backgroundColor: 'var(--bg-secondary)',
+      borderColor: 'var(--border-light)',
+      borderWidth: 1,
+      borderRadius: 12,
+      textStyle: {
+        color: 'var(--text-primary)',
+        fontFamily: 'var(--font-primary)'
+      },
       formatter: (params: any) => {
         const point = params[0];
-        return `${point.axisValue}: ${point.value} kWh`;
+        return `
+          <div style="padding: 4px;">
+            <div style="margin-bottom: 4px; font-weight: 600;">📅 ${point.axisValue}</div>
+            <div>⚡ 用电量: ${point.value} kWh</div>
+          </div>
+        `;
       }
     },
     xAxis: {
       type: 'category',
       data: data.map(item => item.month),
       axisLabel: {
-        rotate: 45
+        rotate: 45,
+        color: 'var(--text-secondary)',
+        fontFamily: 'var(--font-primary)',
+        fontSize: 12
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'var(--border-light)'
+        }
+      },
+      axisTick: {
+        lineStyle: {
+          color: 'var(--border-light)'
+        }
       }
     },
     yAxis: {
       type: 'value',
-      name: '用电量 (kWh)'
+      name: '用电量 (kWh)',
+      nameTextStyle: {
+        color: 'var(--text-secondary)',
+        fontFamily: 'var(--font-primary)',
+        fontSize: 12
+      },
+      axisLabel: {
+        color: 'var(--text-secondary)',
+        fontFamily: 'var(--font-primary)',
+        fontSize: 12
+      },
+      axisLine: {
+        lineStyle: {
+          color: 'var(--border-light)'
+        }
+      },
+      axisTick: {
+        lineStyle: {
+          color: 'var(--border-light)'
+        }
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'var(--border-light)',
+          type: 'dashed'
+        }
+      }
     },
     series: [
       {
@@ -58,14 +117,33 @@ const MonthlyTrend: React.FC = () => {
         type: 'bar',
         data: data.map(item => item.used_kwh),
         itemStyle: {
-          color: '#8b5cf6'
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: 'var(--accent-blue)' },
+              { offset: 1, color: 'rgba(74, 144, 226, 0.7)' }
+            ]
+          },
+          borderRadius: [4, 4, 0, 0]
+        },
+        emphasis: {
+          itemStyle: {
+            color: 'var(--accent-blue)',
+            shadowBlur: 10,
+            shadowColor: 'rgba(74, 144, 226, 0.3)'
+          }
         }
       }
     ],
     grid: {
-      left: '3%',
-      right: '4%',
+      left: '5%',
+      right: '5%',
       bottom: '15%',
+      top: '15%',
       containLabel: true
     }
   };
@@ -73,7 +151,8 @@ const MonthlyTrend: React.FC = () => {
   if (loading) {
     return (
       <div className="card">
-        <div className="flex items-center justify-center h-64">
+        <h2 className="card-title">最近12个月用电趋势</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px' }}>
           <div className="loading-spinner"></div>
         </div>
       </div>

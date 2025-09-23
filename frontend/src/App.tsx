@@ -47,10 +47,10 @@ function App() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="loading-spinner" style={{ margin: '0 auto' }}></div>
-          <p style={{ marginTop: '16px', color: '#6b7280' }}>加载中...</p>
+      <div className="loading-container">
+        <div className="loading-content fade-in">
+          <div className="loading-spinner"></div>
+          <p className="loading-text">正在加载数据...</p>
         </div>
       </div>
     );
@@ -58,22 +58,15 @@ function App() {
 
   if (error) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ color: '#ef4444', fontSize: '20px', marginBottom: '16px' }}>⚠️</div>
-          <p style={{ color: '#dc2626', marginBottom: '16px' }}>{error}</p>
+      <div className="error-container">
+        <div className="error-content fade-in">
+          <div className="error-icon">⚠️</div>
+          <p className="error-message">{error}</p>
           <button 
             onClick={handleRefresh}
-            style={{ 
-              backgroundColor: '#2563eb', 
-              color: 'white', 
-              padding: '8px 16px', 
-              borderRadius: '6px', 
-              border: 'none',
-              cursor: 'pointer'
-            }}
+            className="btn btn-primary"
           >
-            重试
+            重新加载
           </button>
         </div>
       </div>
@@ -81,21 +74,14 @@ function App() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb' }}>
-      <header style={{ backgroundColor: 'white', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)', borderBottom: '1px solid #e5e7eb' }}>
-        <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0' }}>
-            <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827' }}>⚡️雷神一二布布的电量监控</h1>
+    <div className="app-container">
+      <header className="app-header">
+        <div className="header-content">
+          <div className="header-inner">
+            <h1 className="app-title">雷神一二布布的电量监控</h1>
             <button
               onClick={handleRefresh}
-              style={{ 
-                backgroundColor: '#2563eb', 
-                color: 'white', 
-                padding: '8px 16px', 
-                borderRadius: '6px', 
-                border: 'none',
-                cursor: 'pointer'
-              }}
+              className="btn btn-primary"
             >
               刷新数据
             </button>
@@ -103,8 +89,8 @@ function App() {
         </div>
       </header>
 
-      <main style={{ maxWidth: '1280px', margin: '0 auto', padding: '32px 16px' }}>
-        <div>
+      <main className="app-main">
+        <div className="fade-in">
           {/* 总览模块 */}
           {overview && <Overview data={overview} />}
           
