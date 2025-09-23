@@ -1,17 +1,23 @@
 const express = require('express');
 const router = express.Router();
 const Usage = require('../models/Usage');
-const { getBeijingHour, getBeijingTodayStart, getBeijingTodayEnd } = require('../utils/timezone');
+const { 
+  getBeijingHour, 
+  getBeijingTodayStart, 
+  getBeijingTodayEnd,
+  getBeijingWeekStart,
+  getBeijingWeekEnd,
+  getBeijingMonthStart,
+  getBeijingMonthEnd
+} = require('../utils/timezone');
 
 // 获取总览数据
 router.get('/overview', async (req, res) => {
   try {
     const now = new Date();
     const todayStart = getBeijingTodayStart(now); // 使用北京时间计算今天开始时间
-    const todayEnd = getBeijingTodayEnd(now); // 使用北京时间计算今天结束时间
-    const weekStart = new Date(todayStart);
-    weekStart.setDate(todayStart.getDate() - todayStart.getDay() + 1); // 本周一
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1); // 本月1号
+    const weekStart = getBeijingWeekStart(now); // 使用北京时间计算本周一开始时间
+    const monthStart = getBeijingMonthStart(now); // 使用北京时间计算本月1号开始时间
 
     const [todayStats, weekStats, monthStats, latestUsage] = await Promise.all([
       Usage.calculateUsageStats('18100071580', todayStart, now),
@@ -100,13 +106,16 @@ router.get('/trend/30d', async (req, res) => {
     
     const data = await Usage.getUsageInRange('18100071580', startDate, endDate);
     
-    // 按日期分组统计
+    // 按北京时间的日期分组统计
     const dailyUsage = {};
     
     for (let i = 1; i < data.length; i++) {
       const prev = data[i - 1];
       const curr = data[i];
-      const date = curr.collected_at.toISOString().split('T')[0];
+      
+      // 使用北京时间计算日期
+      const beijingDate = getBeijingTodayStart(curr.collected_at);
+      const date = beijingDate.toISOString().split('T')[0];
       const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
       
       if (!dailyUsage[date]) {
@@ -136,13 +145,16 @@ router.get('/trend/monthly', async (req, res) => {
     
     const data = await Usage.getUsageInRange('18100071580', startDate, endDate);
     
-    // 按月份分组统计
+    // 按北京时间的月份分组统计
     const monthlyUsage = {};
     
     for (let i = 1; i < data.length; i++) {
       const prev = data[i - 1];
       const curr = data[i];
-      const month = curr.collected_at.toISOString().substring(0, 7); // YYYY-MM
+      
+      // 使用北京时间计算月份
+      const beijingDate = getBeijingTodayStart(curr.collected_at);
+      const month = beijingDate.toISOString().substring(0, 7); // YYYY-MM
       const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
       
       if (!monthlyUsage[month]) {
