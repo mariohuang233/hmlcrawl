@@ -18,35 +18,35 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       value: data.current_remaining.toFixed(2),
       label: '当前剩余电量',
       unit: 'kWh',
-      color: 'var(--accent-green)',
+      color: '#34C759',
       icon: '🔋'
     },
     {
       value: data.today_usage.toFixed(2),
       label: '今日用电',
       unit: 'kWh',
-      color: 'var(--accent-blue)',
+      color: '#4A90E2',
       icon: '⚡'
     },
     {
       value: data.week_usage.toFixed(2),
       label: '本周用电',
       unit: 'kWh',
-      color: 'var(--accent-green)',
+      color: '#34C759',
       icon: '📊'
     },
     {
       value: data.month_usage.toFixed(2),
       label: '本月用电',
       unit: 'kWh',
-      color: 'var(--accent-orange)',
+      color: '#FF9500',
       icon: '📈'
     },
     {
       value: `¥${data.month_cost.toFixed(2)}`,
       label: '本月预计费用',
       unit: '',
-      color: 'var(--text-primary)',
+      color: '#0D0D0D',
       icon: '💰'
     }
   ];

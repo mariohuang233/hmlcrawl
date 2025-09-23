@@ -37,20 +37,20 @@ const Trend24h: React.FC = () => {
       textStyle: {
         fontSize: 18,
         fontWeight: 600,
-        color: 'var(--text-primary)',
-        fontFamily: 'var(--font-primary)'
+        color: '#0D0D0D',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
       },
       top: 20
     },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'var(--bg-secondary)',
-      borderColor: 'var(--border-light)',
+      backgroundColor: '#FFFFFF',
+      borderColor: 'rgba(0, 0, 0, 0.06)',
       borderWidth: 1,
       borderRadius: 12,
       textStyle: {
-        color: 'var(--text-primary)',
-        fontFamily: 'var(--font-primary)'
+        color: '#0D0D0D',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
       },
       formatter: (params: any) => {
         const point = params[0];
@@ -74,18 +74,18 @@ const Trend24h: React.FC = () => {
         });
       }),
       axisLabel: {
-        color: 'var(--text-secondary)',
-        fontFamily: 'var(--font-primary)',
+        color: '#6E6E73',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: 12
       },
       axisLine: {
         lineStyle: {
-          color: 'var(--border-light)'
+          color: 'rgba(0, 0, 0, 0.06)'
         }
       },
       axisTick: {
         lineStyle: {
-          color: 'var(--border-light)'
+          color: 'rgba(0, 0, 0, 0.06)'
         }
       }
     },
@@ -93,28 +93,28 @@ const Trend24h: React.FC = () => {
       type: 'value',
       name: '用电量 (kWh)',
       nameTextStyle: {
-        color: 'var(--text-secondary)',
-        fontFamily: 'var(--font-primary)',
+        color: '#6E6E73',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: 12
       },
       axisLabel: {
-        color: 'var(--text-secondary)',
-        fontFamily: 'var(--font-primary)',
+        color: '#6E6E73',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: 12
       },
       axisLine: {
         lineStyle: {
-          color: 'var(--border-light)'
+          color: 'rgba(0, 0, 0, 0.06)'
         }
       },
       axisTick: {
         lineStyle: {
-          color: 'var(--border-light)'
+          color: 'rgba(0, 0, 0, 0.06)'
         }
       },
       splitLine: {
         lineStyle: {
-          color: 'var(--border-light)',
+          color: 'rgba(0, 0, 0, 0.06)',
           type: 'dashed'
         }
       }
@@ -128,11 +128,11 @@ const Trend24h: React.FC = () => {
         symbol: 'circle',
         symbolSize: 6,
         lineStyle: {
-          color: 'var(--accent-blue)',
+          color: '#4A90E2',
           width: 3
         },
         itemStyle: {
-          color: 'var(--accent-blue)',
+          color: '#4A90E2',
           borderColor: '#fff',
           borderWidth: 2
         },

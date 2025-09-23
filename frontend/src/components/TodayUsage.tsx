@@ -36,20 +36,20 @@ const TodayUsage: React.FC = () => {
       textStyle: {
         fontSize: 18,
         fontWeight: 600,
-        color: 'var(--text-primary)',
-        fontFamily: 'var(--font-primary)'
+        color: '#0D0D0D',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
       },
       top: 20
     },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'var(--bg-secondary)',
-      borderColor: 'var(--border-light)',
+      backgroundColor: '#FFFFFF',
+      borderColor: 'rgba(0, 0, 0, 0.06)',
       borderWidth: 1,
       borderRadius: 12,
       textStyle: {
-        color: 'var(--text-primary)',
-        fontFamily: 'var(--font-primary)'
+        color: '#0D0D0D',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
       },
       formatter: (params: any) => {
         const point = params[0];
@@ -66,18 +66,18 @@ const TodayUsage: React.FC = () => {
       data: data.map(item => `${item.hour}点`),
       axisLabel: {
         interval: 1,
-        color: 'var(--text-secondary)',
-        fontFamily: 'var(--font-primary)',
+        color: '#6E6E73',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: 12
       },
       axisLine: {
         lineStyle: {
-          color: 'var(--border-light)'
+          color: 'rgba(0, 0, 0, 0.06)'
         }
       },
       axisTick: {
         lineStyle: {
-          color: 'var(--border-light)'
+          color: 'rgba(0, 0, 0, 0.06)'
         }
       }
     },
@@ -85,28 +85,28 @@ const TodayUsage: React.FC = () => {
       type: 'value',
       name: '用电量 (kWh)',
       nameTextStyle: {
-        color: 'var(--text-secondary)',
-        fontFamily: 'var(--font-primary)',
+        color: '#6E6E73',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: 12
       },
       axisLabel: {
-        color: 'var(--text-secondary)',
-        fontFamily: 'var(--font-primary)',
+        color: '#6E6E73',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: 12
       },
       axisLine: {
         lineStyle: {
-          color: 'var(--border-light)'
+          color: 'rgba(0, 0, 0, 0.06)'
         }
       },
       axisTick: {
         lineStyle: {
-          color: 'var(--border-light)'
+          color: 'rgba(0, 0, 0, 0.06)'
         }
       },
       splitLine: {
         lineStyle: {
-          color: 'var(--border-light)',
+          color: 'rgba(0, 0, 0, 0.06)',
           type: 'dashed'
         }
       }
@@ -124,7 +124,7 @@ const TodayUsage: React.FC = () => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'var(--accent-green)' },
+              { offset: 0, color: '#34C759' },
               { offset: 1, color: 'rgba(52, 199, 89, 0.7)' }
             ]
           },
@@ -132,7 +132,7 @@ const TodayUsage: React.FC = () => {
         },
         emphasis: {
           itemStyle: {
-            color: 'var(--accent-green)',
+            color: '#34C759',
             shadowBlur: 10,
             shadowColor: 'rgba(52, 199, 89, 0.3)'
           }
