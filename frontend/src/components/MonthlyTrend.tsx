@@ -29,6 +29,9 @@ const MonthlyTrend: React.FC = () => {
     }
   };
 
+  // 检测暗夜模式
+  const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  
   const chartOption = {
     title: {
       text: '最近12个月用电趋势',
@@ -36,19 +39,19 @@ const MonthlyTrend: React.FC = () => {
       textStyle: {
         fontSize: 18,
         fontWeight: 600,
-        color: '#0D0D0D',
+        color: isDarkMode ? '#FFFFFF' : '#0D0D0D',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
       },
       top: 20
     },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#FFFFFF',
-      borderColor: 'rgba(0, 0, 0, 0.06)',
+      backgroundColor: isDarkMode ? '#2C2C2E' : '#FFFFFF',
+      borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
       borderWidth: 1,
       borderRadius: 12,
       textStyle: {
-        color: '#0D0D0D',
+        color: isDarkMode ? '#FFFFFF' : '#0D0D0D',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
       },
       formatter: (params: any) => {
@@ -66,18 +69,18 @@ const MonthlyTrend: React.FC = () => {
       data: data.map(item => item.month),
       axisLabel: {
         rotate: 45,
-        color: '#6E6E73',
+        color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: 12
       },
       axisLine: {
         lineStyle: {
-          color: 'rgba(0, 0, 0, 0.06)'
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'
         }
       },
       axisTick: {
         lineStyle: {
-          color: 'rgba(0, 0, 0, 0.06)'
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'
         }
       }
     },
@@ -85,28 +88,28 @@ const MonthlyTrend: React.FC = () => {
       type: 'value',
       name: '用电量 (kWh)',
       nameTextStyle: {
-        color: '#6E6E73',
+        color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: 12
       },
       axisLabel: {
-        color: '#6E6E73',
+        color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: 12
       },
       axisLine: {
         lineStyle: {
-          color: 'rgba(0, 0, 0, 0.06)'
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'
         }
       },
       axisTick: {
         lineStyle: {
-          color: 'rgba(0, 0, 0, 0.06)'
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'
         }
       },
       splitLine: {
         lineStyle: {
-          color: 'rgba(0, 0, 0, 0.06)',
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
           type: 'dashed'
         }
       }
@@ -124,7 +127,7 @@ const MonthlyTrend: React.FC = () => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: '#4A90E2' },
+              { offset: 0, color: isDarkMode ? '#5AC8FA' : '#4A90E2' },
               { offset: 1, color: 'rgba(74, 144, 226, 0.7)' }
             ]
           },
@@ -132,7 +135,7 @@ const MonthlyTrend: React.FC = () => {
         },
         emphasis: {
           itemStyle: {
-            color: '#4A90E2',
+            color: isDarkMode ? '#5AC8FA' : '#4A90E2',
             shadowBlur: 10,
             shadowColor: 'rgba(74, 144, 226, 0.3)'
           }

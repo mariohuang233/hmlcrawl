@@ -2,7 +2,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-  /* 设计系统色彩变量 */
+  /* 设计系统色彩变量 - 亮色模式 */
   --bg-primary: #F5F5F7;
   --bg-secondary: #FFFFFF;
   --text-primary: #0D0D0D;
@@ -42,6 +42,23 @@
   --text-2xl: 24px;
   --text-3xl: 32px;
   --text-4xl: 40px;
+}
+
+/* 暗夜模式色彩变量 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* 设计系统色彩变量 - 暗夜模式 */
+    --bg-primary: #1C1C1E;
+    --bg-secondary: #2C2C2E;
+    --text-primary: #FFFFFF;
+    --text-secondary: #8E8E93;
+    --accent-blue: #5AC8FA;
+    --accent-green: #30D158;
+    --accent-orange: #FF9F0A;
+    --border-light: rgba(255, 255, 255, 0.08);
+    --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.15);
+    --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
 }
 
 * {

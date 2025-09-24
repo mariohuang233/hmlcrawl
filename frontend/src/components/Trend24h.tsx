@@ -66,6 +66,9 @@ const Trend24h: React.FC = () => {
     }
   };
 
+  // 检测暗夜模式
+  const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  
   const chartOption = {
     title: {
       text: '过去24小时用电趋势',
@@ -73,19 +76,19 @@ const Trend24h: React.FC = () => {
       textStyle: {
         fontSize: 18,
         fontWeight: 600,
-        color: '#0D0D0D',
+        color: isDarkMode ? '#FFFFFF' : '#0D0D0D',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
       },
       top: 20
     },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#FFFFFF',
-      borderColor: 'rgba(0, 0, 0, 0.06)',
+      backgroundColor: isDarkMode ? '#2C2C2E' : '#FFFFFF',
+      borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
       borderWidth: 1,
       borderRadius: 12,
       textStyle: {
-        color: '#0D0D0D',
+        color: isDarkMode ? '#FFFFFF' : '#0D0D0D',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
       },
       formatter: (params: any) => {
@@ -110,18 +113,18 @@ const Trend24h: React.FC = () => {
         });
       }),
       axisLabel: {
-        color: '#6E6E73',
+        color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: 12
       },
       axisLine: {
         lineStyle: {
-          color: 'rgba(0, 0, 0, 0.06)'
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'
         }
       },
       axisTick: {
         lineStyle: {
-          color: 'rgba(0, 0, 0, 0.06)'
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'
         }
       }
     },
@@ -129,28 +132,28 @@ const Trend24h: React.FC = () => {
       type: 'value',
       name: '用电量 (kWh)',
       nameTextStyle: {
-        color: '#6E6E73',
+        color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: 12
       },
       axisLabel: {
-        color: '#6E6E73',
+        color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: 12
       },
       axisLine: {
         lineStyle: {
-          color: 'rgba(0, 0, 0, 0.06)'
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'
         }
       },
       axisTick: {
         lineStyle: {
-          color: 'rgba(0, 0, 0, 0.06)'
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'
         }
       },
       splitLine: {
         lineStyle: {
-          color: 'rgba(0, 0, 0, 0.06)',
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
           type: 'dashed'
         }
       }
@@ -164,11 +167,11 @@ const Trend24h: React.FC = () => {
         symbol: 'circle',
         symbolSize: 6,
         lineStyle: {
-          color: '#4A90E2',
+          color: isDarkMode ? '#5AC8FA' : '#4A90E2',
           width: 3
         },
         itemStyle: {
-          color: '#4A90E2',
+          color: isDarkMode ? '#5AC8FA' : '#4A90E2',
           borderColor: '#fff',
           borderWidth: 2
         },
