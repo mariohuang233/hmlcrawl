@@ -82,8 +82,9 @@ function getBeijingHour(date) {
  */
 function getBeijingTodayStart(date = new Date()) {
   const beijingTime = toBeijingTime(date);
-  const beijingToday = new Date(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth(), beijingTime.getUTCDate());
-  // 转换回UTC时间
+  // 使用 UTC 构造函数创建北京时间的日期，然后转换回 UTC
+  const beijingToday = new Date(Date.UTC(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth(), beijingTime.getUTCDate()));
+  // 转换回UTC时间（减去8小时偏移）
   return new Date(beijingToday.getTime() - 8 * 60 * 60 * 1000);
 }
 
@@ -94,8 +95,9 @@ function getBeijingTodayStart(date = new Date()) {
  */
 function getBeijingTodayEnd(date = new Date()) {
   const beijingTime = toBeijingTime(date);
-  const beijingToday = new Date(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth(), beijingTime.getUTCDate(), 23, 59, 59, 999);
-  // 转换回UTC时间
+  // 使用 UTC 构造函数创建北京时间的日期
+  const beijingToday = new Date(Date.UTC(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth(), beijingTime.getUTCDate(), 23, 59, 59, 999));
+  // 转换回UTC时间（减去8小时偏移）
   return new Date(beijingToday.getTime() - 8 * 60 * 60 * 1000);
 }
 
@@ -106,11 +108,12 @@ function getBeijingTodayEnd(date = new Date()) {
  */
 function getBeijingWeekStart(date = new Date()) {
   const beijingTime = toBeijingTime(date);
-  const beijingToday = new Date(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth(), beijingTime.getUTCDate());
-  const dayOfWeek = beijingToday.getDay(); // 0=周日, 1=周一, ..., 6=周六
+  // 使用 UTC 构造函数创建北京时间的日期
+  const beijingToday = new Date(Date.UTC(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth(), beijingTime.getUTCDate()));
+  const dayOfWeek = beijingTime.getUTCDay(); // 使用UTC方法获取星期，0=周日, 1=周一, ..., 6=周六
   const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // 计算到周一的偏移
   const beijingMonday = new Date(beijingToday.getTime() + mondayOffset * 24 * 60 * 60 * 1000);
-  // 转换回UTC时间
+  // 转换回UTC时间（减去8小时偏移）
   return new Date(beijingMonday.getTime() - 8 * 60 * 60 * 1000);
 }
 
@@ -121,11 +124,12 @@ function getBeijingWeekStart(date = new Date()) {
  */
 function getBeijingWeekEnd(date = new Date()) {
   const beijingTime = toBeijingTime(date);
-  const beijingToday = new Date(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth(), beijingTime.getUTCDate());
-  const dayOfWeek = beijingToday.getDay(); // 0=周日, 1=周一, ..., 6=周六
+  // 使用 UTC 构造函数创建北京时间的日期
+  const beijingToday = new Date(Date.UTC(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth(), beijingTime.getUTCDate()));
+  const dayOfWeek = beijingTime.getUTCDay(); // 使用UTC方法获取星期，0=周日, 1=周一, ..., 6=周六
   const sundayOffset = dayOfWeek === 0 ? 0 : 7 - dayOfWeek; // 计算到周日的偏移
   const beijingSunday = new Date(beijingToday.getTime() + sundayOffset * 24 * 60 * 60 * 1000 + 23 * 60 * 60 * 1000 + 59 * 60 * 1000 + 59 * 1000 + 999);
-  // 转换回UTC时间
+  // 转换回UTC时间（减去8小时偏移）
   return new Date(beijingSunday.getTime() - 8 * 60 * 60 * 1000);
 }
 
@@ -136,8 +140,9 @@ function getBeijingWeekEnd(date = new Date()) {
  */
 function getBeijingMonthStart(date = new Date()) {
   const beijingTime = toBeijingTime(date);
-  const beijingMonthStart = new Date(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth(), 1);
-  // 转换回UTC时间
+  // 使用 UTC 构造函数创建北京时间的月初
+  const beijingMonthStart = new Date(Date.UTC(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth(), 1));
+  // 转换回UTC时间（减去8小时偏移）
   return new Date(beijingMonthStart.getTime() - 8 * 60 * 60 * 1000);
 }
 
@@ -148,9 +153,10 @@ function getBeijingMonthStart(date = new Date()) {
  */
 function getBeijingMonthEnd(date = new Date()) {
   const beijingTime = toBeijingTime(date);
-  const beijingNextMonth = new Date(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth() + 1, 1);
-  const beijingMonthEnd = new Date(beijingNextMonth.getTime() - 24 * 60 * 60 * 1000 + 23 * 60 * 60 * 1000 + 59 * 60 * 1000 + 59 * 1000 + 999);
-  // 转换回UTC时间
+  // 使用 UTC 构造函数创建北京时间的下月初，然后减去1毫秒
+  const beijingNextMonth = new Date(Date.UTC(beijingTime.getUTCFullYear(), beijingTime.getUTCMonth() + 1, 1));
+  const beijingMonthEnd = new Date(beijingNextMonth.getTime() - 1);
+  // 转换回UTC时间（减去8小时偏移）
   return new Date(beijingMonthEnd.getTime() - 8 * 60 * 60 * 1000);
 }
 

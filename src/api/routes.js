@@ -101,10 +101,12 @@ router.get('/trend/today', async (req, res) => {
 // 获取最近30天每日用电
 router.get('/trend/30d', async (req, res) => {
   try {
-    const endDate = new Date();
-    const startDate = new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const now = new Date();
+    // 使用北京时间计算今天结束时间，确保包含今天的数据
+    const todayEnd = getBeijingTodayEnd(now);
+    const startDate = new Date(todayEnd.getTime() - 30 * 24 * 60 * 60 * 1000);
     
-    const data = await Usage.getUsageInRange('18100071580', startDate, endDate);
+    const data = await Usage.getUsageInRange('18100071580', startDate, todayEnd);
     
     // 按北京时间的日期分组统计
     const dailyUsage = {};
@@ -113,9 +115,9 @@ router.get('/trend/30d', async (req, res) => {
       const prev = data[i - 1];
       const curr = data[i];
       
-      // 使用北京时间计算日期
-      const beijingDate = getBeijingTodayStart(curr.collected_at);
-      const date = beijingDate.toISOString().split('T')[0];
+      // 使用当前记录的时间来确定日期
+      const beijingTime = new Date(curr.collected_at.getTime() + 8 * 60 * 60 * 1000);
+      const date = beijingTime.toISOString().split('T')[0];
       const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
       
       if (!dailyUsage[date]) {
@@ -124,12 +126,18 @@ router.get('/trend/30d', async (req, res) => {
       dailyUsage[date] += usedKwh;
     }
     
-    const result = Object.entries(dailyUsage)
-      .map(([date, used_kwh]) => ({
-        date,
-        used_kwh: Math.round(used_kwh * 100) / 100
-      }))
-      .sort((a, b) => new Date(a.date) - new Date(b.date));
+    // 生成完整的30天日期范围
+    const result = [];
+    const currentDate = new Date(startDate);
+    while (currentDate <= todayEnd) {
+      const beijingCurrentDate = new Date(currentDate.getTime() + 8 * 60 * 60 * 1000);
+      const dateStr = beijingCurrentDate.toISOString().split('T')[0];
+      result.push({
+        date: dateStr,
+        used_kwh: Math.round((dailyUsage[dateStr] || 0) * 100) / 100
+      });
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
     
     res.json(result);
   } catch (error) {
