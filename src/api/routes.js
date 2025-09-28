@@ -26,12 +26,28 @@ router.get('/overview', async (req, res) => {
       Usage.getLatestUsage('18100071580')
     ]);
 
+    // 检查数据覆盖范围
+    const earliestData = await Usage.findOne({ meter_id: '18100071580' }).sort({ collected_at: 1 });
+    const dataStartDate = earliestData ? earliestData.collected_at : null;
+    
+    // 判断数据是否完整
+    const weekDataComplete = dataStartDate ? dataStartDate <= weekStart : false;
+    const monthDataComplete = dataStartDate ? dataStartDate <= monthStart : false;
+
     res.json({
       current_remaining: latestUsage ? latestUsage.remaining_kwh : 0,
       today_usage: todayStats.totalUsage,
       week_usage: weekStats.totalUsage,
       month_usage: monthStats.totalUsage,
-      month_cost: monthStats.totalUsage * 1 // 1元/kWh
+      month_cost: monthStats.totalUsage * 1, // 1元/kWh
+      // 数据完整性信息
+      data_coverage: {
+        earliest_data: dataStartDate,
+        week_data_complete: weekDataComplete,
+        month_data_complete: monthDataComplete,
+        week_actual_start: dataStartDate && dataStartDate > weekStart ? dataStartDate : weekStart,
+        month_actual_start: dataStartDate && dataStartDate > monthStart ? dataStartDate : monthStart
+      }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

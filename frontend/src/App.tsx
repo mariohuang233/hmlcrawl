@@ -15,6 +15,13 @@ interface OverviewData {
   week_usage: number;
   month_usage: number;
   month_cost: number;
+  data_coverage?: {
+    earliest_data: string | null;
+    week_data_complete: boolean;
+    month_data_complete: boolean;
+    week_actual_start: string;
+    month_actual_start: string;
+  };
 }
 
 function App() {
