@@ -9,12 +9,24 @@ import './App.css';
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
 
+interface PredictionData {
+  predicted_time: string | null;
+  hours_remaining: number | null;
+  consumption_rate: number | null;
+  status: 'success' | 'insufficient_data' | 'no_consumption' | 'invalid_prediction' | 'error';
+  message: string;
+  data_points: number;
+  has_recharge?: boolean;
+  analysis_period?: string;
+}
+
 interface OverviewData {
   current_remaining: number;
   today_usage: number;
   week_usage: number;
   month_usage: number;
   month_cost: number;
+  predicted_depletion?: PredictionData;
   data_coverage?: {
     earliest_data: string | null;
     week_data_complete: boolean;

@@ -11,6 +11,122 @@ const {
   getBeijingMonthEnd
 } = require('../utils/timezone');
 
+/**
+ * 计算电量预计用完时间
+ * @param {string} meterId 电表ID
+ * @param {Date} currentTime 当前时间
+ * @returns {Object} 预测结果
+ */
+async function calculateElectricityPrediction(meterId, currentTime) {
+  try {
+    // 获取最近48小时的数据
+    const hours48Ago = new Date(currentTime.getTime() - 48 * 60 * 60 * 1000);
+    let data = await Usage.getUsageInRange(meterId, hours48Ago, currentTime);
+    
+    // 如果48小时数据不足，尝试24小时
+    if (data.length < 4) { // 至少需要4个数据点
+      const hours24Ago = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000);
+      data = await Usage.getUsageInRange(meterId, hours24Ago, currentTime);
+    }
+    
+    // 如果数据仍然不足
+    if (data.length < 2) {
+      return {
+        predicted_time: null,
+        hours_remaining: null,
+        consumption_rate: null,
+        status: 'insufficient_data',
+        message: '数据不足，无法预测',
+        data_points: data.length
+      };
+    }
+    
+    // 获取当前剩余电量
+    const latestData = data[data.length - 1];
+    const currentRemaining = latestData.remaining_kwh;
+    
+    // 检查是否有充值（剩余电量增加）
+    let hasRecharge = false;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i].remaining_kwh > data[i - 1].remaining_kwh) {
+        hasRecharge = true;
+        break;
+      }
+    }
+    
+    // 计算平均耗电速率 (kWh/h)
+    let totalConsumption = 0;
+    let validPeriods = 0;
+    
+    for (let i = 1; i < data.length; i++) {
+      const prev = data[i - 1];
+      const curr = data[i];
+      const timeDiff = (curr.collected_at - prev.collected_at) / (1000 * 60 * 60); // 小时
+      const energyDiff = prev.remaining_kwh - curr.remaining_kwh; // 消耗的电量
+      
+      // 只计算正常消耗（排除充值）
+      if (energyDiff > 0 && timeDiff > 0) {
+        totalConsumption += energyDiff;
+        validPeriods += timeDiff;
+      }
+    }
+    
+    if (validPeriods === 0) {
+      return {
+        predicted_time: null,
+        hours_remaining: null,
+        consumption_rate: 0,
+        status: 'no_consumption',
+        message: '未检测到电量消耗',
+        data_points: data.length,
+        has_recharge: hasRecharge
+      };
+    }
+    
+    const avgConsumptionRate = totalConsumption / validPeriods; // kWh/h
+    
+    // 计算预计剩余小时数
+    const hoursRemaining = currentRemaining / avgConsumptionRate;
+    
+    // 计算预计用完时间
+    const predictedDepletionTime = new Date(currentTime.getTime() + hoursRemaining * 60 * 60 * 1000);
+    
+    // 检查预测是否有效（不能是过去的时间）
+    if (predictedDepletionTime <= currentTime) {
+      return {
+        predicted_time: null,
+        hours_remaining: hoursRemaining,
+        consumption_rate: Math.round(avgConsumptionRate * 1000) / 1000,
+        status: 'invalid_prediction',
+        message: '预测无效',
+        data_points: data.length,
+        has_recharge: hasRecharge
+      };
+    }
+    
+    return {
+      predicted_time: predictedDepletionTime,
+      hours_remaining: Math.round(hoursRemaining * 10) / 10,
+      consumption_rate: Math.round(avgConsumptionRate * 1000) / 1000,
+      status: 'success',
+      message: hasRecharge ? '检测到充值，重新计算' : '预测正常',
+      data_points: data.length,
+      has_recharge: hasRecharge,
+      analysis_period: validPeriods > 24 ? '48小时' : '24小时'
+    };
+    
+  } catch (error) {
+    return {
+      predicted_time: null,
+      hours_remaining: null,
+      consumption_rate: null,
+      status: 'error',
+      message: error.message,
+      data_points: 0
+    };
+  }
+}
+
 // 获取总览数据
 router.get('/overview', async (req, res) => {
   try {
@@ -34,12 +150,17 @@ router.get('/overview', async (req, res) => {
     const weekDataComplete = dataStartDate ? dataStartDate <= weekStart : false;
     const monthDataComplete = dataStartDate ? dataStartDate <= monthStart : false;
 
+    // 计算预计用完时间
+    const prediction = await calculateElectricityPrediction('18100071580', now);
+
     res.json({
       current_remaining: latestUsage ? latestUsage.remaining_kwh : 0,
       today_usage: todayStats.totalUsage,
       week_usage: weekStats.totalUsage,
       month_usage: monthStats.totalUsage,
       month_cost: monthStats.totalUsage * 1, // 1元/kWh
+      // 预计用完时间
+      predicted_depletion: prediction,
       // 数据完整性信息
       data_coverage: {
         earliest_data: dataStartDate,

@@ -1,11 +1,23 @@
 import React from 'react';
 
+interface PredictionData {
+  predicted_time: string | null;
+  hours_remaining: number | null;
+  consumption_rate: number | null;
+  status: 'success' | 'insufficient_data' | 'no_consumption' | 'invalid_prediction' | 'error';
+  message: string;
+  data_points: number;
+  has_recharge?: boolean;
+  analysis_period?: string;
+}
+
 interface OverviewData {
   current_remaining: number;
   today_usage: number;
   week_usage: number;
   month_usage: number;
   month_cost: number;
+  predicted_depletion?: PredictionData;
   data_coverage?: {
     earliest_data: string | null;
     week_data_complete: boolean;
@@ -34,6 +46,50 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       day: 'numeric' 
     });
   };
+
+  // 格式化预计用完时间
+  const formatPredictedTime = (prediction: PredictionData) => {
+    if (prediction.status !== 'success' || !prediction.predicted_time) {
+      return {
+        value: '--',
+        label: '预计用完时间',
+        subtitle: prediction.message,
+        icon: '❌'
+      };
+    }
+
+    const predictedDate = new Date(prediction.predicted_time);
+    const now = new Date();
+    const diffMs = predictedDate.getTime() - now.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+    let timeStr = '';
+    if (diffDays > 0) {
+      timeStr = `${diffDays}天${diffHours}小时`;
+    } else if (diffHours > 0) {
+      timeStr = `${diffHours}小时`;
+    } else {
+      timeStr = '即将用完';
+    }
+
+    const dateStr = predictedDate.toLocaleString('zh-CN', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    return {
+      value: timeStr,
+      label: '预计用完时间',
+      subtitle: `${dateStr} (${prediction.analysis_period || ''}分析)`,
+      icon: diffDays > 7 ? '🔋' : diffDays > 3 ? '⚠️' : '🚨'
+    };
+  };
+
+  // 获取预测信息
+  const predictionInfo = data.predicted_depletion ? formatPredictedTime(data.predicted_depletion) : null;
   
   const stats = [
     {
@@ -76,7 +132,18 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       unit: '',
       color: isDarkMode ? '#FFFFFF' : '#0D0D0D',
       icon: '💰'
-    }
+    },
+    // 添加预计用完时间
+    ...(predictionInfo ? [{
+      value: predictionInfo.value,
+      label: predictionInfo.label,
+      unit: '',
+      color: predictionInfo.icon === '🚨' ? (isDarkMode ? '#FF453A' : '#FF3B30') : 
+             predictionInfo.icon === '⚠️' ? (isDarkMode ? '#FF9F0A' : '#FF9500') : 
+             (isDarkMode ? '#30D158' : '#34C759'),
+      icon: predictionInfo.icon,
+      subtitle: predictionInfo.subtitle
+    }] : [])
   ];
 
   return (
@@ -110,6 +177,16 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
             <div className="stat-label">
               {stat.label}
               {stat.unit && <span style={{ opacity: 0.7 }}> ({stat.unit})</span>}
+              {(stat as any).subtitle && (
+                <div style={{ 
+                  fontSize: '12px', 
+                  opacity: 0.7, 
+                  marginTop: '4px',
+                  lineHeight: '1.2'
+                }}>
+                  {(stat as any).subtitle}
+                </div>
+              )}
             </div>
           </div>
         ))}
