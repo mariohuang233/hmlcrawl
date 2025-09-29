@@ -9,6 +9,26 @@ import './App.css';
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
 
+interface WindowAnalysis {
+  rate: number;
+  dataPoints: number;
+  valid: boolean;
+  consumption?: number;
+  hours?: number;
+}
+
+interface PredictionAnalysis {
+  short_term: WindowAnalysis;
+  medium_term: WindowAnalysis;
+  long_term: WindowAnalysis;
+  weights: {
+    short: number;
+    medium: number;
+    long: number;
+  };
+  prediction_method?: string;
+}
+
 interface PredictionData {
   predicted_time: string | null;
   hours_remaining: number | null;
@@ -17,7 +37,7 @@ interface PredictionData {
   message: string;
   data_points: number;
   has_recharge?: boolean;
-  analysis_period?: string;
+  analysis?: PredictionAnalysis;
 }
 
 interface OverviewData {

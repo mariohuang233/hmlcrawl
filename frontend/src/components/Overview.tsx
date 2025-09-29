@@ -1,5 +1,25 @@
 import React from 'react';
 
+interface WindowAnalysis {
+  rate: number;
+  dataPoints: number;
+  valid: boolean;
+  consumption?: number;
+  hours?: number;
+}
+
+interface PredictionAnalysis {
+  short_term: WindowAnalysis;
+  medium_term: WindowAnalysis;
+  long_term: WindowAnalysis;
+  weights: {
+    short: number;
+    medium: number;
+    long: number;
+  };
+  prediction_method?: string;
+}
+
 interface PredictionData {
   predicted_time: string | null;
   hours_remaining: number | null;
@@ -8,7 +28,7 @@ interface PredictionData {
   message: string;
   data_points: number;
   has_recharge?: boolean;
-  analysis_period?: string;
+  analysis?: PredictionAnalysis;
 }
 
 interface OverviewData {
@@ -80,11 +100,21 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       minute: '2-digit'
     });
 
+    // 生成分析详情
+    let analysisDetail = `${dateStr}`;
+    if (prediction.analysis?.weights) {
+      const weights = prediction.analysis.weights;
+      const primaryMethod = weights.short > 0.5 ? '短期' : 
+                           weights.long > 0.4 ? '长期' : '综合';
+      analysisDetail += ` (${primaryMethod}分析)`;
+    }
+
     return {
       value: timeStr,
       label: '预计用完时间',
-      subtitle: `${dateStr} (${prediction.analysis_period || ''}分析)`,
-      icon: diffDays > 7 ? '🔋' : diffDays > 3 ? '⚠️' : '🚨'
+      subtitle: analysisDetail,
+      icon: diffDays > 7 ? '🔋' : diffDays > 3 ? '⚠️' : '🚨',
+      analysis: prediction.analysis
     };
   };
 
