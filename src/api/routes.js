@@ -310,6 +310,30 @@ function getAnalysisMessage(weights, shortTerm, longTerm) {
   }
 }
 
+/**
+ * 获取前一天的日期字符串
+ * @param {string} dateStr YYYY-MM-DD格式的日期字符串
+ * @returns {string} 前一天的日期字符串
+ */
+function getPrevDate(dateStr) {
+  const date = new Date(dateStr + 'T00:00:00Z');
+  date.setDate(date.getDate() - 1);
+  return date.toISOString().split('T')[0];
+}
+
+/**
+ * 计算百分比变化
+ * @param {number} current 当前值
+ * @param {number} previous 之前的值
+ * @returns {number} 百分比变化（正数表示增加，负数表示减少）
+ */
+function calculatePercentageChange(current, previous) {
+  if (previous === 0) {
+    return current > 0 ? 100 : 0;
+  }
+  return Math.round(((current - previous) / previous) * 100 * 10) / 10;
+}
+
 // 获取总览数据
 router.get('/overview', async (req, res) => {
   try {
@@ -318,11 +342,23 @@ router.get('/overview', async (req, res) => {
     const weekStart = getBeijingWeekStart(now); // 使用北京时间计算本周一开始时间
     const monthStart = getBeijingMonthStart(now); // 使用北京时间计算本月1号开始时间
 
-    const [todayStats, weekStats, monthStats, latestUsage] = await Promise.all([
+    // 计算对比时间范围
+    const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayEnd = new Date(todayStart.getTime() - 1);
+    const lastWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const lastWeekEnd = new Date(weekStart.getTime() - 1);
+    const lastMonthStart = new Date(monthStart.getTime());
+    lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
+    const lastMonthEnd = new Date(monthStart.getTime() - 1);
+    
+    const [todayStats, weekStats, monthStats, latestUsage, yesterdayStats, lastWeekStats, lastMonthStats] = await Promise.all([
       Usage.calculateUsageStats('18100071580', todayStart, now),
       Usage.calculateUsageStats('18100071580', weekStart, now),
       Usage.calculateUsageStats('18100071580', monthStart, now),
-      Usage.getLatestUsage('18100071580')
+      Usage.getLatestUsage('18100071580'),
+      Usage.calculateUsageStats('18100071580', yesterdayStart, yesterdayEnd),
+      Usage.calculateUsageStats('18100071580', lastWeekStart, lastWeekEnd),
+      Usage.calculateUsageStats('18100071580', lastMonthStart, lastMonthEnd)
     ]);
 
     // 检查数据覆盖范围
@@ -336,12 +372,29 @@ router.get('/overview', async (req, res) => {
     // 计算预计用完时间
     const prediction = await calculateElectricityPrediction('18100071580', now);
 
+    // 计算对比百分比
+    const todayVsYesterday = calculatePercentageChange(todayStats.totalUsage, yesterdayStats.totalUsage);
+    const weekVsLastWeek = calculatePercentageChange(weekStats.totalUsage, lastWeekStats.totalUsage);
+    const monthVsLastMonth = calculatePercentageChange(monthStats.totalUsage, lastMonthStats.totalUsage);
+    const costVsLastMonth = calculatePercentageChange(monthStats.totalUsage * 1, lastMonthStats.totalUsage * 1);
+
     res.json({
       current_remaining: latestUsage ? latestUsage.remaining_kwh : 0,
       today_usage: todayStats.totalUsage,
       week_usage: weekStats.totalUsage,
       month_usage: monthStats.totalUsage,
       month_cost: monthStats.totalUsage * 1, // 1元/kWh
+      // 对比数据
+      comparisons: {
+        today_vs_yesterday: todayVsYesterday,
+        week_vs_last_week: weekVsLastWeek,
+        month_vs_last_month: monthVsLastMonth,
+        cost_vs_last_month: costVsLastMonth,
+        yesterday_usage: yesterdayStats.totalUsage,
+        last_week_usage: lastWeekStats.totalUsage,
+        last_month_usage: lastMonthStats.totalUsage,
+        last_month_cost: lastMonthStats.totalUsage * 1
+      },
       // 预计用完时间
       predicted_depletion: prediction,
       // 数据完整性信息
@@ -390,26 +443,40 @@ router.get('/trend/24h', async (req, res) => {
 router.get('/trend/today', async (req, res) => {
   try {
     const now = new Date();
-    const todayStart = getBeijingTodayStart(now); // 使用北京时间计算今天开始时间
+    const todayStart = getBeijingTodayStart(now);
+    const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayEnd = new Date(todayStart.getTime() - 1);
     
-    const data = await Usage.getUsageInRange('18100071580', todayStart, now);
+    const [todayData, yesterdayData] = await Promise.all([
+      Usage.getUsageInRange('18100071580', todayStart, now),
+      Usage.getUsageInRange('18100071580', yesterdayStart, yesterdayEnd)
+    ]);
     
-    // 按小时统计（使用本地时间）
+    // 按小时统计今日用电
     const hourlyUsage = new Array(24).fill(0);
-    
-    for (let i = 1; i < data.length; i++) {
-      const prev = data[i - 1];
-      const curr = data[i];
-      // 使用北京时间获取小时
+    for (let i = 1; i < todayData.length; i++) {
+      const prev = todayData[i - 1];
+      const curr = todayData[i];
       const hour = getBeijingHour(curr.collected_at);
       const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
-      
       hourlyUsage[hour] += usedKwh;
+    }
+    
+    // 按小时统计昨日用电
+    const yesterdayHourlyUsage = new Array(24).fill(0);
+    for (let i = 1; i < yesterdayData.length; i++) {
+      const prev = yesterdayData[i - 1];
+      const curr = yesterdayData[i];
+      const hour = getBeijingHour(curr.collected_at);
+      const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
+      yesterdayHourlyUsage[hour] += usedKwh;
     }
     
     const result = hourlyUsage.map((usage, hour) => ({
       hour,
-      used_kwh: Math.round(usage * 100) / 100
+      used_kwh: Math.round(usage * 100) / 100,
+      yesterday_used_kwh: Math.round(yesterdayHourlyUsage[hour] * 100) / 100,
+      vs_yesterday: calculatePercentageChange(usage, yesterdayHourlyUsage[hour])
     }));
     
     res.json(result);
@@ -428,36 +495,54 @@ router.get('/trend/30d', async (req, res) => {
     
     const data = await Usage.getUsageInRange('18100071580', startDate, todayEnd);
     
-    // 按北京时间的日期分组统计
+    // 按每一天的时间范围计算用电量（确保与总览today_usage保持一致的计算方法）
     const dailyUsage = {};
     
-    for (let i = 1; i < data.length; i++) {
-      const prev = data[i - 1];
-      const curr = data[i];
-      
-      // 使用当前记录的时间来确定日期
-      const beijingTime = new Date(curr.collected_at.getTime() + 8 * 60 * 60 * 1000);
-      const date = beijingTime.toISOString().split('T')[0];
-      const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
-      
-      if (!dailyUsage[date]) {
-        dailyUsage[date] = 0;
-      }
-      dailyUsage[date] += usedKwh;
-    }
+    // 获取所有日期
+    const dateSet = new Set();
+    const beijingStartDate = new Date(startDate.getTime() + 8 * 60 * 60 * 1000);
+    const beijingEndDate = new Date(todayEnd.getTime() + 8 * 60 * 60 * 1000);
     
-    // 生成完整的30天日期范围
-    const result = [];
-    const currentDate = new Date(startDate);
-    while (currentDate <= todayEnd) {
-      const beijingCurrentDate = new Date(currentDate.getTime() + 8 * 60 * 60 * 1000);
-      const dateStr = beijingCurrentDate.toISOString().split('T')[0];
-      result.push({
-        date: dateStr,
-        used_kwh: Math.round((dailyUsage[dateStr] || 0) * 100) / 100
-      });
+    let currentDate = new Date(beijingStartDate);
+    while (currentDate <= beijingEndDate) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+      dateSet.add(dateStr);
       currentDate.setDate(currentDate.getDate() + 1);
     }
+    
+    // 为每一天计算用电量
+    Array.from(dateSet).forEach(dateStr => {
+      const dayStart = getBeijingTodayStart(new Date(dateStr + 'T12:00:00Z'));
+      const dayEnd = getBeijingTodayEnd(new Date(dateStr + 'T12:00:00Z'));
+      
+      // 获取这一天的数据
+      const dayData = data.filter(d => d.collected_at >= dayStart && d.collected_at <= dayEnd);
+      
+      let usage = 0;
+      for (let i = 1; i < dayData.length; i++) {
+        const usedKwh = Math.max(0, dayData[i - 1].remaining_kwh - dayData[i].remaining_kwh);
+        usage += usedKwh;
+      }
+      
+      dailyUsage[dateStr] = usage;
+    });
+    
+    // 生成完整的30天日期范围，添加昨日对比
+    const result = [];
+    const sortedDates = Array.from(dateSet).sort();
+    
+    sortedDates.forEach((dateStr, index) => {
+      const usage = Math.round((dailyUsage[dateStr] || 0) * 100) / 100;
+      const prevDateStr = index > 0 ? sortedDates[index - 1] : null;
+      const prevUsage = prevDateStr ? (dailyUsage[prevDateStr] || 0) : 0;
+      
+      result.push({
+        date: dateStr,
+        used_kwh: usage,
+        prev_day_used_kwh: Math.round(prevUsage * 100) / 100,
+        vs_prev_day: prevDateStr ? calculatePercentageChange(usage, prevUsage) : null
+      });
+    });
     
     res.json(result);
   } catch (error) {
@@ -491,12 +576,19 @@ router.get('/trend/monthly', async (req, res) => {
       monthlyUsage[month] += usedKwh;
     }
     
-    const result = Object.entries(monthlyUsage)
-      .map(([month, used_kwh]) => ({
+    const sortedMonths = Object.keys(monthlyUsage).sort();
+    const result = sortedMonths.map((month, index) => {
+      const usage = Math.round((monthlyUsage[month] || 0) * 100) / 100;
+      const prevMonth = index > 0 ? sortedMonths[index - 1] : null;
+      const prevUsage = prevMonth ? (monthlyUsage[prevMonth] || 0) : 0;
+      
+      return {
         month,
-        used_kwh: Math.round(used_kwh * 100) / 100
-      }))
-      .sort((a, b) => a.month.localeCompare(b.month));
+        used_kwh: usage,
+        prev_month_used_kwh: Math.round(prevUsage * 100) / 100,
+        vs_prev_month: prevMonth ? calculatePercentageChange(usage, prevUsage) : null
+      };
+    });
     
     res.json(result);
   } catch (error) {
