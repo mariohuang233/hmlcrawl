@@ -7,6 +7,8 @@ const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:
 interface TodayData {
   hour: number;
   used_kwh: number;
+  yesterday_used_kwh: number;
+  vs_yesterday: number;
 }
 
 const TodayUsage: React.FC = () => {
@@ -56,10 +58,21 @@ const TodayUsage: React.FC = () => {
       },
       formatter: (params: any) => {
         const point = params[0];
+        const dataItem = data[point.dataIndex];
+        const vsYesterday = dataItem.vs_yesterday;
+        const vsYesterdayText = vsYesterday === 0 ? '持平' : 
+          (vsYesterday > 0 ? `+${vsYesterday}%` : `${vsYesterday}%`);
+        const vsYesterdayColor = vsYesterday === 0 ? '#8E8E93' :
+          (vsYesterday > 0 ? '#FF3B30' : '#34C759');
+        
         return `
           <div style="padding: 4px;">
             <div style="margin-bottom: 4px; font-weight: 600;">⏰ ${point.axisValue}</div>
-            <div>⚡ 用电量: ${point.value} kWh</div>
+            <div>⚡ 今日: ${point.value} kWh</div>
+            <div style="color: #8E8E93; font-size: 12px;">昨日: ${dataItem.yesterday_used_kwh} kWh</div>
+            <div style="color: ${vsYesterdayColor}; font-size: 12px; font-weight: 500;">
+              较昨日 ${vsYesterdayText}
+            </div>
           </div>
         `;
       }

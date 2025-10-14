@@ -7,6 +7,8 @@ const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:
 interface DailyData {
   date: string;
   used_kwh: number;
+  prev_day_used_kwh: number;
+  vs_prev_day: number | null;
 }
 
 const DailyTrend: React.FC = () => {
@@ -56,10 +58,29 @@ const DailyTrend: React.FC = () => {
       },
       formatter: (params: any) => {
         const point = params[0];
+        const dataItem = data[point.dataIndex];
+        const vsPrevDay = dataItem.vs_prev_day;
+        
+        let comparisonHtml = '';
+        if (vsPrevDay !== null) {
+          const vsPrevDayText = vsPrevDay === 0 ? '持平' : 
+            (vsPrevDay > 0 ? `+${vsPrevDay}%` : `${vsPrevDay}%`);
+          const vsPrevDayColor = vsPrevDay === 0 ? '#8E8E93' :
+            (vsPrevDay > 0 ? '#FF3B30' : '#34C759');
+          
+          comparisonHtml = `
+            <div style="color: #8E8E93; font-size: 12px;">前一天: ${dataItem.prev_day_used_kwh} kWh</div>
+            <div style="color: ${vsPrevDayColor}; font-size: 12px; font-weight: 500;">
+              较前一天 ${vsPrevDayText}
+            </div>
+          `;
+        }
+        
         return `
           <div style="padding: 4px;">
             <div style="margin-bottom: 4px; font-weight: 600;">📅 ${point.axisValue}</div>
             <div>⚡ 用电量: ${point.value} kWh</div>
+            ${comparisonHtml}
           </div>
         `;
       }

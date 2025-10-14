@@ -40,12 +40,24 @@ interface PredictionData {
   analysis?: PredictionAnalysis;
 }
 
+interface ComparisonData {
+  today_vs_yesterday: number;
+  week_vs_last_week: number;
+  month_vs_last_month: number;
+  cost_vs_last_month: number;
+  yesterday_usage: number;
+  last_week_usage: number;
+  last_month_usage: number;
+  last_month_cost: number;
+}
+
 interface OverviewData {
   current_remaining: number;
   today_usage: number;
   week_usage: number;
   month_usage: number;
   month_cost: number;
+  comparisons?: ComparisonData;
   predicted_depletion?: PredictionData;
   data_coverage?: {
     earliest_data: string | null;

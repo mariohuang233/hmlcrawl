@@ -31,12 +31,24 @@ interface PredictionData {
   analysis?: PredictionAnalysis;
 }
 
+interface ComparisonData {
+  today_vs_yesterday: number;
+  week_vs_last_week: number;
+  month_vs_last_month: number;
+  cost_vs_last_month: number;
+  yesterday_usage: number;
+  last_week_usage: number;
+  last_month_usage: number;
+  last_month_cost: number;
+}
+
 interface OverviewData {
   current_remaining: number;
   today_usage: number;
   week_usage: number;
   month_usage: number;
   month_cost: number;
+  comparisons?: ComparisonData;
   predicted_depletion?: PredictionData;
   data_coverage?: {
     earliest_data: string | null;
@@ -65,6 +77,21 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       month: 'numeric', 
       day: 'numeric' 
     });
+  };
+
+  // 格式化对比百分比
+  const formatComparison = (percentage: number) => {
+    if (percentage === 0) return '持平';
+    const sign = percentage > 0 ? '+' : '';
+    return `${sign}${percentage}%`;
+  };
+
+  // 获取对比颜色
+  const getComparisonColor = (percentage: number) => {
+    if (percentage === 0) return isDarkMode ? '#8E8E93' : '#8E8E93';
+    // 用电增加显示红色，减少显示绿色
+    if (percentage > 0) return isDarkMode ? '#FF453A' : '#FF3B30';
+    return isDarkMode ? '#30D158' : '#34C759';
   };
 
   // 格式化预计用完时间
@@ -134,7 +161,11 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       label: '今日用电',
       unit: 'kWh',
       color: isDarkMode ? '#5AC8FA' : '#4A90E2',
-      icon: '⚡'
+      icon: '⚡',
+      comparison: data.comparisons ? {
+        text: `较昨日 ${formatComparison(data.comparisons.today_vs_yesterday)}`,
+        color: getComparisonColor(data.comparisons.today_vs_yesterday)
+      } : undefined
     },
     {
       value: data.week_usage.toFixed(2),
@@ -144,7 +175,11 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       unit: 'kWh',
       color: isDarkMode ? '#30D158' : '#34C759',
       icon: '📊',
-      warning: data.data_coverage && !data.data_coverage.week_data_complete
+      warning: data.data_coverage && !data.data_coverage.week_data_complete,
+      comparison: data.comparisons ? {
+        text: `较上周 ${formatComparison(data.comparisons.week_vs_last_week)}`,
+        color: getComparisonColor(data.comparisons.week_vs_last_week)
+      } : undefined
     },
     {
       value: data.month_usage.toFixed(2),
@@ -154,14 +189,22 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       unit: 'kWh',
       color: isDarkMode ? '#FF9F0A' : '#FF9500',
       icon: '📈',
-      warning: data.data_coverage && !data.data_coverage.month_data_complete
+      warning: data.data_coverage && !data.data_coverage.month_data_complete,
+      comparison: data.comparisons ? {
+        text: `较上月 ${formatComparison(data.comparisons.month_vs_last_month)}`,
+        color: getComparisonColor(data.comparisons.month_vs_last_month)
+      } : undefined
     },
     {
       value: `¥${data.month_cost.toFixed(2)}`,
       label: '本月预计费用',
       unit: '',
       color: isDarkMode ? '#FFFFFF' : '#0D0D0D',
-      icon: '💰'
+      icon: '💰',
+      comparison: data.comparisons ? {
+        text: `较上月 ${formatComparison(data.comparisons.cost_vs_last_month)}`,
+        color: getComparisonColor(data.comparisons.cost_vs_last_month)
+      } : undefined
     },
     // 添加预计用完时间
     ...(predictionInfo ? [{
@@ -215,6 +258,16 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
                   lineHeight: '1.2'
                 }}>
                   {(stat as any).subtitle}
+                </div>
+              )}
+              {(stat as any).comparison && (
+                <div style={{ 
+                  fontSize: '11px',
+                  marginTop: '6px',
+                  color: (stat as any).comparison.color,
+                  fontWeight: 500
+                }}>
+                  {(stat as any).comparison.text}
                 </div>
               )}
             </div>

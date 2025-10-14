@@ -7,6 +7,8 @@ const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:
 interface MonthlyData {
   month: string;
   used_kwh: number;
+  prev_month_used_kwh: number;
+  vs_prev_month: number | null;
 }
 
 const MonthlyTrend: React.FC = () => {
@@ -56,10 +58,29 @@ const MonthlyTrend: React.FC = () => {
       },
       formatter: (params: any) => {
         const point = params[0];
+        const dataItem = data[point.dataIndex];
+        const vsPrevMonth = dataItem.vs_prev_month;
+        
+        let comparisonHtml = '';
+        if (vsPrevMonth !== null) {
+          const vsPrevMonthText = vsPrevMonth === 0 ? '持平' : 
+            (vsPrevMonth > 0 ? `+${vsPrevMonth}%` : `${vsPrevMonth}%`);
+          const vsPrevMonthColor = vsPrevMonth === 0 ? '#8E8E93' :
+            (vsPrevMonth > 0 ? '#FF3B30' : '#34C759');
+          
+          comparisonHtml = `
+            <div style="color: #8E8E93; font-size: 12px;">上月: ${dataItem.prev_month_used_kwh} kWh</div>
+            <div style="color: ${vsPrevMonthColor}; font-size: 12px; font-weight: 500;">
+              较上月 ${vsPrevMonthText}
+            </div>
+          `;
+        }
+        
         return `
           <div style="padding: 4px;">
             <div style="margin-bottom: 4px; font-weight: 600;">📅 ${point.axisValue}</div>
             <div>⚡ 用电量: ${point.value} kWh</div>
+            ${comparisonHtml}
           </div>
         `;
       }
