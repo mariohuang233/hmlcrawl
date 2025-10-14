@@ -33,10 +33,12 @@ interface PredictionData {
 
 interface ComparisonData {
   today_vs_yesterday: number;
+  today_vs_last_week_same_day: number;
   week_vs_last_week: number;
   month_vs_last_month: number;
   cost_vs_last_month: number;
   yesterday_usage: number;
+  last_week_same_day_usage: number;
   last_week_usage: number;
   last_month_usage: number;
   last_month_cost: number;
@@ -164,7 +166,9 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       icon: '⚡',
       comparison: data.comparisons ? {
         text: `较昨日 ${formatComparison(data.comparisons.today_vs_yesterday)}`,
-        color: getComparisonColor(data.comparisons.today_vs_yesterday)
+        color: getComparisonColor(data.comparisons.today_vs_yesterday),
+        secondaryText: `周环比 ${formatComparison(data.comparisons.today_vs_last_week_same_day)}`,
+        secondaryColor: getComparisonColor(data.comparisons.today_vs_last_week_same_day)
       } : undefined
     },
     {
@@ -261,14 +265,26 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
                 </div>
               )}
               {(stat as any).comparison && (
-                <div style={{ 
-                  fontSize: '11px',
-                  marginTop: '6px',
-                  color: (stat as any).comparison.color,
-                  fontWeight: 500
-                }}>
-                  {(stat as any).comparison.text}
-                </div>
+                <>
+                  <div style={{ 
+                    fontSize: '11px',
+                    marginTop: '6px',
+                    color: (stat as any).comparison.color,
+                    fontWeight: 500
+                  }}>
+                    {(stat as any).comparison.text}
+                  </div>
+                  {(stat as any).comparison.secondaryText && (
+                    <div style={{ 
+                      fontSize: '11px',
+                      marginTop: '2px',
+                      color: (stat as any).comparison.secondaryColor,
+                      fontWeight: 500
+                    }}>
+                      {(stat as any).comparison.secondaryText}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

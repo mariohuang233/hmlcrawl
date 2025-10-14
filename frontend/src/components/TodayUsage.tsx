@@ -7,7 +7,9 @@ interface TodayData {
   hour: number;
   used_kwh: number;
   yesterday_used_kwh: number;
+  avg_used_kwh: number;
   vs_yesterday: number;
+  vs_avg: number;
 }
 
 const TodayUsage: React.FC = React.memo(() => {
@@ -71,18 +73,29 @@ const TodayUsage: React.FC = React.memo(() => {
         const point = params[0];
         const dataItem = data[point.dataIndex];
         const vsYesterday = dataItem.vs_yesterday;
+        const vsAvg = dataItem.vs_avg;
+        
         const vsYesterdayText = vsYesterday === 0 ? '持平' : 
           (vsYesterday > 0 ? `+${vsYesterday}%` : `${vsYesterday}%`);
         const vsYesterdayColor = vsYesterday === 0 ? '#8E8E93' :
           (vsYesterday > 0 ? '#FF3B30' : '#34C759');
+        
+        const vsAvgText = vsAvg === 0 ? '持平' : 
+          (vsAvg > 0 ? `+${vsAvg}%` : `${vsAvg}%`);
+        const vsAvgColor = vsAvg === 0 ? '#8E8E93' :
+          (vsAvg > 0 ? '#FF3B30' : '#34C759');
         
         return `
           <div style="padding: 4px;">
             <div style="margin-bottom: 4px; font-weight: 600;">⏰ ${point.axisValue}</div>
             <div>⚡ 今日: ${point.value} kWh</div>
             <div style="color: #8E8E93; font-size: 12px;">昨日: ${dataItem.yesterday_used_kwh} kWh</div>
+            <div style="color: #8E8E93; font-size: 12px;">平均: ${dataItem.avg_used_kwh} kWh</div>
             <div style="color: ${vsYesterdayColor}; font-size: 12px; font-weight: 500;">
               较昨日 ${vsYesterdayText}
+            </div>
+            <div style="color: ${vsAvgColor}; font-size: 12px; font-weight: 500;">
+              较平均 ${vsAvgText}
             </div>
           </div>
         `;

@@ -42,10 +42,12 @@ interface PredictionData {
 
 interface ComparisonData {
   today_vs_yesterday: number;
+  today_vs_last_week_same_day: number;
   week_vs_last_week: number;
   month_vs_last_month: number;
   cost_vs_last_month: number;
   yesterday_usage: number;
+  last_week_same_day_usage: number;
   last_week_usage: number;
   last_month_usage: number;
   last_month_cost: number;

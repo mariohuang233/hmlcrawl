@@ -397,14 +397,19 @@ router.get('/overview', cacheMiddleware('overview', 60000), asyncHandler(async (
     lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
     const lastMonthEnd = new Date(monthStart.getTime() - 1);
     
-    const [todayStats, weekStats, monthStats, latestUsage, yesterdayStats, lastWeekStats, lastMonthStats] = await Promise.all([
+    // 上周同一天（周环比）
+    const lastWeekSameDayStart = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const lastWeekSameDayEnd = new Date(lastWeekSameDayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
+    
+    const [todayStats, weekStats, monthStats, latestUsage, yesterdayStats, lastWeekStats, lastMonthStats, lastWeekSameDayStats] = await Promise.all([
       Usage.calculateUsageStats('18100071580', todayStart, now),
       Usage.calculateUsageStats('18100071580', weekStart, now),
       Usage.calculateUsageStats('18100071580', monthStart, now),
       Usage.getLatestUsage('18100071580'),
       Usage.calculateUsageStats('18100071580', yesterdayStart, yesterdayEnd),
       Usage.calculateUsageStats('18100071580', lastWeekStart, lastWeekEnd),
-      Usage.calculateUsageStats('18100071580', lastMonthStart, lastMonthEnd)
+      Usage.calculateUsageStats('18100071580', lastMonthStart, lastMonthEnd),
+      Usage.calculateUsageStats('18100071580', lastWeekSameDayStart, lastWeekSameDayEnd)
     ]);
 
     // 检查数据覆盖范围
@@ -420,6 +425,7 @@ router.get('/overview', cacheMiddleware('overview', 60000), asyncHandler(async (
 
     // 计算对比百分比
     const todayVsYesterday = calculatePercentageChange(todayStats.totalUsage, yesterdayStats.totalUsage);
+    const todayVsLastWeekSameDay = calculatePercentageChange(todayStats.totalUsage, lastWeekSameDayStats.totalUsage);
     const weekVsLastWeek = calculatePercentageChange(weekStats.totalUsage, lastWeekStats.totalUsage);
     const monthVsLastMonth = calculatePercentageChange(monthStats.totalUsage, lastMonthStats.totalUsage);
     const costVsLastMonth = calculatePercentageChange(monthStats.totalUsage * 1, lastMonthStats.totalUsage * 1);
@@ -433,10 +439,12 @@ router.get('/overview', cacheMiddleware('overview', 60000), asyncHandler(async (
       // 对比数据
       comparisons: {
         today_vs_yesterday: todayVsYesterday,
+        today_vs_last_week_same_day: todayVsLastWeekSameDay,
         week_vs_last_week: weekVsLastWeek,
         month_vs_last_month: monthVsLastMonth,
         cost_vs_last_month: costVsLastMonth,
         yesterday_usage: yesterdayStats.totalUsage,
+        last_week_same_day_usage: lastWeekSameDayStats.totalUsage,
         last_week_usage: lastWeekStats.totalUsage,
         last_month_usage: lastMonthStats.totalUsage,
         last_month_cost: lastMonthStats.totalUsage * 1
@@ -485,9 +493,13 @@ router.get('/trend/today', cacheMiddleware('today', 120000), asyncHandler(async 
     const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
     const yesterdayEnd = new Date(todayStart.getTime() - 1);
     
-    const [todayData, yesterdayData] = await Promise.all([
+    // 获取过去30天的数据用于计算历史平均
+    const thirtyDaysAgo = new Date(todayStart.getTime() - 30 * 24 * 60 * 60 * 1000);
+    
+    const [todayData, yesterdayData, historicalData] = await Promise.all([
       Usage.getUsageInRange('18100071580', todayStart, now),
-      Usage.getUsageInRange('18100071580', yesterdayStart, yesterdayEnd)
+      Usage.getUsageInRange('18100071580', yesterdayStart, yesterdayEnd),
+      Usage.getUsageInRange('18100071580', thirtyDaysAgo, yesterdayEnd)
     ]);
     
     // 按小时统计今日用电
@@ -510,11 +522,51 @@ router.get('/trend/today', cacheMiddleware('today', 120000), asyncHandler(async 
       yesterdayHourlyUsage[hour] += usedKwh;
     }
     
+    // 计算历史平均（过去30天每个小时的平均用电）
+    const historicalHourlyUsage = Array.from({ length: 24 }, () => ({ total: 0, count: 0 }));
+    
+    // 按天分组历史数据
+    const dailyData = {};
+    for (const record of historicalData) {
+      const dateStr = new Date(record.collected_at.getTime() + 8 * 60 * 60 * 1000).toISOString().split('T')[0];
+      if (!dailyData[dateStr]) dailyData[dateStr] = [];
+      dailyData[dateStr].push(record);
+    }
+    
+    // 计算每天每小时的用电量
+    for (const dateStr in dailyData) {
+      const dayData = dailyData[dateStr].sort((a, b) => a.collected_at - b.collected_at);
+      const dayHourlyUsage = new Array(24).fill(0);
+      
+      for (let i = 1; i < dayData.length; i++) {
+        const prev = dayData[i - 1];
+        const curr = dayData[i];
+        const hour = getBeijingHour(curr.collected_at);
+        const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
+        dayHourlyUsage[hour] += usedKwh;
+      }
+      
+      // 累加到历史统计
+      for (let hour = 0; hour < 24; hour++) {
+        if (dayHourlyUsage[hour] > 0) {
+          historicalHourlyUsage[hour].total += dayHourlyUsage[hour];
+          historicalHourlyUsage[hour].count++;
+        }
+      }
+    }
+    
+    // 计算平均值
+    const avgHourlyUsage = historicalHourlyUsage.map(h => 
+      h.count > 0 ? h.total / h.count : 0
+    );
+    
     const result = hourlyUsage.map((usage, hour) => ({
       hour,
       used_kwh: Math.round(usage * 100) / 100,
       yesterday_used_kwh: Math.round(yesterdayHourlyUsage[hour] * 100) / 100,
-      vs_yesterday: calculatePercentageChange(usage, yesterdayHourlyUsage[hour])
+      avg_used_kwh: Math.round(avgHourlyUsage[hour] * 100) / 100,
+      vs_yesterday: calculatePercentageChange(usage, yesterdayHourlyUsage[hour]),
+      vs_avg: calculatePercentageChange(usage, avgHourlyUsage[hour])
     }));
     
     res.json(result);
