@@ -1,6 +1,7 @@
 {
   "build_command": "npm run build",
-  "start_command": "npm start",
-  "install_command": "npm ci --prefer-offline --no-audit"
+  "start_command": "node server.js",
+  "install_command": "npm ci --prefer-offline --no-audit",
+  "port": 3000
 }
 

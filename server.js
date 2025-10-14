@@ -58,9 +58,11 @@ const mongooseOptions = {
 };
 
 // 启动服务器（即使MongoDB连接失败也启动，但会记录错误）
-const server = app.listen(PORT, () => {
+// 监听 0.0.0.0 以便在容器环境中接受外部请求
+const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`服务器已启动在端口 ${PORT}`);
   logger.info(`健康检查端点: http://localhost:${PORT}/health`);
+  logger.info(`环境: ${process.env.NODE_ENV || 'development'}`);
 });
 
 // MongoDB连接（异步，不阻塞服务器启动）

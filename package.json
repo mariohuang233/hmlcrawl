@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "build": "cd frontend && npm ci --prefer-offline --no-audit && npm run build",
     "prebuild": "echo 'Building frontend...'",
-    "postbuild": "echo 'Build completed!'"
+    "postbuild": "echo 'Build completed!'",
+    "diagnose": "node diagnose.js"
   },
   "dependencies": {
     "express": "^4.18.2",
