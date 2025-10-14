@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ReactECharts from 'echarts-for-react';
-// 使用fetch替代axios
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
 
@@ -11,30 +10,42 @@ interface TodayData {
   vs_yesterday: number;
 }
 
-const TodayUsage: React.FC = () => {
+const TodayUsage: React.FC = React.memo(() => {
   const [data, setData] = useState<TodayData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
+      setLoading(true);
       const response = await fetch(`${API_BASE}/api/trend/today`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
       const data = await response.json();
       setData(data);
+      setError(null);
     } catch (error) {
       console.error('Error fetching today usage:', error);
+      setError('加载失败');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // 检测暗夜模式
-  const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDarkMode = useMemo(() => 
+    window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches,
+    []
+  );
   
-  const chartOption = {
+  const chartOption = useMemo(() => ({
     title: {
       text: '今日用电分布（按小时）',
       left: 'center',
@@ -163,7 +174,7 @@ const TodayUsage: React.FC = () => {
       top: '15%',
       containLabel: true
     }
-  };
+  }), [data, isDarkMode]);
 
   if (loading) {
     return (
@@ -176,15 +187,28 @@ const TodayUsage: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="card">
+        <h2 className="card-title">今日用电分布（按小时）</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px', color: '#FF3B30' }}>
+          <p>{error}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="card">
       <ReactECharts 
         option={chartOption} 
         style={{ height: '400px' }}
         className="chart-container"
+        notMerge={true}
+        lazyUpdate={true}
       />
     </div>
   );
-};
+});
 
 export default TodayUsage;

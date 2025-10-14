@@ -30,13 +30,28 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'frontend/build', 'index.html'));
 });
 
-// MongoDB连接
-mongoose.connect(process.env.MONGO_URI, {
+// MongoDB连接配置
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/electricity';
+
+// 验证MongoDB URI
+if (!MONGO_URI) {
+  logger.error('错误: 未配置MONGO_URI环境变量');
+  process.exit(1);
+}
+
+// MongoDB连接选项
+const mongooseOptions = {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-})
+  serverSelectionTimeoutMS: 5000, // 5秒超时
+  socketTimeoutMS: 45000, // 45秒socket超时
+};
+
+// MongoDB连接
+mongoose.connect(MONGO_URI, mongooseOptions)
 .then(() => {
   logger.info('MongoDB连接成功');
+  logger.info(`连接地址: ${MONGO_URI.replace(/\/\/.*@/, '//***@')}`); // 隐藏密码
   
   // 启动定时爬虫
   crawler.start();
@@ -47,8 +62,18 @@ mongoose.connect(process.env.MONGO_URI, {
   });
 })
 .catch((error) => {
-  logger.error('MongoDB连接失败:', error);
+  logger.error('MongoDB连接失败:', error.message);
+  logger.error('请确保MongoDB正在运行并且连接字符串正确');
   process.exit(1);
+});
+
+// 监听MongoDB连接错误
+mongoose.connection.on('error', (err) => {
+  logger.error('MongoDB运行时错误:', err.message);
+});
+
+mongoose.connection.on('disconnected', () => {
+  logger.warn('MongoDB连接已断开');
 });
 
 // 优雅关闭

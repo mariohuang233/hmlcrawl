@@ -81,11 +81,22 @@ function App() {
     try {
       setLoading(true);
       const response = await fetch(`${API_BASE}/api/overview`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
       setOverview(data);
       setError(null);
     } catch (err) {
-      setError('获取数据失败，请检查网络连接');
+      const errorMessage = err instanceof Error ? err.message : '获取数据失败，请检查网络连接';
+      setError(errorMessage);
       console.error('Error fetching overview:', err);
     } finally {
       setLoading(false);

@@ -11,6 +11,53 @@ const {
   getBeijingMonthEnd
 } = require('../utils/timezone');
 
+// 简单的内存缓存
+const cache = new Map();
+const CACHE_TTL = 2 * 60 * 1000; // 2分钟缓存
+
+/**
+ * 缓存中间件
+ * @param {string} key 缓存键
+ * @param {number} ttl 过期时间（毫秒）
+ */
+function cacheMiddleware(key, ttl = CACHE_TTL) {
+  return (req, res, next) => {
+    const cacheKey = `${key}_${req.url}`;
+    const cached = cache.get(cacheKey);
+    
+    if (cached && Date.now() - cached.timestamp < ttl) {
+      return res.json(cached.data);
+    }
+    
+    // 重写res.json以缓存响应
+    const originalJson = res.json;
+    res.json = function(data) {
+      cache.set(cacheKey, { data, timestamp: Date.now() });
+      // 清理过期缓存
+      if (cache.size > 100) {
+        const now = Date.now();
+        for (const [k, v] of cache.entries()) {
+          if (now - v.timestamp > ttl) {
+            cache.delete(k);
+          }
+        }
+      }
+      return originalJson.call(this, data);
+    };
+    
+    next();
+  };
+}
+
+/**
+ * 错误处理包装器
+ */
+function asyncHandler(fn) {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
+
 /**
  * 计算电量预计用完时间（升级版多窗口预测）
  * @param {string} meterId 电表ID
@@ -335,8 +382,7 @@ function calculatePercentageChange(current, previous) {
 }
 
 // 获取总览数据
-router.get('/overview', async (req, res) => {
-  try {
+router.get('/overview', cacheMiddleware('overview', 60000), asyncHandler(async (req, res) => {
     const now = new Date();
     const todayStart = getBeijingTodayStart(now); // 使用北京时间计算今天开始时间
     const weekStart = getBeijingWeekStart(now); // 使用北京时间计算本周一开始时间
@@ -406,14 +452,10 @@ router.get('/overview', async (req, res) => {
         month_actual_start: dataStartDate && dataStartDate > monthStart ? dataStartDate : monthStart
       }
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+}));
 
 // 获取过去24小时趋势
-router.get('/trend/24h', async (req, res) => {
-  try {
+router.get('/trend/24h', cacheMiddleware('24h', 120000), asyncHandler(async (req, res) => {
     const endTime = new Date();
     const startTime = new Date(endTime.getTime() - 24 * 60 * 60 * 1000);
     
@@ -434,14 +476,10 @@ router.get('/trend/24h', async (req, res) => {
     }
     
     res.json(trend);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+}));
 
 // 获取当天用电（按小时）
-router.get('/trend/today', async (req, res) => {
-  try {
+router.get('/trend/today', cacheMiddleware('today', 120000), asyncHandler(async (req, res) => {
     const now = new Date();
     const todayStart = getBeijingTodayStart(now);
     const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
@@ -480,14 +518,10 @@ router.get('/trend/today', async (req, res) => {
     }));
     
     res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+}));
 
 // 获取最近30天每日用电
-router.get('/trend/30d', async (req, res) => {
-  try {
+router.get('/trend/30d', cacheMiddleware('30d', 300000), asyncHandler(async (req, res) => {
     const now = new Date();
     // 使用北京时间计算今天结束时间，确保包含今天的数据
     const todayEnd = getBeijingTodayEnd(now);
@@ -545,14 +579,10 @@ router.get('/trend/30d', async (req, res) => {
     });
     
     res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+}));
 
 // 获取最近12个月月用电
-router.get('/trend/monthly', async (req, res) => {
-  try {
+router.get('/trend/monthly', cacheMiddleware('monthly', 600000), asyncHandler(async (req, res) => {
     const endDate = new Date();
     const startDate = new Date(endDate.getFullYear() - 1, endDate.getMonth(), 1);
     
@@ -591,29 +621,22 @@ router.get('/trend/monthly', async (req, res) => {
     });
     
     res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+}));
 
 // 获取最新数据
-router.get('/latest', async (req, res) => {
-  try {
-    const latest = await Usage.getLatestUsage('18100071580');
-    if (!latest) {
-      return res.status(404).json({ error: '暂无数据' });
-    }
-    
-    res.json({
-      meter_id: latest.meter_id,
-      meter_name: latest.meter_name,
-      remaining_kwh: latest.remaining_kwh,
-      collected_at: latest.collected_at
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+router.get('/latest', asyncHandler(async (req, res) => {
+  const latest = await Usage.getLatestUsage('18100071580');
+  if (!latest) {
+    return res.status(404).json({ error: '暂无数据' });
   }
-});
+  
+  res.json({
+    meter_id: latest.meter_id,
+    meter_name: latest.meter_name,
+    remaining_kwh: latest.remaining_kwh,
+    collected_at: latest.collected_at
+  });
+}));
 
 // 手动触发爬取
 router.post('/crawl', async (req, res) => {
@@ -672,6 +695,15 @@ router.post('/cleanup', async (req, res) => {
     console.error('清理过程中出现错误:', error.message);
     res.status(500).json({ error: error.message });
   }
+});
+
+// 全局错误处理中间件
+router.use((err, req, res, next) => {
+  console.error('API错误:', err);
+  res.status(err.status || 500).json({ 
+    error: err.message || '服务器内部错误',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  });
 });
 
 module.exports = router;
