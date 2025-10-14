@@ -19,6 +19,16 @@ app.use(cors());
 app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
 app.use(express.json());
 
+// 健康检查端点（用于Zeabur等平台）
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+  });
+});
+
 // 静态文件服务（前端构建文件）
 app.use(express.static(path.join(__dirname, 'frontend/build')));
 
@@ -47,7 +57,13 @@ const mongooseOptions = {
   socketTimeoutMS: 45000, // 45秒socket超时
 };
 
-// MongoDB连接
+// 启动服务器（即使MongoDB连接失败也启动，但会记录错误）
+const server = app.listen(PORT, () => {
+  logger.info(`服务器已启动在端口 ${PORT}`);
+  logger.info(`健康检查端点: http://localhost:${PORT}/health`);
+});
+
+// MongoDB连接（异步，不阻塞服务器启动）
 mongoose.connect(MONGO_URI, mongooseOptions)
 .then(() => {
   logger.info('MongoDB连接成功');
@@ -55,16 +71,11 @@ mongoose.connect(MONGO_URI, mongooseOptions)
   
   // 启动定时爬虫
   crawler.start();
-  
-  // 启动服务器
-  app.listen(PORT, () => {
-    logger.info(`服务器运行在端口 ${PORT}`);
-  });
 })
 .catch((error) => {
   logger.error('MongoDB连接失败:', error.message);
   logger.error('请确保MongoDB正在运行并且连接字符串正确');
-  process.exit(1);
+  logger.warn('服务器将继续运行，但数据功能将不可用');
 });
 
 // 监听MongoDB连接错误
@@ -77,12 +88,26 @@ mongoose.connection.on('disconnected', () => {
 });
 
 // 优雅关闭
-process.on('SIGTERM', () => {
-  logger.info('收到SIGTERM信号，正在关闭服务器...');
-  mongoose.connection.close(() => {
-    logger.info('MongoDB连接已关闭');
-    process.exit(0);
+const gracefulShutdown = (signal) => {
+  logger.info(`收到${signal}信号，正在关闭服务器...`);
+  
+  server.close(() => {
+    logger.info('HTTP服务器已关闭');
+    
+    mongoose.connection.close(false, () => {
+      logger.info('MongoDB连接已关闭');
+      process.exit(0);
+    });
   });
-});
+  
+  // 强制关闭超时
+  setTimeout(() => {
+    logger.error('无法优雅关闭，强制退出');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 module.exports = app;
