@@ -94,10 +94,24 @@ npm start
 
 ### Zeabur 部署
 
-1. 连接GitHub仓库到Zeabur
-2. 配置环境变量：
-   - `MONGO_URI`: MongoDB连接字符串
-3. 选择Node.js环境，Zeabur会自动构建和部署
+项目已包含完整的Zeabur配置文件：
+
+1. **连接GitHub仓库**到Zeabur
+2. **配置环境变量**：
+   ```bash
+   PORT=3000
+   NODE_ENV=production
+   MONGO_URI=mongodb+srv://username:password@host/electricity
+   ```
+3. **Zeabur会自动识别**：
+   - ✅ Dockerfile进行容器化构建
+   - ✅ 端口3000自动暴露
+   - ✅ 健康检查 `/health` 端点
+4. **可选：关闭自动休眠**
+   - Settings → Auto Sleep → Disable
+   - 适合需要7×24小时运行的服务
+
+详细故障排查请查看 [ZEABUR_FIX.md](./ZEABUR_FIX.md)
 
 ## API接口
 

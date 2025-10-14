@@ -19,7 +19,7 @@ app.use(cors());
 app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
 app.use(express.json());
 
-// 健康检查端点（用于Zeabur等平台）
+// 健康检查端点（用于Zeabur等平台）- 必须在静态文件之前
 app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'ok', 
@@ -29,15 +29,21 @@ app.get('/health', (req, res) => {
   });
 });
 
+// 根路径也返回OK状态（用于Zeabur探针）
+app.get('/ping', (req, res) => {
+  res.status(200).send('pong');
+});
+
 // 静态文件服务（前端构建文件）
 app.use(express.static(path.join(__dirname, 'frontend/build')));
 
 // API路由
 app.use('/api', apiRoutes);
 
-// 前端路由（React Router）
+// 前端路由（React Router）- 必须放在最后
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'frontend/build', 'index.html'));
+  const indexPath = path.join(__dirname, 'frontend/build', 'index.html');
+  res.sendFile(indexPath);
 });
 
 // MongoDB连接配置

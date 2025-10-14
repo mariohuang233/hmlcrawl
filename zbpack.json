@@ -1,7 +1,10 @@
 {
-  "build_command": "npm run build",
-  "start_command": "node server.js",
-  "install_command": "npm ci --prefer-offline --no-audit",
-  "port": 3000
+  "dockerfile": "Dockerfile",
+  "port": 3000,
+  "health_check": {
+    "path": "/health",
+    "interval": 30,
+    "timeout": 10
+  }
 }
 
