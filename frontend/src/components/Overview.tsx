@@ -1,5 +1,6 @@
 import React from 'react';
 import AnimatedNumber from './AnimatedNumber';
+import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 
 interface WindowAnalysis {
   rate: number;
@@ -69,6 +70,12 @@ interface OverviewProps {
 const Overview: React.FC<OverviewProps> = ({ data }) => {
   // 检测暗夜模式
   const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  
+  // 使用Intersection Observer检测组件是否进入视口
+  const { elementRef, hasTriggered } = useIntersectionObserver({
+    threshold: 0.2,
+    rootMargin: '0px 0px -50px 0px'
+  });
   
   // 检查数据完整性
   const isDataIncomplete = data.data_coverage && 
@@ -239,7 +246,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
   ];
 
   return (
-    <div className="card">
+    <div className="card" ref={elementRef as React.RefObject<HTMLDivElement>}>
       <h2 className="card-title">用电总览</h2>
       {isDataIncomplete && (
         <div style={{
@@ -256,7 +263,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       )}
       <div className="stats-grid">
         {stats.map((stat, index) => (
-          <div key={index} className="stat-card" style={{
+          <div key={index} className={`stat-card ${hasTriggered ? 'animate-in' : ''}`} style={{
             border: (stat as any).warning ? `1px solid ${isDarkMode ? 'rgba(255, 159, 10, 0.3)' : 'rgba(255, 149, 0, 0.3)'}` : undefined
           }}>
             <div className="stat-icon" style={{ color: stat.color, fontSize: '24px', marginBottom: '8px' }}>
@@ -273,8 +280,9 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
                   prefix={(stat as any).prefix || ''}
                   suffix={(stat as any).suffix || ''}
                   precision={(stat as any).precision || 2}
-                  delay={(stat as any).delay || 0}
+                  delay={hasTriggered ? ((stat as any).delay || 0) : 0}
                   easing="easeOutBounce"
+                  autoStart={hasTriggered}
                   style={{ color: stat.color }}
                 />
               )}

@@ -10,6 +10,7 @@ interface AnimatedNumberProps {
   duration?: number;
   easing?: 'easeOut' | 'easeInOut' | 'easeOutBounce' | 'easeOutElastic';
   delay?: number;
+  autoStart?: boolean;
   className?: string;
   style?: React.CSSProperties;
   onAnimationComplete?: () => void;
@@ -28,6 +29,7 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
   duration = 2000,
   easing = 'easeOutBounce',
   delay = 0,
+  autoStart = true,
   className = '',
   style = {},
   onAnimationComplete
@@ -36,7 +38,8 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
     duration,
     easing,
     delay,
-    precision
+    precision,
+    autoStart
   });
 
   // 监听动画完成

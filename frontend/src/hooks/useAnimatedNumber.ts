@@ -5,6 +5,7 @@ interface UseAnimatedNumberOptions {
   easing?: 'easeOut' | 'easeInOut' | 'easeOutBounce' | 'easeOutElastic';
   delay?: number; // 延迟开始时间（毫秒）
   precision?: number; // 小数位数
+  autoStart?: boolean; // 是否自动开始动画，默认为true
 }
 
 interface UseAnimatedNumberReturn {
@@ -24,7 +25,8 @@ export const useAnimatedNumber = (
   const {
     easing = 'easeOutBounce',
     delay = 0,
-    precision = 2
+    precision = 2,
+    autoStart = true
   } = options;
 
   const [animatedValue, setAnimatedValue] = useState(0);
@@ -125,11 +127,11 @@ export const useAnimatedNumber = (
 
   // 当目标值改变时，重新开始动画
   useEffect(() => {
-    if (targetValue !== 0 && !hasInitialized.current) {
+    if (targetValue !== 0 && !hasInitialized.current && autoStart) {
       hasInitialized.current = true;
       startAnimation();
     }
-  }, [targetValue, startAnimation]);
+  }, [targetValue, startAnimation, autoStart]);
 
   return {
     animatedValue,

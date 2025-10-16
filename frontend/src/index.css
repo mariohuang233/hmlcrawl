@@ -360,19 +360,24 @@ code {
   }
 }
 
-/* 统计卡片进入动画 */
+/* 统计卡片进入动画 - 初始状态隐藏 */
 .stat-card {
-  animation: statCardSlideIn 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   opacity: 0;
   transform: translateY(40px) scale(0.9);
+  transition: all 1s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.stat-card:nth-child(1) { animation-delay: 0.1s; }
-.stat-card:nth-child(2) { animation-delay: 0.2s; }
-.stat-card:nth-child(3) { animation-delay: 0.3s; }
-.stat-card:nth-child(4) { animation-delay: 0.4s; }
-.stat-card:nth-child(5) { animation-delay: 0.5s; }
-.stat-card:nth-child(6) { animation-delay: 0.6s; }
+/* 当卡片进入视口时触发动画 */
+.stat-card.animate-in {
+  animation: statCardSlideIn 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.stat-card.animate-in:nth-child(1) { animation-delay: 0.1s; }
+.stat-card.animate-in:nth-child(2) { animation-delay: 0.2s; }
+.stat-card.animate-in:nth-child(3) { animation-delay: 0.3s; }
+.stat-card.animate-in:nth-child(4) { animation-delay: 0.4s; }
+.stat-card.animate-in:nth-child(5) { animation-delay: 0.5s; }
+.stat-card.animate-in:nth-child(6) { animation-delay: 0.6s; }
 
 @keyframes statCardSlideIn {
   from {
