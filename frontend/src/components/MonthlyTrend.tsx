@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
+import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 // 使用fetch替代axios
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
@@ -14,6 +15,12 @@ interface MonthlyData {
 const MonthlyTrend: React.FC = () => {
   const [data, setData] = useState<MonthlyData[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // 使用Intersection Observer检测组件是否进入视口
+  const { elementRef, hasTriggered } = useIntersectionObserver({
+    threshold: 0.2,
+    rootMargin: '0px 0px -50px 0px'
+  });
 
   useEffect(() => {
     fetchData();
@@ -184,7 +191,7 @@ const MonthlyTrend: React.FC = () => {
   }
 
   return (
-    <div className="card">
+    <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
       <ReactECharts 
         option={chartOption} 
         style={{ height: '400px' }}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ReactECharts from 'echarts-for-react';
+import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
 
@@ -16,6 +17,12 @@ const TodayUsage: React.FC = React.memo(() => {
   const [data, setData] = useState<TodayData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // 使用Intersection Observer检测组件是否进入视口
+  const { elementRef, hasTriggered } = useIntersectionObserver({
+    threshold: 0.2,
+    rootMargin: '0px 0px -50px 0px'
+  });
 
   const fetchData = useCallback(async () => {
     try {
@@ -212,7 +219,7 @@ const TodayUsage: React.FC = React.memo(() => {
   }
 
   return (
-    <div className="card">
+    <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
       <ReactECharts 
         option={chartOption} 
         style={{ height: '400px' }}

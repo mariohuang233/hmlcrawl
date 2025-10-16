@@ -95,7 +95,7 @@ code {
   font-family: var(--font-mono);
 }
 
-/* Liquid Glass 卡片设计 */
+/* Liquid Glass 卡片设计 - 初始状态隐藏 */
 .card {
   background: var(--bg-glass);
   backdrop-filter: blur(20px);
@@ -108,6 +108,8 @@ code {
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+  opacity: 0;
+  transform: translateY(40px) scale(0.95);
 }
 
 .card::before {
@@ -131,6 +133,28 @@ code {
 
 .card:hover::before {
   opacity: 1;
+}
+
+/* 视口可见性动画 */
+.card.animate-in {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  animation: cardSlideIn 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes cardSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.95);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(-5px) scale(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .card-title {
