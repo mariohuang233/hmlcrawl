@@ -1,4 +1,5 @@
 import React from 'react';
+import AnimatedNumber from './AnimatedNumber';
 
 interface WindowAnalysis {
   rate: number;
@@ -152,18 +153,22 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
   
   const stats = [
     {
-      value: data.current_remaining.toFixed(2),
+      value: data.current_remaining,
       label: '当前剩余电量',
       unit: 'kWh',
       color: isDarkMode ? '#30D158' : '#34C759',
-      icon: '🔋'
+      icon: '🔋',
+      precision: 2,
+      delay: 0
     },
     {
-      value: data.today_usage.toFixed(2),
+      value: data.today_usage,
       label: '今日用电',
       unit: 'kWh',
       color: isDarkMode ? '#5AC8FA' : '#4A90E2',
       icon: '⚡',
+      precision: 2,
+      delay: 200,
       comparison: data.comparisons ? {
         text: `较昨日 ${formatComparison(data.comparisons.today_vs_yesterday)}`,
         color: getComparisonColor(data.comparisons.today_vs_yesterday),
@@ -172,13 +177,15 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       } : undefined
     },
     {
-      value: data.week_usage.toFixed(2),
+      value: data.week_usage,
       label: data.data_coverage && !data.data_coverage.week_data_complete 
         ? `本周用电（从${formatDate(data.data_coverage.week_actual_start)}起）`
         : '本周用电',
       unit: 'kWh',
       color: isDarkMode ? '#30D158' : '#34C759',
       icon: '📊',
+      precision: 2,
+      delay: 400,
       warning: data.data_coverage && !data.data_coverage.week_data_complete,
       comparison: data.comparisons ? {
         text: `较上周 ${formatComparison(data.comparisons.week_vs_last_week)}`,
@@ -186,13 +193,15 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       } : undefined
     },
     {
-      value: data.month_usage.toFixed(2),
+      value: data.month_usage,
       label: data.data_coverage && !data.data_coverage.month_data_complete 
         ? `本月用电（从${formatDate(data.data_coverage.month_actual_start)}起）`
         : '本月用电',
       unit: 'kWh',
       color: isDarkMode ? '#FF9F0A' : '#FF9500',
       icon: '📈',
+      precision: 2,
+      delay: 600,
       warning: data.data_coverage && !data.data_coverage.month_data_complete,
       comparison: data.comparisons ? {
         text: `较上月 ${formatComparison(data.comparisons.month_vs_last_month)}`,
@@ -200,11 +209,14 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       } : undefined
     },
     {
-      value: `¥${data.month_cost.toFixed(2)}`,
+      value: data.month_cost,
       label: '本月预计费用',
       unit: '',
+      prefix: '¥',
       color: isDarkMode ? '#FFFFFF' : '#0D0D0D',
       icon: '💰',
+      precision: 2,
+      delay: 800,
       comparison: data.comparisons ? {
         text: `较上月 ${formatComparison(data.comparisons.cost_vs_last_month)}`,
         color: getComparisonColor(data.comparisons.cost_vs_last_month)
@@ -219,7 +231,10 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
              predictionInfo.icon === '⚠️' ? (isDarkMode ? '#FF9F0A' : '#FF9500') : 
              (isDarkMode ? '#30D158' : '#34C759'),
       icon: predictionInfo.icon,
-      subtitle: predictionInfo.subtitle
+      subtitle: predictionInfo.subtitle,
+      precision: 0,
+      delay: 1000,
+      isStatic: true // 预计时间不需要动画
     }] : [])
   ];
 
@@ -249,7 +264,20 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
               {(stat as any).warning && <span style={{ fontSize: '12px', marginLeft: '4px' }}>⚠️</span>}
             </div>
             <div className="stat-value" style={{ color: stat.color }}>
-              {stat.value}
+              {(stat as any).isStatic ? (
+                stat.value
+              ) : (
+                <AnimatedNumber
+                  value={typeof stat.value === 'number' ? stat.value : 0}
+                  unit={stat.unit}
+                  prefix={(stat as any).prefix || ''}
+                  suffix={(stat as any).suffix || ''}
+                  precision={(stat as any).precision || 2}
+                  delay={(stat as any).delay || 0}
+                  easing="easeOutBounce"
+                  style={{ color: stat.color }}
+                />
+              )}
             </div>
             <div className="stat-label">
               {stat.label}
