@@ -155,8 +155,8 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
     {
       value: data.current_remaining,
       label: '当前剩余电量',
-      unit: 'kWh',
-      color: isDarkMode ? '#30D158' : '#34C759',
+      unit: '',
+      color: isDarkMode ? '#34D399' : '#10B981',
       icon: '🔋',
       precision: 2,
       delay: 0
@@ -164,8 +164,8 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
     {
       value: data.today_usage,
       label: '今日用电',
-      unit: 'kWh',
-      color: isDarkMode ? '#5AC8FA' : '#4A90E2',
+      unit: '',
+      color: isDarkMode ? '#60A5FA' : '#3B82F6',
       icon: '⚡',
       precision: 2,
       delay: 200,
@@ -181,8 +181,8 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       label: data.data_coverage && !data.data_coverage.week_data_complete 
         ? `本周用电（从${formatDate(data.data_coverage.week_actual_start)}起）`
         : '本周用电',
-      unit: 'kWh',
-      color: isDarkMode ? '#30D158' : '#34C759',
+      unit: '',
+      color: isDarkMode ? '#34D399' : '#10B981',
       icon: '📊',
       precision: 2,
       delay: 400,
@@ -197,8 +197,8 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       label: data.data_coverage && !data.data_coverage.month_data_complete 
         ? `本月用电（从${formatDate(data.data_coverage.month_actual_start)}起）`
         : '本月用电',
-      unit: 'kWh',
-      color: isDarkMode ? '#FF9F0A' : '#FF9500',
+      unit: '',
+      color: isDarkMode ? '#FBBF24' : '#F59E0B',
       icon: '📈',
       precision: 2,
       delay: 600,
@@ -213,7 +213,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       label: '本月预计费用',
       unit: '',
       prefix: '¥',
-      color: isDarkMode ? '#FFFFFF' : '#0D0D0D',
+      color: isDarkMode ? '#FFFFFF' : '#1A1A1A',
       icon: '💰',
       precision: 2,
       delay: 800,
@@ -227,9 +227,9 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       value: predictionInfo.value,
       label: predictionInfo.label,
       unit: '',
-      color: predictionInfo.icon === '🚨' ? (isDarkMode ? '#FF453A' : '#FF3B30') : 
-             predictionInfo.icon === '⚠️' ? (isDarkMode ? '#FF9F0A' : '#FF9500') : 
-             (isDarkMode ? '#30D158' : '#34C759'),
+      color: predictionInfo.icon === '🚨' ? (isDarkMode ? '#EF4444' : '#DC2626') : 
+             predictionInfo.icon === '⚠️' ? (isDarkMode ? '#FBBF24' : '#F59E0B') : 
+             (isDarkMode ? '#34D399' : '#10B981'),
       icon: predictionInfo.icon,
       subtitle: predictionInfo.subtitle,
       precision: 0,

@@ -22,7 +22,6 @@ export const useAnimatedNumber = (
   options: UseAnimatedNumberOptions = {}
 ): UseAnimatedNumberReturn => {
   const {
-    duration = 2000,
     easing = 'easeOutBounce',
     delay = 0,
     precision = 2
@@ -128,7 +127,7 @@ export const useAnimatedNumber = (
     if (targetValue !== 0) {
       startAnimation();
     }
-  }, [targetValue]);
+  }, [targetValue, startAnimation]);
 
   return {
     animatedValue,

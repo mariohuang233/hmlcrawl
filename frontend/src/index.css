@@ -2,17 +2,24 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-  /* 设计系统色彩变量 - 亮色模式 */
-  --bg-primary: #F5F5F7;
-  --bg-secondary: #FFFFFF;
-  --text-primary: #0D0D0D;
-  --text-secondary: #6E6E73;
-  --accent-blue: #4A90E2;
-  --accent-green: #34C759;
-  --accent-orange: #FF9500;
-  --border-light: rgba(0, 0, 0, 0.06);
-  --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.05);
-  --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.08);
+  /* 设计系统色彩变量 - 亮色模式 - Liquid Glass风格 */
+  --bg-primary: #F8FAFC;
+  --bg-secondary: rgba(255, 255, 255, 0.8);
+  --bg-glass: rgba(255, 255, 255, 0.7);
+  --text-primary: #1A1A1A;
+  --text-secondary: #6B7280;
+  --text-tertiary: #9CA3AF;
+  --accent-blue: #3B82F6;
+  --accent-green: #10B981;
+  --accent-orange: #F59E0B;
+  --accent-purple: #8B5CF6;
+  --border-light: rgba(0, 0, 0, 0.05);
+  --border-glass: rgba(255, 255, 255, 0.2);
+  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.12);
+  --shadow-hover: 0 20px 40px rgba(0, 0, 0, 0.15);
+  --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --gradient-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
   
   /* 字体系统 */
   --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
@@ -44,20 +51,27 @@
   --text-4xl: 40px;
 }
 
-/* 暗夜模式色彩变量 */
+/* 暗夜模式色彩变量 - Liquid Glass风格 */
 @media (prefers-color-scheme: dark) {
   :root {
     /* 设计系统色彩变量 - 暗夜模式 */
-    --bg-primary: #1C1C1E;
-    --bg-secondary: #2C2C2E;
+    --bg-primary: #0F0F23;
+    --bg-secondary: rgba(30, 30, 46, 0.8);
+    --bg-glass: rgba(30, 30, 46, 0.6);
     --text-primary: #FFFFFF;
-    --text-secondary: #8E8E93;
-    --accent-blue: #5AC8FA;
-    --accent-green: #30D158;
-    --accent-orange: #FF9F0A;
-    --border-light: rgba(255, 255, 255, 0.08);
-    --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.15);
-    --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.25);
+    --text-secondary: #A1A1AA;
+    --text-tertiary: #71717A;
+    --accent-blue: #60A5FA;
+    --accent-green: #34D399;
+    --accent-orange: #FBBF24;
+    --accent-purple: #A78BFA;
+    --border-light: rgba(255, 255, 255, 0.1);
+    --border-glass: rgba(255, 255, 255, 0.1);
+    --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.4);
+    --shadow-hover: 0 20px 40px rgba(0, 0, 0, 0.6);
+    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --gradient-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
   }
 }
 
@@ -81,20 +95,42 @@ code {
   font-family: var(--font-mono);
 }
 
-/* 苹果式极简卡片设计 */
+/* Liquid Glass 卡片设计 */
 .card {
-  background: var(--bg-secondary);
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-soft);
-  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-glass);
+  border: 1px solid var(--border-glass);
   padding: var(--space-xl);
   margin-bottom: var(--space-xl);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--gradient-glass);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
 }
 
 .card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-4px) scale(1.02);
   box-shadow: var(--shadow-hover);
+  border-color: var(--border-glass);
+}
+
+.card:hover::before {
+  opacity: 1;
 }
 
 .card-title {
@@ -105,15 +141,17 @@ code {
   letter-spacing: -0.025em;
 }
 
-/* 统计数据卡片 */
+/* 统计数据卡片 - Liquid Glass风格 */
 .stat-card {
-  background: var(--bg-secondary);
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-soft);
-  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-glass);
+  border: 1px solid var(--border-glass);
   padding: var(--space-xl);
   text-align: center;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
 }
@@ -124,18 +162,39 @@ code {
   top: 0;
   left: 0;
   right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+  height: 2px;
+  background: var(--gradient-primary);
+  opacity: 0;
+  transition: all 0.3s ease;
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.stat-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--gradient-glass);
   opacity: 0;
   transition: opacity 0.3s ease;
+  pointer-events: none;
 }
 
 .stat-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-6px) scale(1.03);
   box-shadow: var(--shadow-hover);
+  border-color: var(--border-glass);
 }
 
 .stat-card:hover::before {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.stat-card:hover::after {
   opacity: 1;
 }
 
@@ -176,7 +235,7 @@ code {
   100% { transform: rotate(360deg); }
 }
 
-/* 按钮样式 */
+/* 按钮样式 - Liquid Glass */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -189,32 +248,53 @@ code {
   font-weight: 500;
   text-decoration: none;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.btn:hover::before {
+  left: 100%;
 }
 
 .btn-primary {
-  background: var(--accent-blue);
+  background: var(--gradient-primary);
   color: white;
+  box-shadow: var(--shadow-soft);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .btn-primary:hover {
-  background: #3A7BD5;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: var(--shadow-hover);
+  filter: brightness(1.1);
 }
 
 .btn-secondary {
-  background: var(--bg-secondary);
+  background: var(--bg-glass);
   color: var(--text-primary);
-  border: 1px solid var(--border-light);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-soft);
 }
 
 .btn-secondary:hover {
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   border-color: var(--accent-blue);
-  transform: translateY(-1px);
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: var(--shadow-hover);
 }
 
 /* 响应式设计 */
@@ -282,9 +362,9 @@ code {
 
 /* 统计卡片进入动画 */
 .stat-card {
-  animation: statCardSlideIn 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: statCardSlideIn 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   opacity: 0;
-  transform: translateY(30px);
+  transform: translateY(40px) scale(0.9);
 }
 
 .stat-card:nth-child(1) { animation-delay: 0.1s; }
@@ -297,12 +377,72 @@ code {
 @keyframes statCardSlideIn {
   from {
     opacity: 0;
-    transform: translateY(30px) scale(0.95);
+    transform: translateY(40px) scale(0.9) rotateX(10deg);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(-5px) scale(1.02) rotateX(0deg);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0) scale(1) rotateX(0deg);
   }
+}
+
+/* 图标高级动画效果 */
+.stat-icon {
+  animation: iconFloatIn 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+  transform: translateY(20px) scale(0.8) rotate(10deg);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  display: inline-block;
+}
+
+.stat-card:nth-child(1) .stat-icon { animation-delay: 0.2s; }
+.stat-card:nth-child(2) .stat-icon { animation-delay: 0.3s; }
+.stat-card:nth-child(3) .stat-icon { animation-delay: 0.4s; }
+.stat-card:nth-child(4) .stat-icon { animation-delay: 0.5s; }
+.stat-card:nth-child(5) .stat-icon { animation-delay: 0.6s; }
+.stat-card:nth-child(6) .stat-icon { animation-delay: 0.7s; }
+
+@keyframes iconFloatIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.8) rotate(10deg);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(-8px) scale(1.1) rotate(-5deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+}
+
+.stat-card:hover .stat-icon {
+  transform: translateY(-2px) scale(1.1) rotate(5deg);
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+/* 图标发光效果 */
+.stat-icon::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.3) 0%, transparent 70%);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.3s ease;
+  pointer-events: none;
+}
+
+.stat-card:hover .stat-icon::before {
+  transform: translate(-50%, -50%) scale(1.5);
 }
 
 /* 数字增长动画的视觉增强 */
