@@ -155,7 +155,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
     {
       value: data.current_remaining,
       label: '当前剩余电量',
-      unit: '',
+      unit: 'kWh',
       color: isDarkMode ? '#34D399' : '#10B981',
       icon: '🔋',
       precision: 2,
@@ -164,7 +164,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
     {
       value: data.today_usage,
       label: '今日用电',
-      unit: '',
+      unit: 'kWh',
       color: isDarkMode ? '#60A5FA' : '#3B82F6',
       icon: '⚡',
       precision: 2,
@@ -181,7 +181,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       label: data.data_coverage && !data.data_coverage.week_data_complete 
         ? `本周用电（从${formatDate(data.data_coverage.week_actual_start)}起）`
         : '本周用电',
-      unit: '',
+      unit: 'kWh',
       color: isDarkMode ? '#34D399' : '#10B981',
       icon: '📊',
       precision: 2,
@@ -197,7 +197,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       label: data.data_coverage && !data.data_coverage.month_data_complete 
         ? `本月用电（从${formatDate(data.data_coverage.month_actual_start)}起）`
         : '本月用电',
-      unit: '',
+      unit: 'kWh',
       color: isDarkMode ? '#FBBF24' : '#F59E0B',
       icon: '📈',
       precision: 2,
@@ -211,7 +211,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
     {
       value: data.month_cost,
       label: '本月预计费用',
-      unit: '',
+      unit: '元',
       prefix: '¥',
       color: isDarkMode ? '#FFFFFF' : '#1A1A1A',
       icon: '💰',
@@ -280,8 +280,10 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
               )}
             </div>
             <div className="stat-label">
-              {stat.label}
-              {stat.unit && <span style={{ opacity: 0.7 }}> ({stat.unit})</span>}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <span>{stat.label}</span>
+                {stat.unit && <span className="unit-badge">{stat.unit}</span>}
+              </div>
               {(stat as any).subtitle && (
                 <div style={{ 
                   fontSize: '12px', 

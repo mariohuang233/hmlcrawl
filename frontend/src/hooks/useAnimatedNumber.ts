@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 interface UseAnimatedNumberOptions {
   duration?: number; // 动画持续时间（毫秒）
@@ -31,6 +31,7 @@ export const useAnimatedNumber = (
   const [isAnimating, setIsAnimating] = useState(false);
   const animationRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
+  const hasInitialized = useRef(false);
 
   // 缓动函数
   const easingFunctions = {
@@ -69,7 +70,7 @@ export const useAnimatedNumber = (
     return Math.min(2500, 1000 + absValue * 10);
   };
 
-  const animate = (timestamp: number) => {
+  const animate = useCallback((timestamp: number) => {
     if (!startTimeRef.current) {
       startTimeRef.current = timestamp;
     }
@@ -94,9 +95,9 @@ export const useAnimatedNumber = (
       setAnimatedValue(Number(targetValue.toFixed(precision)));
       setIsAnimating(false);
     }
-  };
+  }, [targetValue, easing, precision, easingFunctions]);
 
-  const startAnimation = () => {
+  const startAnimation = useCallback(() => {
     if (isAnimating) return;
     
     setIsAnimating(true);
@@ -111,7 +112,7 @@ export const useAnimatedNumber = (
       startTimeRef.current = null;
       animationRef.current = requestAnimationFrame(animate);
     }
-  };
+  }, [isAnimating, delay, animate]);
 
   // 清理动画
   useEffect(() => {
@@ -124,7 +125,8 @@ export const useAnimatedNumber = (
 
   // 当目标值改变时，重新开始动画
   useEffect(() => {
-    if (targetValue !== 0) {
+    if (targetValue !== 0 && !hasInitialized.current) {
+      hasInitialized.current = true;
       startAnimation();
     }
   }, [targetValue, startAnimation]);

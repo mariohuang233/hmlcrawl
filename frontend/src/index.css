@@ -476,9 +476,37 @@ code {
   }
 }
 
+/* 单位徽章样式 */
+.unit-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--gradient-primary);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s ease;
+}
+
+.stat-card:hover .unit-badge {
+  transform: scale(1.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
 /* 暗夜模式下的动画调整 */
 @media (prefers-color-scheme: dark) {
   .stat-value::before {
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  }
+  
+  .unit-badge {
+    background: var(--gradient-primary);
+    border: 1px solid rgba(255, 255, 255, 0.1);
   }
 }
