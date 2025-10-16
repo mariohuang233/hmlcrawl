@@ -165,7 +165,7 @@ code {
   letter-spacing: -0.025em;
 }
 
-/* 统计数据卡片 - Liquid Glass风格 */
+/* 统计数据卡片 - Liquid Glass风格 - 初始状态隐藏 */
 .stat-card {
   background: var(--bg-glass);
   backdrop-filter: blur(20px);
@@ -178,6 +178,8 @@ code {
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+  opacity: 0;
+  transform: translateY(40px) scale(0.9);
 }
 
 .stat-card::before {
@@ -385,11 +387,7 @@ code {
 }
 
 /* 统计卡片进入动画 - 初始状态隐藏 */
-.stat-card {
-  opacity: 0;
-  transform: translateY(40px) scale(0.9);
-  transition: all 1s cubic-bezier(0.4, 0, 0.2, 1);
-}
+/* 统计卡片进入动画 - 已合并到上面的.stat-card定义中 */
 
 /* 当卡片进入视口时触发动画 */
 .stat-card.animate-in {

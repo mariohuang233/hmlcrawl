@@ -246,7 +246,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
   ];
 
   return (
-    <div className="card" ref={elementRef as React.RefObject<HTMLDivElement>}>
+    <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
       <h2 className="card-title">用电总览</h2>
       {isDataIncomplete && (
         <div style={{
