@@ -62,7 +62,7 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
   };
 
   const displayValue = formatValue(animatedValue);
-  const fullValue = `${prefix}${displayValue}${suffix}${unit}`;
+  const fullValue = `${prefix}${displayValue}${suffix}`;
 
   return (
     <span 
