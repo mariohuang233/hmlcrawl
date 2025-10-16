@@ -181,7 +181,7 @@ const MonthlyTrend: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="card">
+      <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
         <h2 className="card-title">最近12个月用电趋势</h2>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px' }}>
           <div className="loading-spinner"></div>

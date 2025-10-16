@@ -198,7 +198,7 @@ const TodayUsage: React.FC = React.memo(() => {
 
   if (loading) {
     return (
-      <div className="card">
+      <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
         <h2 className="card-title">今日用电分布（按小时）</h2>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px' }}>
           <div className="loading-spinner"></div>
@@ -209,7 +209,7 @@ const TodayUsage: React.FC = React.memo(() => {
 
   if (error) {
     return (
-      <div className="card">
+      <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
         <h2 className="card-title">今日用电分布（按小时）</h2>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px', color: '#FF3B30' }}>
           <p>{error}</p>
