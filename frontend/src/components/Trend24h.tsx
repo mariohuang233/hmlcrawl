@@ -94,6 +94,13 @@ const Trend24h: React.FC = () => {
     animationDuration: 3000,
     animationEasing: 'cubicOut',
     animationDelay: 0,
+    // 启用渐进式渲染
+    progressive: hasTriggered ? 0 : false,
+    progressiveThreshold: 3000,
+    progressiveChunkMode: 'mod',
+    // 强制重新渲染以实现绘画效果
+    animationDurationUpdate: 3000,
+    animationEasingUpdate: 'cubicOut',
     tooltip: {
       trigger: 'axis',
       backgroundColor: isDarkMode ? '#2C2C2E' : '#FFFFFF',
@@ -210,7 +217,7 @@ const Trend24h: React.FC = () => {
         animationDuration: 3000,
         animationEasing: 'cubicOut',
         // 启用绘画效果
-        progressive: 0,
+        progressive: hasTriggered ? 0 : false,
         progressiveThreshold: 3000,
         progressiveChunkMode: 'mod'
       }
@@ -241,6 +248,8 @@ const Trend24h: React.FC = () => {
         option={chartOption} 
         style={{ height: '400px' }}
         className="chart-container"
+        notMerge={true}
+        lazyUpdate={false}
       />
     </div>
   );

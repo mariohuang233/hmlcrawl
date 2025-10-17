@@ -59,6 +59,10 @@ const DailyTrend: React.FC = () => {
     animationDuration: 3000,
     animationEasing: 'cubicOut',
     animationDelay: 0,
+    // 启用渐进式渲染
+    progressive: hasTriggered ? 0 : false,
+    progressiveThreshold: 3000,
+    progressiveChunkMode: 'mod',
     tooltip: {
       trigger: 'axis',
       backgroundColor: isDarkMode ? '#2C2C2E' : '#FFFFFF',
@@ -187,7 +191,7 @@ const DailyTrend: React.FC = () => {
         animationDuration: 3000,
         animationEasing: 'cubicOut',
         // 启用绘画效果
-        progressive: 0,
+        progressive: hasTriggered ? 0 : false,
         progressiveThreshold: 3000,
         progressiveChunkMode: 'mod'
       }
@@ -218,6 +222,8 @@ const DailyTrend: React.FC = () => {
         option={chartOption} 
         style={{ height: '400px' }}
         className="chart-container"
+        notMerge={true}
+        lazyUpdate={false}
       />
     </div>
   );
