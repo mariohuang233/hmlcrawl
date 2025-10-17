@@ -46,13 +46,19 @@ const MonthlyTrend: React.FC = () => {
       text: '最近12个月用电趋势',
       left: 'center',
       textStyle: {
-        fontSize: 18,
-        fontWeight: 600,
-        color: isDarkMode ? '#FFFFFF' : '#0D0D0D',
-        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
+        fontSize: 20,
+        fontWeight: 700,
+        color: isDarkMode ? '#FFFFFF' : '#1D1D1F',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+        letterSpacing: '-0.02em'
       },
       top: 20
     },
+    // 添加动画配置
+    animation: hasTriggered,
+    animationDuration: 2000,
+    animationEasing: 'cubicOut',
+    animationDelay: (idx: number) => idx * 100,
     tooltip: {
       trigger: 'axis',
       backgroundColor: isDarkMode ? '#2C2C2E' : '#FFFFFF',
@@ -155,19 +161,28 @@ const MonthlyTrend: React.FC = () => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: isDarkMode ? '#5AC8FA' : '#4A90E2' },
-              { offset: 1, color: 'rgba(74, 144, 226, 0.7)' }
+              { offset: 0, color: isDarkMode ? '#64D2FF' : '#007AFF' },
+              { offset: 0.5, color: isDarkMode ? 'rgba(100, 210, 255, 0.9)' : 'rgba(0, 122, 255, 0.9)' },
+              { offset: 1, color: isDarkMode ? 'rgba(100, 210, 255, 0.6)' : 'rgba(0, 122, 255, 0.6)' }
             ]
           },
-          borderRadius: [4, 4, 0, 0]
+          borderRadius: [6, 6, 0, 0],
+          shadowColor: isDarkMode ? 'rgba(100, 210, 255, 0.3)' : 'rgba(0, 122, 255, 0.3)',
+          shadowBlur: 8
         },
         emphasis: {
           itemStyle: {
-            color: isDarkMode ? '#5AC8FA' : '#4A90E2',
-            shadowBlur: 10,
-            shadowColor: 'rgba(74, 144, 226, 0.3)'
+            color: isDarkMode ? '#64D2FF' : '#007AFF',
+            shadowBlur: 15,
+            shadowColor: isDarkMode ? 'rgba(100, 210, 255, 0.5)' : 'rgba(0, 122, 255, 0.5)',
+            borderColor: isDarkMode ? '#000000' : '#FFFFFF',
+            borderWidth: 2
           }
-        }
+        },
+        // 添加动画效果
+        animationDelay: (idx: number) => idx * 150,
+        animationDuration: 2000,
+        animationEasing: 'cubicOut'
       }
     ],
     grid: {

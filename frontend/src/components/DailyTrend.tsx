@@ -46,13 +46,19 @@ const DailyTrend: React.FC = () => {
       text: '最近30天每日用电趋势',
       left: 'center',
       textStyle: {
-        fontSize: 18,
-        fontWeight: 600,
-        color: isDarkMode ? '#FFFFFF' : '#0D0D0D',
-        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
+        fontSize: 20,
+        fontWeight: 700,
+        color: isDarkMode ? '#FFFFFF' : '#1D1D1F',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+        letterSpacing: '-0.02em'
       },
       top: 20
     },
+    // 添加动画配置
+    animation: hasTriggered,
+    animationDuration: 2000,
+    animationEasing: 'cubicOut',
+    animationDelay: (idx: number) => idx * 60,
     tooltip: {
       trigger: 'axis',
       backgroundColor: isDarkMode ? '#2C2C2E' : '#FFFFFF',
@@ -149,15 +155,19 @@ const DailyTrend: React.FC = () => {
         data: data.map(item => item.used_kwh),
         smooth: true,
         symbol: 'circle',
-        symbolSize: 6,
+        symbolSize: 8,
         lineStyle: {
           color: isDarkMode ? '#FF9F0A' : '#FF9500',
-          width: 3
+          width: 4,
+          shadowColor: isDarkMode ? 'rgba(255, 159, 10, 0.3)' : 'rgba(255, 149, 0, 0.3)',
+          shadowBlur: 10
         },
         itemStyle: {
           color: isDarkMode ? '#FF9F0A' : '#FF9500',
-          borderColor: '#fff',
-          borderWidth: 2
+          borderColor: isDarkMode ? '#000000' : '#FFFFFF',
+          borderWidth: 3,
+          shadowColor: isDarkMode ? 'rgba(255, 159, 10, 0.4)' : 'rgba(255, 149, 0, 0.4)',
+          shadowBlur: 8
         },
         areaStyle: {
           color: {
@@ -167,11 +177,15 @@ const DailyTrend: React.FC = () => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(255, 149, 0, 0.2)' },
-              { offset: 1, color: 'rgba(255, 149, 0, 0.05)' }
+              { offset: 0, color: isDarkMode ? 'rgba(255, 159, 10, 0.3)' : 'rgba(255, 149, 0, 0.3)' },
+              { offset: 1, color: isDarkMode ? 'rgba(255, 159, 10, 0.05)' : 'rgba(255, 149, 0, 0.05)' }
             ]
           }
-        }
+        },
+        // 添加动画效果
+        animationDelay: (idx: number) => idx * 80,
+        animationDuration: 2000,
+        animationEasing: 'cubicOut'
       }
     ],
     grid: {

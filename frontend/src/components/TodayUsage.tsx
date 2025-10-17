@@ -59,13 +59,19 @@ const TodayUsage: React.FC = React.memo(() => {
       text: '今日用电分布（按小时）',
       left: 'center',
       textStyle: {
-        fontSize: 18,
-        fontWeight: 600,
-        color: isDarkMode ? '#FFFFFF' : '#0D0D0D',
-        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
+        fontSize: 20,
+        fontWeight: 700,
+        color: isDarkMode ? '#FFFFFF' : '#1D1D1F',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+        letterSpacing: '-0.02em'
       },
       top: 20
     },
+    // 添加动画配置
+    animation: hasTriggered,
+    animationDuration: 2000,
+    animationEasing: 'cubicOut',
+    animationDelay: (idx: number) => idx * 80,
     tooltip: {
       trigger: 'axis',
       backgroundColor: isDarkMode ? '#2C2C2E' : '#FFFFFF',
@@ -171,20 +177,28 @@ const TodayUsage: React.FC = React.memo(() => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: isDarkMode ? '#30D158' : '#34C759' },
-              { offset: 1, color: isDarkMode ? 'rgba(48, 209, 88, 0.7)' : 'rgba(52, 199, 89, 0.7)' },
-              { offset: 1, color: 'rgba(52, 199, 89, 0.7)' }
+              { offset: 0, color: isDarkMode ? '#32D74B' : '#30D158' },
+              { offset: 0.5, color: isDarkMode ? 'rgba(50, 215, 75, 0.9)' : 'rgba(48, 209, 88, 0.9)' },
+              { offset: 1, color: isDarkMode ? 'rgba(50, 215, 75, 0.6)' : 'rgba(48, 209, 88, 0.6)' }
             ]
           },
-          borderRadius: [4, 4, 0, 0]
+          borderRadius: [6, 6, 0, 0],
+          shadowColor: isDarkMode ? 'rgba(50, 215, 75, 0.3)' : 'rgba(48, 209, 88, 0.3)',
+          shadowBlur: 8
         },
         emphasis: {
           itemStyle: {
-            color: isDarkMode ? '#30D158' : '#34C759',
-            shadowBlur: 10,
-            shadowColor: 'rgba(52, 199, 89, 0.3)'
+            color: isDarkMode ? '#32D74B' : '#30D158',
+            shadowBlur: 15,
+            shadowColor: isDarkMode ? 'rgba(50, 215, 75, 0.5)' : 'rgba(48, 209, 88, 0.5)',
+            borderColor: isDarkMode ? '#000000' : '#FFFFFF',
+            borderWidth: 2
           }
-        }
+        },
+        // 添加动画效果
+        animationDelay: (idx: number) => idx * 120,
+        animationDuration: 2000,
+        animationEasing: 'cubicOut'
       }
     ],
     grid: {
@@ -194,7 +208,7 @@ const TodayUsage: React.FC = React.memo(() => {
       top: '15%',
       containLabel: true
     }
-  }), [data, isDarkMode]);
+  }), [data, isDarkMode, hasTriggered]);
 
   if (loading) {
     return (

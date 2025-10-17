@@ -2,24 +2,30 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-  /* 设计系统色彩变量 - 亮色模式 - Liquid Glass风格 */
-  --bg-primary: #F8FAFC;
-  --bg-secondary: rgba(255, 255, 255, 0.8);
-  --bg-glass: rgba(255, 255, 255, 0.7);
-  --text-primary: #1A1A1A;
-  --text-secondary: #6B7280;
-  --text-tertiary: #9CA3AF;
-  --accent-blue: #3B82F6;
-  --accent-green: #10B981;
-  --accent-orange: #F59E0B;
-  --accent-purple: #8B5CF6;
-  --border-light: rgba(0, 0, 0, 0.05);
-  --border-glass: rgba(255, 255, 255, 0.2);
-  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.12);
-  --shadow-hover: 0 20px 40px rgba(0, 0, 0, 0.15);
-  --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --gradient-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+  /* 设计系统色彩变量 - 亮色模式 - 苹果官网 + Liquid Glass风格 */
+  --bg-primary: #FBFBFD;
+  --bg-secondary: rgba(255, 255, 255, 0.85);
+  --bg-glass: rgba(255, 255, 255, 0.75);
+  --bg-glass-strong: rgba(255, 255, 255, 0.9);
+  --text-primary: #1D1D1F;
+  --text-secondary: #86868B;
+  --text-tertiary: #A1A1A6;
+  --accent-blue: #007AFF;
+  --accent-green: #30D158;
+  --accent-orange: #FF9500;
+  --accent-purple: #AF52DE;
+  --accent-pink: #FF2D92;
+  --accent-cyan: #5AC8FA;
+  --border-light: rgba(0, 0, 0, 0.04);
+  --border-glass: rgba(255, 255, 255, 0.25);
+  --border-glass-strong: rgba(255, 255, 255, 0.4);
+  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-glass: 0 12px 40px rgba(0, 0, 0, 0.08);
+  --shadow-hover: 0 25px 50px rgba(0, 0, 0, 0.12);
+  --shadow-strong: 0 20px 60px rgba(0, 0, 0, 0.15);
+  --gradient-primary: linear-gradient(135deg, #007AFF 0%, #5AC8FA 50%, #AF52DE 100%);
+  --gradient-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.08));
+  --gradient-glass-strong: linear-gradient(135deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.15));
   
   /* 字体系统 */
   --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
@@ -51,27 +57,33 @@
   --text-4xl: 40px;
 }
 
-/* 暗夜模式色彩变量 - Liquid Glass风格 */
+/* 暗夜模式色彩变量 - 苹果官网 + Liquid Glass风格 */
 @media (prefers-color-scheme: dark) {
   :root {
     /* 设计系统色彩变量 - 暗夜模式 */
-    --bg-primary: #0F0F23;
-    --bg-secondary: rgba(30, 30, 46, 0.8);
-    --bg-glass: rgba(30, 30, 46, 0.6);
+    --bg-primary: #000000;
+    --bg-secondary: rgba(28, 28, 30, 0.85);
+    --bg-glass: rgba(28, 28, 30, 0.7);
+    --bg-glass-strong: rgba(44, 44, 46, 0.9);
     --text-primary: #FFFFFF;
-    --text-secondary: #A1A1AA;
-    --text-tertiary: #71717A;
-    --accent-blue: #60A5FA;
-    --accent-green: #34D399;
-    --accent-orange: #FBBF24;
-    --accent-purple: #A78BFA;
-    --border-light: rgba(255, 255, 255, 0.1);
-    --border-glass: rgba(255, 255, 255, 0.1);
-    --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
-    --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.4);
-    --shadow-hover: 0 20px 40px rgba(0, 0, 0, 0.6);
-    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    --gradient-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+    --text-secondary: #8E8E93;
+    --text-tertiary: #636366;
+    --accent-blue: #0A84FF;
+    --accent-green: #32D74B;
+    --accent-orange: #FF9F0A;
+    --accent-purple: #BF5AF2;
+    --accent-pink: #FF375F;
+    --accent-cyan: #64D2FF;
+    --border-light: rgba(255, 255, 255, 0.08);
+    --border-glass: rgba(255, 255, 255, 0.15);
+    --border-glass-strong: rgba(255, 255, 255, 0.25);
+    --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-glass: 0 12px 40px rgba(0, 0, 0, 0.5);
+    --shadow-hover: 0 25px 50px rgba(0, 0, 0, 0.7);
+    --shadow-strong: 0 20px 60px rgba(0, 0, 0, 0.8);
+    --gradient-primary: linear-gradient(135deg, #0A84FF 0%, #64D2FF 50%, #BF5AF2 100%);
+    --gradient-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+    --gradient-glass-strong: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.08));
   }
 }
 
@@ -95,21 +107,25 @@ code {
   font-family: var(--font-mono);
 }
 
-/* Liquid Glass 卡片设计 - 初始状态隐藏 */
+/* Liquid Glass 卡片设计 - 初始状态隐藏 - 苹果官网风格 */
 .card {
   background: var(--bg-glass);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-glass);
   border: 1px solid var(--border-glass);
   padding: var(--space-xl);
   margin-bottom: var(--space-xl);
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   position: relative;
   overflow: hidden;
   opacity: 0;
   transform: translateY(40px) scale(0.95);
+  /* 增强玻璃效果 */
+  background-image: 
+    linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+    linear-gradient(45deg, rgba(255, 255, 255, 0.05) 0%, transparent 100%);
 }
 
 .card::before {
@@ -126,9 +142,12 @@ code {
 }
 
 .card:hover {
-  transform: translateY(-4px) scale(1.02);
+  transform: translateY(-8px) scale(1.03);
   box-shadow: var(--shadow-hover);
-  border-color: var(--border-glass);
+  border-color: var(--border-glass-strong);
+  background: var(--bg-glass-strong);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
 }
 
 .card:hover::before {
