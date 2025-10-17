@@ -67,11 +67,11 @@ const TodayUsage: React.FC = React.memo(() => {
       },
       top: 20
     },
-    // 添加动画配置
+    // 添加绘画动画配置
     animation: hasTriggered,
-    animationDuration: 2000,
+    animationDuration: 3000,
     animationEasing: 'cubicOut',
-    animationDelay: (idx: number) => idx * 80,
+    animationDelay: 0,
     tooltip: {
       trigger: 'axis',
       backgroundColor: isDarkMode ? '#2C2C2E' : '#FFFFFF',
@@ -195,10 +195,14 @@ const TodayUsage: React.FC = React.memo(() => {
             borderWidth: 2
           }
         },
-        // 添加动画效果
-        animationDelay: (idx: number) => idx * 120,
-        animationDuration: 2000,
-        animationEasing: 'cubicOut'
+        // 绘画动画效果 - 从下到上绘制
+        animationDelay: 0,
+        animationDuration: 3000,
+        animationEasing: 'cubicOut',
+        // 启用绘画效果
+        progressive: 0,
+        progressiveThreshold: 3000,
+        progressiveChunkMode: 'mod'
       }
     ],
     grid: {
