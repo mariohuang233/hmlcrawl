@@ -28,7 +28,16 @@ const Trend24h: React.FC = () => {
   const fetchData = async () => {
     try {
       const response = await fetch(`${API_BASE}/api/trend/24h`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const rawData = await response.json();
+      
+      if (rawData.error) {
+        throw new Error(rawData.message || rawData.error);
+      }
       
       // 数据去重处理：按时间分组，取最真实的数值
       const timeMap = new Map();

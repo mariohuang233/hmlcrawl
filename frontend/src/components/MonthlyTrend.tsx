@@ -29,10 +29,22 @@ const MonthlyTrend: React.FC = () => {
   const fetchData = async () => {
     try {
       const response = await fetch(`${API_BASE}/api/trend/monthly`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.message || data.error);
+      }
+      
       setData(data);
     } catch (error) {
       console.error('Error fetching monthly trend:', error);
+      // 设置空数据而不是保持loading状态
+      setData([]);
     } finally {
       setLoading(false);
     }
