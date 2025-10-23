@@ -11,6 +11,26 @@ const crawler = require('./src/crawler/crawler');
 const apiRoutes = require('./src/api/routes');
 
 const app = express();
+
+// 数据过滤中间件 - 过滤14:40之后的脏数据
+const filterDirtyData = (req, res, next) => {
+  const originalJson = res.json;
+  res.json = function(data) {
+    if (data && data.data && Array.isArray(data.data)) {
+      // 过滤掉今天14:40之后的数据
+      const cutoffTime = new Date(2025, 9, 23, 6, 40, 0); // UTC 6:40 = 北京时间 14:40
+      data.data = data.data.filter(item => {
+        if (item.collected_at) {
+          return new Date(item.collected_at) < cutoffTime;
+        }
+        return true;
+      });
+    }
+    originalJson.call(this, data);
+  };
+  next();
+};
+
 const PORT = process.env.PORT || 3000;
 
 // 中间件
