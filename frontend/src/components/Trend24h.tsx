@@ -328,82 +328,39 @@ const Trend24h: React.FC = () => {
       top: mobileState ? '15%' : '20%',
       containLabel: true
     },
-    // 添加工具栏（移动端隐藏）
+    // 简化工具栏配置
     toolbox: {
-      show: !mobileState,
-      right: mobileState ? 10 : 20,
-      top: mobileState ? 10 : 20,
-      feature: {
-        dataZoom: {
-          title: {
-            zoom: '区域缩放',
-            back: '还原缩放'
-          },
-          yAxisIndex: 'none'
-        },
-        restore: {
-          title: '还原'
-        }
-      },
-      iconStyle: {
-        color: isDarkMode ? '#8E8E93' : '#6E6E73',
-        borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)'
-      },
-      emphasis: {
-        iconStyle: {
-          color: isDarkMode ? '#64D2FF' : '#007AFF'
-        }
-      }
+      show: false // 暂时隐藏工具栏，避免交互错误
     },
-    // 优化数据缩放功能（移动端适配）
-    dataZoom: [
+    // 简化数据缩放功能，避免ECharts错误
+    dataZoom: data.length > 0 ? [
       {
         type: 'slider',
         show: true,
-        start: Math.max(0, 100 - (24 * 4)), // 显示最近24小时的数据点
+        start: 0,
         end: 100,
-        height: mobileState ? 32 : 24, // 移动端增加高度，便于触摸操作
+        height: mobileState ? 32 : 24,
         bottom: mobileState ? 20 : 15,
         backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
         fillerColor: isDarkMode ? 'rgba(100, 210, 255, 0.2)' : 'rgba(0, 122, 255, 0.2)',
         borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-        borderRadius: mobileState ? 16 : 12, // 移动端更大的圆角
+        borderRadius: mobileState ? 16 : 12,
         handleStyle: {
           color: isDarkMode ? '#64D2FF' : '#007AFF',
           borderColor: isDarkMode ? '#FFFFFF' : '#FFFFFF',
-          borderWidth: mobileState ? 3 : 2, // 移动端更粗的边框
+          borderWidth: mobileState ? 3 : 2,
           shadowColor: isDarkMode ? 'rgba(100, 210, 255, 0.3)' : 'rgba(0, 122, 255, 0.3)',
-          shadowBlur: mobileState ? 6 : 4, // 移动端更明显的阴影
-          width: mobileState ? 20 : 12, // 移动端更大的拖拽区域
-          height: mobileState ? 20 : 12
+          shadowBlur: mobileState ? 6 : 4
         },
         textStyle: {
           color: isDarkMode ? '#8E8E93' : '#6E6E73',
           fontSize: mobileState ? 11 : 10,
           fontWeight: 500
         },
-        showDetail: false, // 隐藏详细数值，减少视觉干扰
-        showDataShadow: true,
-        dataShadowColor: isDarkMode ? 'rgba(100, 210, 255, 0.1)' : 'rgba(0, 122, 255, 0.1)',
-        // 移动端优化
-        moveHandleSize: mobileState ? 20 : 12,
-        moveHandleIcon: mobileState ? 'M-9.5,0a9.5,9.5 0 1,0 19,0a9.5,9.5 0 1,0 -19,0' : undefined
-      },
-      {
-        type: 'inside',
-        start: Math.max(0, 100 - (24 * 4)),
-        end: 100,
-        // 移动端和桌面端不同的缩放配置
-        zoomOnMouseWheel: mobileState ? false : 'ctrl', // 移动端禁用滚轮缩放
-        moveOnMouseMove: !mobileState, // 移动端禁用鼠标移动
-        moveOnMouseWheel: false, // 禁用鼠标滚轮缩放，避免误操作
-        preventDefaultMouseMove: true,
-        throttle: mobileState ? 50 : 100, // 移动端更快的响应
-        // 移动端触摸支持
-        zoomOnPinch: mobileState, // 移动端支持双指缩放
-        moveOnPinch: mobileState // 移动端支持双指移动
+        showDetail: false,
+        showDataShadow: false
       }
-    ]
+    ] : []
   };
 
   if (loading) {
@@ -442,13 +399,9 @@ const Trend24h: React.FC = () => {
         option={chartOption} 
         style={{ height: mobileState ? '350px' : '400px' }}
         className="chart-container"
-        notMerge={true}
-        lazyUpdate={false}
+        notMerge={false}
+        lazyUpdate={true}
         onChartReady={() => console.log('图表渲染完成')}
-        onEvents={{
-          'click': (params: any) => console.log('图表点击:', params),
-          'error': (error: any) => console.error('图表错误:', error)
-        }}
       />
     </div>
   );
