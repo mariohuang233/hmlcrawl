@@ -29,10 +29,14 @@ const Trend24h: React.FC = () => {
       setIsMobile(isMobileDevice);
     };
     
-    checkMobile();
+    // 延迟检测，确保组件完全加载
+    const timer = setTimeout(checkMobile, 100);
     window.addEventListener('resize', checkMobile);
     
-    return () => window.removeEventListener('resize', checkMobile);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', checkMobile);
+    };
   }, []);
 
   useEffect(() => {
@@ -114,23 +118,26 @@ const Trend24h: React.FC = () => {
   // 检测暗夜模式
   const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   
+  // 如果移动端状态还未初始化，使用默认值（假设桌面端）
+  const mobileState = isMobile || false;
+  
   const chartOption = {
     title: {
       text: '过去24小时用电趋势',
       left: 'center',
       textStyle: {
-        fontSize: isMobile ? 18 : 22,
+        fontSize: mobileState ? 18 : 22,
         fontWeight: 600,
         color: isDarkMode ? '#FFFFFF' : '#1D1D1F',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         letterSpacing: '-0.01em'
       },
-      top: isMobile ? 15 : 25,
-      subtext: isMobile 
+      top: mobileState ? 15 : 25,
+      subtext: mobileState 
         ? '每15分钟更新一次 • 拖拽下方滑块或双指缩放'
         : '每15分钟更新一次 • 拖拽下方滑块或按住Ctrl+滚轮缩放',
       subtextStyle: {
-        fontSize: isMobile ? 10 : 11,
+        fontSize: mobileState ? 10 : 11,
         color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
       }
@@ -193,9 +200,9 @@ const Trend24h: React.FC = () => {
       axisLabel: {
         color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-        fontSize: isMobile ? 10 : 11,
+        fontSize: mobileState ? 10 : 11,
         fontWeight: 500,
-        interval: isMobile ? 2 : 'auto', // 移动端减少标签密度
+        interval: mobileState ? 2 : 'auto', // 移动端减少标签密度
         rotate: 0
       },
       axisLine: {
@@ -214,14 +221,14 @@ const Trend24h: React.FC = () => {
       nameTextStyle: {
         color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-        fontSize: isMobile ? 10 : 11,
+        fontSize: mobileState ? 10 : 11,
         fontWeight: 500,
-        padding: [0, 0, 0, isMobile ? 5 : 10]
+        padding: [0, 0, 0, mobileState ? 5 : 10]
       },
       axisLabel: {
         color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-        fontSize: isMobile ? 10 : 11,
+        fontSize: mobileState ? 10 : 11,
         fontWeight: 500,
         formatter: (value: number) => value.toFixed(1)
       },
@@ -296,17 +303,17 @@ const Trend24h: React.FC = () => {
       }
     ],
     grid: {
-      left: isMobile ? '10%' : '8%',
-      right: isMobile ? '6%' : '4%',
-      bottom: isMobile ? '20%' : '15%', // 移动端为缩放条留出更多空间
-      top: isMobile ? '15%' : '20%',
+      left: mobileState ? '10%' : '8%',
+      right: mobileState ? '6%' : '4%',
+      bottom: mobileState ? '20%' : '15%', // 移动端为缩放条留出更多空间
+      top: mobileState ? '15%' : '20%',
       containLabel: true
     },
     // 添加工具栏（移动端隐藏）
     toolbox: {
-      show: !isMobile,
-      right: isMobile ? 10 : 20,
-      top: isMobile ? 10 : 20,
+      show: !mobileState,
+      right: mobileState ? 10 : 20,
+      top: mobileState ? 10 : 20,
       feature: {
         dataZoom: {
           title: {
@@ -336,46 +343,46 @@ const Trend24h: React.FC = () => {
         show: true,
         start: Math.max(0, 100 - (24 * 4)), // 显示最近24小时的数据点
         end: 100,
-        height: isMobile ? 32 : 24, // 移动端增加高度，便于触摸操作
-        bottom: isMobile ? 20 : 15,
+        height: mobileState ? 32 : 24, // 移动端增加高度，便于触摸操作
+        bottom: mobileState ? 20 : 15,
         backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
         fillerColor: isDarkMode ? 'rgba(100, 210, 255, 0.2)' : 'rgba(0, 122, 255, 0.2)',
         borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-        borderRadius: isMobile ? 16 : 12, // 移动端更大的圆角
+        borderRadius: mobileState ? 16 : 12, // 移动端更大的圆角
         handleStyle: {
           color: isDarkMode ? '#64D2FF' : '#007AFF',
           borderColor: isDarkMode ? '#FFFFFF' : '#FFFFFF',
-          borderWidth: isMobile ? 3 : 2, // 移动端更粗的边框
+          borderWidth: mobileState ? 3 : 2, // 移动端更粗的边框
           shadowColor: isDarkMode ? 'rgba(100, 210, 255, 0.3)' : 'rgba(0, 122, 255, 0.3)',
-          shadowBlur: isMobile ? 6 : 4, // 移动端更明显的阴影
-          width: isMobile ? 20 : 12, // 移动端更大的拖拽区域
-          height: isMobile ? 20 : 12
+          shadowBlur: mobileState ? 6 : 4, // 移动端更明显的阴影
+          width: mobileState ? 20 : 12, // 移动端更大的拖拽区域
+          height: mobileState ? 20 : 12
         },
         textStyle: {
           color: isDarkMode ? '#8E8E93' : '#6E6E73',
-          fontSize: isMobile ? 11 : 10,
+          fontSize: mobileState ? 11 : 10,
           fontWeight: 500
         },
         showDetail: false, // 隐藏详细数值，减少视觉干扰
         showDataShadow: true,
         dataShadowColor: isDarkMode ? 'rgba(100, 210, 255, 0.1)' : 'rgba(0, 122, 255, 0.1)',
         // 移动端优化
-        moveHandleSize: isMobile ? 20 : 12,
-        moveHandleIcon: isMobile ? 'M-9.5,0a9.5,9.5 0 1,0 19,0a9.5,9.5 0 1,0 -19,0' : undefined
+        moveHandleSize: mobileState ? 20 : 12,
+        moveHandleIcon: mobileState ? 'M-9.5,0a9.5,9.5 0 1,0 19,0a9.5,9.5 0 1,0 -19,0' : undefined
       },
       {
         type: 'inside',
         start: Math.max(0, 100 - (24 * 4)),
         end: 100,
         // 移动端和桌面端不同的缩放配置
-        zoomOnMouseWheel: isMobile ? false : 'ctrl', // 移动端禁用滚轮缩放
-        moveOnMouseMove: !isMobile, // 移动端禁用鼠标移动
+        zoomOnMouseWheel: mobileState ? false : 'ctrl', // 移动端禁用滚轮缩放
+        moveOnMouseMove: !mobileState, // 移动端禁用鼠标移动
         moveOnMouseWheel: false, // 禁用鼠标滚轮缩放，避免误操作
         preventDefaultMouseMove: true,
-        throttle: isMobile ? 50 : 100, // 移动端更快的响应
+        throttle: mobileState ? 50 : 100, // 移动端更快的响应
         // 移动端触摸支持
-        zoomOnPinch: isMobile, // 移动端支持双指缩放
-        moveOnPinch: isMobile // 移动端支持双指移动
+        zoomOnPinch: mobileState, // 移动端支持双指缩放
+        moveOnPinch: mobileState // 移动端支持双指移动
       }
     ]
   };
@@ -395,7 +402,7 @@ const Trend24h: React.FC = () => {
     <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
       <ReactECharts 
         option={chartOption} 
-        style={{ height: isMobile ? '350px' : '400px' }}
+        style={{ height: mobileState ? '350px' : '400px' }}
         className="chart-container"
         notMerge={true}
         lazyUpdate={false}
