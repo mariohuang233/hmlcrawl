@@ -18,15 +18,24 @@ class ElectricityCrawler {
 
   // 启动定时任务
   start() {
-    // 每10分钟执行一次
-    cron.schedule('*/10 * * * *', () => {
-      this.crawlData();
+    // 改为15分钟执行一次，并添加随机延迟
+    cron.schedule('*/15 * * * *', () => {
+      // 添加随机延迟 0-300秒（0-5分钟）
+      const randomDelay = Math.floor(Math.random() * 300) * 1000;
+      setTimeout(() => {
+        this.crawlData();
+      }, randomDelay);
+    }, {
+      timezone: 'Asia/Shanghai'
     });
     
-    crawlerLogger.info('爬虫定时任务已启动，每10分钟执行一次');
+    crawlerLogger.info('爬虫定时任务已启动，每15分钟执行一次（带随机延迟）');
     
-    // 立即执行一次
-    this.crawlData();
+    // 启动时也添加随机延迟
+    const initialDelay = Math.floor(Math.random() * 60 + 30) * 1000; // 30-90秒
+    setTimeout(() => {
+      this.crawlData();
+    }, initialDelay);
   }
 
   // 爬取数据
@@ -149,37 +158,83 @@ class ElectricityCrawler {
         path: urlObj.pathname + urlObj.search,
         method: 'GET',
         headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-US;q=0.7',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
           'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1'
+          'Upgrade-Insecure-Requests': '1',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-User': '?1',
+          'DNT': '1',
+          'Referer': 'https://www.google.com/',
+          'Host': urlObj.hostname
         },
-        timeout: 30000
+        timeout: 45000 // 增加超时时间
       };
 
-      const req = httpModule.request(options, (res) => {
-        let data = '';
-        
-        res.on('data', (chunk) => {
-          data += chunk;
+      // 添加随机延迟
+      const delay = Math.floor(Math.random() * 2000) + 1000; // 1-3秒随机延迟
+      
+      setTimeout(() => {
+        const req = httpModule.request(options, (res) => {
+          let data = '';
+          
+          // 处理gzip压缩
+          if (res.headers['content-encoding'] === 'gzip') {
+            const zlib = require('zlib');
+            const gunzip = zlib.createGunzip();
+            res.pipe(gunzip);
+            gunzip.on('data', (chunk) => {
+              data += chunk.toString();
+            });
+            gunzip.on('end', () => {
+              resolve(data);
+            });
+            gunzip.on('error', (error) => {
+              reject(error);
+            });
+          } else if (res.headers['content-encoding'] === 'deflate') {
+            const zlib = require('zlib');
+            const inflate = zlib.createInflate();
+            res.pipe(inflate);
+            inflate.on('data', (chunk) => {
+              data += chunk.toString();
+            });
+            inflate.on('end', () => {
+              resolve(data);
+            });
+            inflate.on('error', (error) => {
+              reject(error);
+            });
+          } else {
+            res.on('data', (chunk) => {
+              data += chunk;
+            });
+            res.on('end', () => {
+              resolve(data);
+            });
+          }
         });
-        
-        res.on('end', () => {
-          resolve(data);
+
+        req.on('error', (error) => {
+          crawlerLogger.error('HTTP请求错误:', error.message);
+          reject(error);
         });
-      });
 
-      req.on('error', (error) => {
-        reject(error);
-      });
+        req.on('timeout', () => {
+          req.destroy();
+          crawlerLogger.error('HTTP请求超时');
+          reject(new Error('Request timeout'));
+        });
 
-      req.on('timeout', () => {
-        req.destroy();
-        reject(new Error('Request timeout'));
-      });
+        req.end();
+      }, delay);
 
-      req.end();
     });
   }
 
