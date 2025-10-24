@@ -45,6 +45,7 @@ const Trend24h: React.FC = () => {
 
   const fetchData = async () => {
     try {
+      console.log('开始获取24小时趋势数据...');
       const response = await fetch(`${API_BASE}/api/trend/24h`);
       
       if (!response.ok) {
@@ -52,6 +53,7 @@ const Trend24h: React.FC = () => {
       }
       
       const rawData = await response.json();
+      console.log('原始数据长度:', rawData.length);
       
       if (rawData.error) {
         throw new Error(rawData.message || rawData.error);
@@ -59,10 +61,14 @@ const Trend24h: React.FC = () => {
       
       // 按15分钟间隔聚合数据
       const aggregatedData = aggregateDataBy15Min(rawData);
+      console.log('聚合后数据长度:', aggregatedData.length);
+      console.log('聚合后数据示例:', aggregatedData.slice(0, 3));
       
       setData(aggregatedData);
     } catch (error) {
       console.error('Error fetching 24h trend:', error);
+      // 设置空数据，避免白屏
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -70,40 +76,53 @@ const Trend24h: React.FC = () => {
 
   // 按15分钟间隔聚合数据
   const aggregateDataBy15Min = (rawData: any[]) => {
-    const timeMap = new Map();
-    
-    rawData.forEach((item: any) => {
-      const date = new Date(item.time);
-      // 将时间向下取整到最近的15分钟
-      const roundedTime = roundTo15Minutes(date);
-      const timeKey = roundedTime.toISOString();
+    try {
+      console.log('开始聚合数据，原始数据长度:', rawData.length);
+      const timeMap = new Map();
       
-      if (!timeMap.has(timeKey)) {
-        timeMap.set(timeKey, {
-          time: timeKey,
-          used_kwh: 0,
-          remaining_kwh: item.remaining_kwh,
-          count: 0
-        });
-      }
+      rawData.forEach((item: any, index: number) => {
+        try {
+          const date = new Date(item.time);
+          // 将时间向下取整到最近的15分钟
+          const roundedTime = roundTo15Minutes(date);
+          const timeKey = roundedTime.toISOString();
+          
+          if (!timeMap.has(timeKey)) {
+            timeMap.set(timeKey, {
+              time: timeKey,
+              used_kwh: 0,
+              remaining_kwh: item.remaining_kwh || 0,
+              count: 0
+            });
+          }
+          
+          const existingItem = timeMap.get(timeKey);
+          existingItem.used_kwh += item.used_kwh || 0;
+          existingItem.count += 1;
+          // 使用最新的剩余电量
+          if (new Date(item.time) > new Date(existingItem.time)) {
+            existingItem.remaining_kwh = item.remaining_kwh || 0;
+          }
+        } catch (itemError) {
+          console.error(`处理第${index}个数据项时出错:`, itemError, item);
+        }
+      });
       
-      const existingItem = timeMap.get(timeKey);
-      existingItem.used_kwh += item.used_kwh;
-      existingItem.count += 1;
-      // 使用最新的剩余电量
-      if (new Date(item.time) > new Date(existingItem.time)) {
-        existingItem.remaining_kwh = item.remaining_kwh;
-      }
-    });
-    
-    // 转换回数组并按时间排序
-    return Array.from(timeMap.values())
-      .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
-      .map(item => ({
-        time: item.time,
-        used_kwh: Math.round(item.used_kwh * 100) / 100,
-        remaining_kwh: item.remaining_kwh
-      }));
+      // 转换回数组并按时间排序
+      const result = Array.from(timeMap.values())
+        .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+        .map(item => ({
+          time: item.time,
+          used_kwh: Math.round(item.used_kwh * 100) / 100,
+          remaining_kwh: item.remaining_kwh
+        }));
+      
+      console.log('聚合完成，结果长度:', result.length);
+      return result;
+    } catch (error) {
+      console.error('聚合数据时出错:', error);
+      return [];
+    }
   };
 
   // 将时间向下取整到最近的15分钟
@@ -398,6 +417,25 @@ const Trend24h: React.FC = () => {
     );
   }
 
+  // 如果数据为空，显示提示信息
+  if (data.length === 0) {
+    return (
+      <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
+        <h2 className="card-title">过去24小时用电趋势</h2>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          height: '300px',
+          color: '#8E8E93',
+          fontSize: '14px'
+        }}>
+          暂无数据或数据加载中...
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
       <ReactECharts 
@@ -406,6 +444,11 @@ const Trend24h: React.FC = () => {
         className="chart-container"
         notMerge={true}
         lazyUpdate={false}
+        onChartReady={() => console.log('图表渲染完成')}
+        onEvents={{
+          'click': (params: any) => console.log('图表点击:', params),
+          'error': (error: any) => console.error('图表错误:', error)
+        }}
       />
     </div>
   );
