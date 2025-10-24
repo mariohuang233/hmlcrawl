@@ -112,9 +112,9 @@ const Trend24h: React.FC = () => {
         letterSpacing: '-0.01em'
       },
       top: 25,
-      subtext: '每15分钟更新一次',
+      subtext: '每15分钟更新一次 • 拖拽下方滑块或按住Ctrl+滚轮缩放',
       subtextStyle: {
-        fontSize: 12,
+        fontSize: 11,
         color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
       }
@@ -282,19 +282,75 @@ const Trend24h: React.FC = () => {
     grid: {
       left: '8%',
       right: '4%',
-      bottom: '12%',
+      bottom: '15%', // 为缩放条留出更多空间
       top: '20%',
       containLabel: true
     },
-    // 添加数据缩放功能
+    // 添加工具栏
+    toolbox: {
+      show: true,
+      right: 20,
+      top: 20,
+      feature: {
+        dataZoom: {
+          title: {
+            zoom: '区域缩放',
+            back: '还原缩放'
+          },
+          yAxisIndex: 'none'
+        },
+        restore: {
+          title: '还原'
+        }
+      },
+      iconStyle: {
+        color: isDarkMode ? '#8E8E93' : '#6E6E73',
+        borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)'
+      },
+      emphasis: {
+        iconStyle: {
+          color: isDarkMode ? '#64D2FF' : '#007AFF'
+        }
+      }
+    },
+    // 优化数据缩放功能
     dataZoom: [
       {
-        type: 'inside',
+        type: 'slider',
+        show: true,
         start: Math.max(0, 100 - (24 * 4)), // 显示最近24小时的数据点
         end: 100,
-        zoomOnMouseWheel: true,
+        height: 24,
+        bottom: 15,
+        backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+        fillerColor: isDarkMode ? 'rgba(100, 210, 255, 0.2)' : 'rgba(0, 122, 255, 0.2)',
+        borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+        borderRadius: 12,
+        handleStyle: {
+          color: isDarkMode ? '#64D2FF' : '#007AFF',
+          borderColor: isDarkMode ? '#FFFFFF' : '#FFFFFF',
+          borderWidth: 2,
+          shadowColor: isDarkMode ? 'rgba(100, 210, 255, 0.3)' : 'rgba(0, 122, 255, 0.3)',
+          shadowBlur: 4
+        },
+        textStyle: {
+          color: isDarkMode ? '#8E8E93' : '#6E6E73',
+          fontSize: 10,
+          fontWeight: 500
+        },
+        showDetail: false, // 隐藏详细数值，减少视觉干扰
+        showDataShadow: true,
+        dataShadowColor: isDarkMode ? 'rgba(100, 210, 255, 0.1)' : 'rgba(0, 122, 255, 0.1)'
+      },
+      {
+        type: 'inside',
+        start: Math.max(0, 100 - (24 * 4)),
+        end: 100,
+        zoomOnMouseWheel: 'ctrl', // 需要按住Ctrl键才能缩放
         moveOnMouseMove: true,
-        moveOnMouseWheel: true
+        moveOnMouseWheel: false, // 禁用鼠标滚轮缩放，避免误操作
+        preventDefaultMouseMove: true,
+        throttle: 100 // 添加节流，提升性能
       }
     ]
   };
