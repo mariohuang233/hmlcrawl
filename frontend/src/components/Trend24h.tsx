@@ -221,8 +221,26 @@ const Trend24h: React.FC = () => {
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: mobileState ? 10 : 11,
         fontWeight: 500,
-        interval: mobileState ? 2 : 'auto', // 移动端减少标签密度
-        rotate: 0
+        interval: (index: number) => {
+          // 智能间隔显示，确保标签不重叠
+          const totalPoints = data.length;
+          if (totalPoints <= 12) {
+            return true; // 数据点少时全部显示
+          } else if (totalPoints <= 24) {
+            return index % 2 === 0; // 每2个显示1个
+          } else if (totalPoints <= 48) {
+            return index % 4 === 0; // 每4个显示1个
+          } else {
+            return index % 6 === 0; // 每6个显示1个
+          }
+        },
+        rotate: 0,
+        formatter: (value: string) => {
+          // 显示小时，格式化为更清晰的时间
+          const date = new Date(value);
+          const hour = date.getHours();
+          return `${hour.toString().padStart(2, '0')}:00`;
+        }
       },
       axisLine: {
         show: false
@@ -324,7 +342,7 @@ const Trend24h: React.FC = () => {
     grid: {
       left: mobileState ? '10%' : '8%',
       right: mobileState ? '6%' : '4%',
-      bottom: mobileState ? '20%' : '15%', // 移动端为缩放条留出更多空间
+      bottom: mobileState ? '25%' : '20%', // 为X轴标签留出更多空间
       top: mobileState ? '15%' : '20%',
       containLabel: true
     },
