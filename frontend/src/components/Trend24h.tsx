@@ -23,7 +23,7 @@ const Trend24h: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchData = async () => {
     try {
@@ -39,47 +39,62 @@ const Trend24h: React.FC = () => {
         throw new Error(rawData.message || rawData.error);
       }
       
-      // 数据去重处理：按时间分组，取最真实的数值
-      const timeMap = new Map();
+      // 按15分钟间隔聚合数据
+      const aggregatedData = aggregateDataBy15Min(rawData);
       
-      rawData.forEach((item: any) => {
-        const date = new Date(item.time);
-        const timeKey = date.toLocaleTimeString('zh-CN', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          timeZone: 'Asia/Shanghai'
-        });
-        
-        if (!timeMap.has(timeKey)) {
-          timeMap.set(timeKey, item);
-        } else {
-          const existingItem = timeMap.get(timeKey);
-          // 优先选择用电量不为0的数据
-          if (item.used_kwh > 0 && existingItem.used_kwh === 0) {
-            timeMap.set(timeKey, item);
-          } else if (item.used_kwh > existingItem.used_kwh) {
-            // 选择用电量更大的数据（更真实的用电记录）
-            timeMap.set(timeKey, item);
-          } else if (item.used_kwh === existingItem.used_kwh && item.used_kwh > 0) {
-            // 如果用电量相同且不为0，选择剩余电量较小的（更新的数据）
-            if (item.remaining_kwh < existingItem.remaining_kwh) {
-              timeMap.set(timeKey, item);
-            }
-          }
-        }
-      });
-      
-      // 转换回数组并按时间排序
-      const processedData = Array.from(timeMap.values()).sort((a, b) => 
-        new Date(a.time).getTime() - new Date(b.time).getTime()
-      );
-      
-      setData(processedData);
+      setData(aggregatedData);
     } catch (error) {
       console.error('Error fetching 24h trend:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // 按15分钟间隔聚合数据
+  const aggregateDataBy15Min = (rawData: any[]) => {
+    const timeMap = new Map();
+    
+    rawData.forEach((item: any) => {
+      const date = new Date(item.time);
+      // 将时间向下取整到最近的15分钟
+      const roundedTime = roundTo15Minutes(date);
+      const timeKey = roundedTime.toISOString();
+      
+      if (!timeMap.has(timeKey)) {
+        timeMap.set(timeKey, {
+          time: timeKey,
+          used_kwh: 0,
+          remaining_kwh: item.remaining_kwh,
+          count: 0
+        });
+      }
+      
+      const existingItem = timeMap.get(timeKey);
+      existingItem.used_kwh += item.used_kwh;
+      existingItem.count += 1;
+      // 使用最新的剩余电量
+      if (new Date(item.time) > new Date(existingItem.time)) {
+        existingItem.remaining_kwh = item.remaining_kwh;
+      }
+    });
+    
+    // 转换回数组并按时间排序
+    return Array.from(timeMap.values())
+      .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+      .map(item => ({
+        time: item.time,
+        used_kwh: Math.round(item.used_kwh * 100) / 100,
+        remaining_kwh: item.remaining_kwh
+      }));
+  };
+
+  // 将时间向下取整到最近的15分钟
+  const roundTo15Minutes = (date: Date) => {
+    const rounded = new Date(date);
+    const minutes = rounded.getMinutes();
+    const roundedMinutes = Math.floor(minutes / 15) * 15;
+    rounded.setMinutes(roundedMinutes, 0, 0);
+    return rounded;
   };
 
   // 检测暗夜模式
@@ -90,43 +105,61 @@ const Trend24h: React.FC = () => {
       text: '过去24小时用电趋势',
       left: 'center',
       textStyle: {
-        fontSize: 20,
-        fontWeight: 700,
+        fontSize: 22,
+        fontWeight: 600,
         color: isDarkMode ? '#FFFFFF' : '#1D1D1F',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-        letterSpacing: '-0.02em'
+        letterSpacing: '-0.01em'
       },
-      top: 20
+      top: 25,
+      subtext: '每15分钟更新一次',
+      subtextStyle: {
+        fontSize: 12,
+        color: isDarkMode ? '#8E8E93' : '#6E6E73',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
+      }
     },
-    // 添加绘画动画配置
+    // 优化动画配置
     animation: hasTriggered,
-    animationDuration: 3000,
+    animationDuration: 2500,
     animationEasing: 'cubicOut',
     animationDelay: 0,
     // 启用渐进式渲染
     progressive: hasTriggered ? 0 : false,
-    progressiveThreshold: 3000,
+    progressiveThreshold: 2000,
     progressiveChunkMode: 'mod',
     // 强制重新渲染以实现绘画效果
-    animationDurationUpdate: 3000,
+    animationDurationUpdate: 2500,
     animationEasingUpdate: 'cubicOut',
     tooltip: {
       trigger: 'axis',
-      backgroundColor: isDarkMode ? '#2C2C2E' : '#FFFFFF',
-      borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+      backgroundColor: isDarkMode ? '#1C1C1E' : '#FFFFFF',
+      borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
       borderWidth: 1,
-      borderRadius: 12,
+      borderRadius: 16,
+      padding: [12, 16],
       textStyle: {
         color: isDarkMode ? '#FFFFFF' : '#0D0D0D',
-        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+        fontSize: 13
       },
       formatter: (params: any) => {
         const point = params[0];
+        const timeLabel = point.axisValue;
+        const usage = point.value;
+        const remaining = data[point.dataIndex]?.remaining_kwh || 0;
+        
         return `
-          <div style="padding: 4px;">
-            <div style="margin-bottom: 4px; font-weight: 600;">⏰ ${point.axisValue}</div>
-            <div style="margin-bottom: 4px;">⚡ 用电量: ${point.value} kWh</div>
-            <div>🔋 剩余电量: ${data[point.dataIndex]?.remaining_kwh} kWh</div>
+          <div style="padding: 4px 0;">
+            <div style="margin-bottom: 8px; font-weight: 600; font-size: 14px; color: ${isDarkMode ? '#FFFFFF' : '#1D1D1F'};">⏰ ${timeLabel}</div>
+            <div style="margin-bottom: 6px; display: flex; align-items: center;">
+              <span style="display: inline-block; width: 8px; height: 8px; background: ${isDarkMode ? '#64D2FF' : '#007AFF'}; border-radius: 50%; margin-right: 8px;"></span>
+              <span style="font-weight: 500;">用电量: ${usage} kWh</span>
+            </div>
+            <div style="display: flex; align-items: center;">
+              <span style="display: inline-block; width: 8px; height: 8px; background: ${isDarkMode ? '#32D74B' : '#34C759'}; border-radius: 50%; margin-right: 8px;"></span>
+              <span style="font-weight: 500;">剩余电量: ${remaining} kWh</span>
+            </div>
           </div>
         `;
       }
@@ -144,17 +177,19 @@ const Trend24h: React.FC = () => {
       axisLabel: {
         color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-        fontSize: 12
+        fontSize: 11,
+        fontWeight: 500,
+        interval: 'auto',
+        rotate: 0
       },
       axisLine: {
-        lineStyle: {
-          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'
-        }
+        show: false
       },
       axisTick: {
-        lineStyle: {
-          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'
-        }
+        show: false
+      },
+      splitLine: {
+        show: false
       }
     },
     yAxis: {
@@ -163,27 +198,28 @@ const Trend24h: React.FC = () => {
       nameTextStyle: {
         color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-        fontSize: 12
+        fontSize: 11,
+        fontWeight: 500,
+        padding: [0, 0, 0, 10]
       },
       axisLabel: {
         color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-        fontSize: 12
+        fontSize: 11,
+        fontWeight: 500,
+        formatter: (value: number) => value.toFixed(1)
       },
       axisLine: {
-        lineStyle: {
-          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'
-        }
+        show: false
       },
       axisTick: {
-        lineStyle: {
-          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'
-        }
+        show: false
       },
       splitLine: {
         lineStyle: {
-          color: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
-          type: 'dashed'
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+          type: 'solid',
+          width: 1
         }
       }
     },
@@ -194,19 +230,22 @@ const Trend24h: React.FC = () => {
         data: data.map(item => item.used_kwh),
         smooth: true,
         symbol: 'circle',
-        symbolSize: 8,
+        symbolSize: 6,
+        showSymbol: data.length <= 20, // 数据点少时显示符号
         lineStyle: {
           color: isDarkMode ? '#64D2FF' : '#007AFF',
-          width: 4,
-          shadowColor: isDarkMode ? 'rgba(100, 210, 255, 0.3)' : 'rgba(0, 122, 255, 0.3)',
-          shadowBlur: 10
+          width: 3,
+          shadowColor: isDarkMode ? 'rgba(100, 210, 255, 0.4)' : 'rgba(0, 122, 255, 0.4)',
+          shadowBlur: 12,
+          shadowOffsetY: 4
         },
         itemStyle: {
           color: isDarkMode ? '#64D2FF' : '#007AFF',
-          borderColor: isDarkMode ? '#000000' : '#FFFFFF',
-          borderWidth: 3,
-          shadowColor: isDarkMode ? 'rgba(100, 210, 255, 0.4)' : 'rgba(0, 122, 255, 0.4)',
-          shadowBlur: 8
+          borderColor: isDarkMode ? '#1C1C1E' : '#FFFFFF',
+          borderWidth: 2,
+          shadowColor: isDarkMode ? 'rgba(100, 210, 255, 0.5)' : 'rgba(0, 122, 255, 0.5)',
+          shadowBlur: 8,
+          shadowOffsetY: 2
         },
         areaStyle: {
           color: {
@@ -216,28 +255,48 @@ const Trend24h: React.FC = () => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: isDarkMode ? 'rgba(100, 210, 255, 0.3)' : 'rgba(0, 122, 255, 0.3)' },
-              { offset: 1, color: isDarkMode ? 'rgba(100, 210, 255, 0.05)' : 'rgba(0, 122, 255, 0.05)' }
+              { offset: 0, color: isDarkMode ? 'rgba(100, 210, 255, 0.25)' : 'rgba(0, 122, 255, 0.25)' },
+              { offset: 0.5, color: isDarkMode ? 'rgba(100, 210, 255, 0.15)' : 'rgba(0, 122, 255, 0.15)' },
+              { offset: 1, color: isDarkMode ? 'rgba(100, 210, 255, 0.03)' : 'rgba(0, 122, 255, 0.03)' }
             ]
           }
         },
-        // 绘画动画效果 - 从左到右绘制
+        // 优化动画效果
         animationDelay: 0,
-        animationDuration: 3000,
+        animationDuration: 2500,
         animationEasing: 'cubicOut',
         // 启用绘画效果
         progressive: hasTriggered ? 0 : false,
-        progressiveThreshold: 3000,
-        progressiveChunkMode: 'mod'
+        progressiveThreshold: 2000,
+        progressiveChunkMode: 'mod',
+        // 添加数据标签（可选）
+        label: {
+          show: false,
+          position: 'top',
+          color: isDarkMode ? '#FFFFFF' : '#1D1D1F',
+          fontSize: 10,
+          fontWeight: 500
+        }
       }
     ],
     grid: {
-      left: '5%',
-      right: '5%',
-      bottom: '10%',
-      top: '15%',
+      left: '8%',
+      right: '4%',
+      bottom: '12%',
+      top: '20%',
       containLabel: true
-    }
+    },
+    // 添加数据缩放功能
+    dataZoom: [
+      {
+        type: 'inside',
+        start: Math.max(0, 100 - (24 * 4)), // 显示最近24小时的数据点
+        end: 100,
+        zoomOnMouseWheel: true,
+        moveOnMouseMove: true,
+        moveOnMouseWheel: true
+      }
+    ]
   };
 
   if (loading) {
