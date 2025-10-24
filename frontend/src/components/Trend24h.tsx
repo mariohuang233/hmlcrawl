@@ -63,6 +63,8 @@ const Trend24h: React.FC = () => {
       const aggregatedData = aggregateDataBy15Min(rawData);
       console.log('聚合后数据长度:', aggregatedData.length);
       console.log('聚合后数据示例:', aggregatedData.slice(0, 3));
+      console.log('X轴数据示例:', aggregatedData.slice(0, 5).map(item => item.time));
+      console.log('Y轴数据示例:', aggregatedData.slice(0, 5).map(item => item.used_kwh));
       
       setData(aggregatedData);
     } catch (error) {
@@ -208,14 +210,7 @@ const Trend24h: React.FC = () => {
     },
     xAxis: {
       type: 'category',
-      data: data.map(item => {
-        const date = new Date(item.time);
-        return date.toLocaleTimeString('zh-CN', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          timeZone: 'Asia/Shanghai'
-        });
-      }),
+      data: data.map(item => item.time), // 直接使用原始时间字符串
       axisLabel: {
         color: isDarkMode ? '#8E8E93' : '#6E6E73',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
@@ -236,10 +231,19 @@ const Trend24h: React.FC = () => {
         },
         rotate: 0,
         formatter: (value: string) => {
-          // 显示小时，格式化为更清晰的时间
-          const date = new Date(value);
-          const hour = date.getHours();
-          return `${hour.toString().padStart(2, '0')}:00`;
+          // 修复时间格式化，确保正确显示
+          try {
+            const date = new Date(value);
+            if (isNaN(date.getTime())) {
+              console.error('Invalid date value:', value);
+              return '';
+            }
+            const hour = date.getHours();
+            return `${hour.toString().padStart(2, '0')}:00`;
+          } catch (error) {
+            console.error('Date formatting error:', error, value);
+            return '';
+          }
         }
       },
       axisLine: {
@@ -267,7 +271,13 @@ const Trend24h: React.FC = () => {
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
         fontSize: mobileState ? 10 : 11,
         fontWeight: 500,
-        formatter: (value: number) => value.toFixed(1)
+        formatter: (value: number) => {
+          // 确保Y轴标签正确显示
+          if (typeof value !== 'number' || isNaN(value)) {
+            return '0.0';
+          }
+          return value.toFixed(1);
+        }
       },
       axisLine: {
         show: false
