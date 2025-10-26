@@ -45,7 +45,6 @@ const Trend24h: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      console.log('开始获取24小时趋势数据...');
       const response = await fetch(`${API_BASE}/api/trend/24h`);
       
       if (!response.ok) {
@@ -53,7 +52,6 @@ const Trend24h: React.FC = () => {
       }
       
       const rawData = await response.json();
-      console.log('原始数据长度:', rawData.length);
       
       if (rawData.error) {
         throw new Error(rawData.message || rawData.error);
@@ -61,10 +59,6 @@ const Trend24h: React.FC = () => {
       
       // 按15分钟间隔聚合数据
       const aggregatedData = aggregateDataBy15Min(rawData);
-      console.log('聚合后数据长度:', aggregatedData.length);
-      console.log('聚合后数据示例:', aggregatedData.slice(0, 3));
-      console.log('X轴数据示例:', aggregatedData.slice(0, 5).map(item => item.time));
-      console.log('Y轴数据示例:', aggregatedData.slice(0, 5).map(item => item.used_kwh));
       
       setData(aggregatedData);
     } catch (error) {
@@ -79,13 +73,12 @@ const Trend24h: React.FC = () => {
   // 按15分钟间隔聚合数据
   const aggregateDataBy15Min = (rawData: any[]) => {
     try {
-      console.log('开始聚合数据，原始数据长度:', rawData.length);
       const timeMap = new Map();
       
-      rawData.forEach((item: any, index: number) => {
+      rawData.forEach((item: any) => {
         try {
           const date = new Date(item.time);
-          // 将时间向下取整到最近的15分钟
+          // 将时间向下取整到最近的15分钟（使用北京时间）
           const roundedTime = roundTo15Minutes(date);
           const timeKey = roundedTime.toISOString();
           
@@ -106,7 +99,7 @@ const Trend24h: React.FC = () => {
             existingItem.remaining_kwh = item.remaining_kwh || 0;
           }
         } catch (itemError) {
-          console.error(`处理第${index}个数据项时出错:`, itemError, item);
+          // 静默处理单个项目错误
         }
       });
       
@@ -119,7 +112,6 @@ const Trend24h: React.FC = () => {
           remaining_kwh: item.remaining_kwh
         }));
       
-      console.log('聚合完成，结果长度:', result.length);
       return result;
     } catch (error) {
       console.error('聚合数据时出错:', error);
@@ -127,13 +119,20 @@ const Trend24h: React.FC = () => {
     }
   };
 
-  // 将时间向下取整到最近的15分钟
+  // 将时间向下取整到最近的15分钟（使用北京时间）
   const roundTo15Minutes = (date: Date) => {
-    const rounded = new Date(date);
+    // 将UTC时间转换为北京时间 (UTC+8)
+    const beijingDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+    
+    // 按北京时间进行15分钟取整
+    const rounded = new Date(beijingDate);
     const minutes = rounded.getMinutes();
     const roundedMinutes = Math.floor(minutes / 15) * 15;
     rounded.setMinutes(roundedMinutes, 0, 0);
-    return rounded;
+    
+    // 转换回UTC时间（保存到数据库时使用）
+    const utcRounded = new Date(rounded.getTime() - 8 * 60 * 60 * 1000);
+    return utcRounded;
   };
 
   // 检测暗夜模式
@@ -200,15 +199,13 @@ const Trend24h: React.FC = () => {
           if (!isNaN(utcDate.getTime())) {
             // 转换为北京时间 (UTC+8)
             const beijingDate = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
-            beijingTime = beijingDate.toLocaleString('zh-CN', {
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-              timeZone: 'Asia/Shanghai'
-            });
+            // 格式化为更清晰的北京时间格式
+            const year = beijingDate.getFullYear();
+            const month = String(beijingDate.getMonth() + 1).padStart(2, '0');
+            const day = String(beijingDate.getDate()).padStart(2, '0');
+            const hour = String(beijingDate.getHours()).padStart(2, '0');
+            const minute = String(beijingDate.getMinutes()).padStart(2, '0');
+            beijingTime = `${year}/${month}/${day} ${hour}:${minute}`;
           } else {
             beijingTime = timeLabel; // 如果转换失败，使用原始值
           }
@@ -455,7 +452,6 @@ const Trend24h: React.FC = () => {
         className="chart-container"
         notMerge={false}
         lazyUpdate={true}
-        onChartReady={() => console.log('图表渲染完成')}
       />
     </div>
   );
