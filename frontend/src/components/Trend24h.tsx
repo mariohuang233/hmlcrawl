@@ -123,6 +123,11 @@ const Trend24h: React.FC = () => {
         remaining_kwh: item.remaining_kwh
       }));
       
+      console.log('聚合后的数据示例（前3条）:', result.slice(0, 3).map(item => ({
+        time: item.time,
+        beijingTime: new Date(new Date(item.time).getTime() + 8 * 60 * 60 * 1000).toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})
+      })));
+      
       return result;
     } catch (error) {
       console.error('聚合数据时出错:', error);
@@ -256,19 +261,18 @@ const Trend24h: React.FC = () => {
         },
         rotate: 0,
         formatter: (value: string) => {
-          // 修复时间格式化，确保正确显示北京时间
+          // value已经是UTC时间字符串，转换为北京时间显示
           try {
             const utcDate = new Date(value);
             if (isNaN(utcDate.getTime())) {
-              console.error('Invalid date value:', value);
               return '';
             }
             // 转换为北京时间 (UTC+8)
-            const beijingDate = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
-            const hour = beijingDate.getHours();
-            return `${hour.toString().padStart(2, '0')}:00`;
+            const beijingTime = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
+            const hour = beijingTime.getHours();
+            const minute = beijingTime.getMinutes();
+            return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
           } catch (error) {
-            console.error('Date formatting error:', error, value);
             return '';
           }
         }
