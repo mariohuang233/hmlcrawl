@@ -193,9 +193,33 @@ const Trend24h: React.FC = () => {
         const usage = point.value;
         const remaining = data[point.dataIndex]?.remaining_kwh || 0;
         
+        // 将UTC时间转换为北京时间显示
+        let beijingTime = '';
+        try {
+          const utcDate = new Date(timeLabel);
+          if (!isNaN(utcDate.getTime())) {
+            // 转换为北京时间 (UTC+8)
+            const beijingDate = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
+            beijingTime = beijingDate.toLocaleString('zh-CN', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              timeZone: 'Asia/Shanghai'
+            });
+          } else {
+            beijingTime = timeLabel; // 如果转换失败，使用原始值
+          }
+        } catch (error) {
+          console.error('时间转换错误:', error);
+          beijingTime = timeLabel;
+        }
+        
         return `
           <div style="padding: 4px 0;">
-            <div style="margin-bottom: 8px; font-weight: 600; font-size: 14px; color: ${isDarkMode ? '#FFFFFF' : '#1D1D1F'};">⏰ ${timeLabel}</div>
+            <div style="margin-bottom: 8px; font-weight: 600; font-size: 14px; color: ${isDarkMode ? '#FFFFFF' : '#1D1D1F'};">⏰ ${beijingTime}</div>
             <div style="margin-bottom: 6px; display: flex; align-items: center;">
               <span style="display: inline-block; width: 8px; height: 8px; background: ${isDarkMode ? '#64D2FF' : '#007AFF'}; border-radius: 50%; margin-right: 8px;"></span>
               <span style="font-weight: 500;">用电量: ${usage} kWh</span>
@@ -231,14 +255,16 @@ const Trend24h: React.FC = () => {
         },
         rotate: 0,
         formatter: (value: string) => {
-          // 修复时间格式化，确保正确显示
+          // 修复时间格式化，确保正确显示北京时间
           try {
-            const date = new Date(value);
-            if (isNaN(date.getTime())) {
+            const utcDate = new Date(value);
+            if (isNaN(utcDate.getTime())) {
               console.error('Invalid date value:', value);
               return '';
             }
-            const hour = date.getHours();
+            // 转换为北京时间 (UTC+8)
+            const beijingDate = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
+            const hour = beijingDate.getHours();
             return `${hour.toString().padStart(2, '0')}:00`;
           } catch (error) {
             console.error('Date formatting error:', error, value);
