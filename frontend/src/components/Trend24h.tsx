@@ -201,14 +201,15 @@ const Trend24h: React.FC = () => {
         try {
           const utcDate = new Date(timeLabel);
           if (!isNaN(utcDate.getTime())) {
-            // 转换为北京时间 (UTC+8)
-            const beijingDate = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
-            // 格式化为更清晰的北京时间格式
-            const year = beijingDate.getFullYear();
-            const month = String(beijingDate.getMonth() + 1).padStart(2, '0');
-            const day = String(beijingDate.getDate()).padStart(2, '0');
-            const hour = String(beijingDate.getHours()).padStart(2, '0');
-            const minute = String(beijingDate.getMinutes()).padStart(2, '0');
+            // 转换为北京时间 (UTC+8) - 手动计算避免时区问题
+            const beijingTimestamp = utcDate.getTime() + 8 * 60 * 60 * 1000;
+            const beijingDate = new Date(beijingTimestamp);
+            // 格式化为更清晰的北京时间格式 - 使用UTC方法避免本地时区影响
+            const year = beijingDate.getUTCFullYear();
+            const month = String(beijingDate.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(beijingDate.getUTCDate()).padStart(2, '0');
+            const hour = String(beijingDate.getUTCHours()).padStart(2, '0');
+            const minute = String(beijingDate.getUTCMinutes()).padStart(2, '0');
             beijingTime = `${year}/${month}/${day} ${hour}:${minute}`;
           } else {
             beijingTime = timeLabel; // 如果转换失败，使用原始值
@@ -256,16 +257,17 @@ const Trend24h: React.FC = () => {
         },
         rotate: 0,
         formatter: (value: string) => {
-          // value已经是UTC时间字符串，转换为北京时间显示
+          // value是UTC时间字符串，转换为北京时间显示
           try {
             const utcDate = new Date(value);
             if (isNaN(utcDate.getTime())) {
               return '';
             }
-            // 转换为北京时间 (UTC+8)
-            const beijingTime = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
-            const hour = beijingTime.getHours();
-            const minute = beijingTime.getMinutes();
+            // 转换为北京时间 (UTC+8) - 手动计算避免时区问题
+            const beijingTimestamp = utcDate.getTime() + 8 * 60 * 60 * 1000;
+            const beijingDate = new Date(beijingTimestamp);
+            const hour = beijingDate.getUTCHours(); // 使用getUTCHours避免本地时区影响
+            const minute = beijingDate.getUTCMinutes();
             return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
           } catch (error) {
             return '';
