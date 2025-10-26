@@ -81,8 +81,7 @@ const Trend24h: React.FC = () => {
           // 将UTC时间转换为北京时间进行15分钟取整
           const beijingTime = new Date(date.getTime() + 8 * 60 * 60 * 1000);
           const roundedBeijingTime = roundTo15Minutes(beijingTime);
-          
-          // 转换回UTC时间作为key
+          // 转换回UTC时间作为聚合key（保持UTC）
           const utcRounded = new Date(roundedBeijingTime.getTime() - 8 * 60 * 60 * 1000);
           const timeKey = utcRounded.toISOString();
           
