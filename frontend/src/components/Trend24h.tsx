@@ -78,9 +78,13 @@ const Trend24h: React.FC = () => {
       rawData.forEach((item: any) => {
         try {
           const date = new Date(item.time);
-          // 将时间向下取整到最近的15分钟（使用北京时间）
-          const roundedTime = roundTo15Minutes(date);
-          const timeKey = roundedTime.toISOString();
+          // 将UTC时间转换为北京时间进行15分钟取整
+          const beijingTime = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+          const roundedBeijingTime = roundTo15Minutes(beijingTime);
+          
+          // 转换回UTC时间作为key
+          const utcRounded = new Date(roundedBeijingTime.getTime() - 8 * 60 * 60 * 1000);
+          const timeKey = utcRounded.toISOString();
           
           if (!timeMap.has(timeKey)) {
             timeMap.set(timeKey, {
@@ -113,17 +117,12 @@ const Trend24h: React.FC = () => {
       // 使用UTC时间进行排序
       dataArray.sort((a, b) => new Date(a.originalUTC).getTime() - new Date(b.originalUTC).getTime());
       
-      // 转换为北京时间显示
-      const result = dataArray.map(item => {
-        const utcDate = new Date(item.originalUTC);
-        const beijingDate = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
-        
-        return {
-          time: beijingDate.toISOString(),
-          used_kwh: item.used_kwh,
-          remaining_kwh: item.remaining_kwh
-        };
-      });
+      // 直接返回数据，保持UTC时间，在显示时再转换为北京时间
+      const result = dataArray.map(item => ({
+        time: item.originalUTC,
+        used_kwh: item.used_kwh,
+        remaining_kwh: item.remaining_kwh
+      }));
       
       return result;
     } catch (error) {
@@ -132,20 +131,13 @@ const Trend24h: React.FC = () => {
     }
   };
 
-  // 将时间向下取整到最近的15分钟（使用北京时间）
+  // 将时间向下取整到最近的15分钟
   const roundTo15Minutes = (date: Date) => {
-    // 将UTC时间转换为北京时间 (UTC+8)
-    const beijingDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-    
-    // 按北京时间进行15分钟取整
-    const rounded = new Date(beijingDate);
+    const rounded = new Date(date);
     const minutes = rounded.getMinutes();
     const roundedMinutes = Math.floor(minutes / 15) * 15;
     rounded.setMinutes(roundedMinutes, 0, 0);
-    
-    // 转换回UTC时间（保存到数据库时使用）
-    const utcRounded = new Date(rounded.getTime() - 8 * 60 * 60 * 1000);
-    return utcRounded;
+    return rounded;
   };
 
   // 检测暗夜模式
