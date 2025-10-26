@@ -123,11 +123,6 @@ const Trend24h: React.FC = () => {
         remaining_kwh: item.remaining_kwh
       }));
       
-      console.log('聚合后的数据示例（前3条）:', result.slice(0, 3).map(item => ({
-        time: item.time,
-        beijingTime: new Date(new Date(item.time).getTime() + 8 * 60 * 60 * 1000).toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'})
-      })));
-      
       return result;
     } catch (error) {
       console.error('聚合数据时出错:', error);
