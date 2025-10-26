@@ -104,13 +104,26 @@ const Trend24h: React.FC = () => {
       });
       
       // 转换回数组并按时间排序
-      const result = Array.from(timeMap.values())
-        .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
-        .map(item => ({
-          time: item.time,
-          used_kwh: Math.round(item.used_kwh * 100) / 100,
+      const dataArray = Array.from(timeMap.values()).map(item => ({
+        originalUTC: item.time,
+        used_kwh: Math.round(item.used_kwh * 100) / 100,
+        remaining_kwh: item.remaining_kwh
+      }));
+      
+      // 使用UTC时间进行排序
+      dataArray.sort((a, b) => new Date(a.originalUTC).getTime() - new Date(b.originalUTC).getTime());
+      
+      // 转换为北京时间显示
+      const result = dataArray.map(item => {
+        const utcDate = new Date(item.originalUTC);
+        const beijingDate = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
+        
+        return {
+          time: beijingDate.toISOString(),
+          used_kwh: item.used_kwh,
           remaining_kwh: item.remaining_kwh
-        }));
+        };
+      });
       
       return result;
     } catch (error) {
