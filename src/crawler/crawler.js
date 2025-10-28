@@ -278,17 +278,17 @@ class ElectricityCrawler {
           'Upgrade-Insecure-Requests': '1',
           'Sec-Fetch-Dest': 'document',
           'Sec-Fetch-Mode': 'navigate',
-          'Sec-Fetch-Site': 'same-origin',
+          'Sec-Fetch-Site': 'none',
           'Sec-Fetch-User': '?1',
           // 不发送Cookie，让服务器生成新会话
-          'Referer': 'https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580',
+          'Referer': 'http://www.wap.cnyiot.com/',
           'Host': urlObj.hostname
         },
         timeout: 45000 // 增加超时时间
       };
 
-      // 添加随机延迟
-      const delay = Math.floor(Math.random() * 2000) + 1000; // 1-3秒随机延迟
+      // 添加更长的随机延迟，模拟真实用户
+      const delay = Math.floor(Math.random() * 3000) + 2000; // 2-5秒随机延迟
       
       setTimeout(() => {
         const req = httpModule.request(options, (res) => {
