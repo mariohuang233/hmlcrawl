@@ -1,6 +1,6 @@
 {
   "name": "electricity-middleware",
-  ""version": "1.0.0"",
+  "version": "1.0.0",
   "description": "电力数据中间层代理",
   "main": "api/fetch.js",
   "scripts": {
