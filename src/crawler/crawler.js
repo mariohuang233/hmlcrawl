@@ -125,6 +125,17 @@ class ElectricityCrawler {
       const html = await this.makeHttpRequest(this.url);
       crawlerLogger.info(`获取HTML成功，长度: ${html.length} 字符`);
       
+      // 检查是否被拦截
+      if (html.includes('blocked') || html.includes('<title>405</title>') || html.includes('安全威胁') || html.includes('被阻断')) {
+        this.addLogEntry({
+          timestamp: new Date(),
+          action: 'blocked',
+          info: '请求被安全防护拦截',
+          htmlPreview: html.substring(0, 300)
+        });
+        throw new Error('请求被安全防护拦截，返回405错误页面');
+      }
+      
       // 添加调试日志到日志记录
       this.addLogEntry({
         timestamp: new Date(),
@@ -264,7 +275,8 @@ class ElectricityCrawler {
           'Cache-Control': 'max-age=0',
           'Connection': 'keep-alive',
           'Upgrade-Insecure-Requests': '1',
-          'Cookie': 'ASP.NET_SessionId=nfjamz3w0ghy1ylk0va0lmc0; acw_tc=0a065e8c17616366073213047e304fa859766a718b4189c9e92b7f0476235f; SERVERID=e4be121af3f3646cf63ced9eae547fd4|1761636607|1761636607; SERVERCORSID=e4be121af3f3646cf63ced9eae547fd4|1761636607|1761636607',
+          'Cookie': 'ASP.NET_SessionId=nfjamz3w0ghy1ylk0va0lmc0; acw_tc=0a065e8c17616366073213047e304fa859766a718b4189c9e92b7f0476235f',
+          'Referer': 'http://www.wap.cnyiot.com/',
           'Host': urlObj.hostname
         },
         timeout: 45000 // 增加超时时间
