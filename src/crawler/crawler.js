@@ -123,6 +123,9 @@ class ElectricityCrawler {
   async fetchElectricityData() {
     try {
       const html = await this.makeHttpRequest(this.url);
+      crawlerLogger.info(`获取HTML成功，长度: ${html.length} 字符`);
+      crawlerLogger.info(`HTML前500字符: ${html.substring(0, 500)}`);
+      
       const dom = new JSDOM(html);
       const document = dom.window.document;
       
@@ -130,8 +133,12 @@ class ElectricityCrawler {
       let remainingKwh = null;
       
       // 首先尝试查找所有数字，然后筛选出合理的电量值
-      const allText = document.body.textContent;
+      const allText = document.body ? document.body.textContent : '';
+      crawlerLogger.info(`提取的文本长度: ${allText.length}`);
+      crawlerLogger.info(`文本前500字符: ${allText.substring(0, 500)}`);
+      
       const numberMatches = allText.match(/\d+\.?\d*/g);
+      crawlerLogger.info(`找到数字匹配: ${numberMatches ? numberMatches.length : 0} 个`);
       
       if (numberMatches) {
         // 筛选出合理的电量值（通常在0-1000之间，且包含小数点）
@@ -139,6 +146,8 @@ class ElectricityCrawler {
           .map(num => parseFloat(num))
           .filter(num => num > 0 && num < 1000 && num.toString().includes('.'))
           .sort((a, b) => b - a); // 按降序排列，取最大值
+        
+        crawlerLogger.info(`有效数字: ${validNumbers.length} 个`);
         
         if (validNumbers.length > 0) {
           remainingKwh = validNumbers[0];
