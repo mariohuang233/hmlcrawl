@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const router = express.Router();
 const Usage = require('../models/Usage');
 const logger = require('../utils/logger');
+const crawler = require('../crawler/crawler');
 const { 
   getBeijingHour, 
   getBeijingTodayStart, 
@@ -843,6 +844,32 @@ router.post('/cleanup', async (req, res) => {
     
   } catch (error) {
     console.error('清理过程中出现错误:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 获取爬虫日志
+router.get('/crawler/logs', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 100;
+    const logs = crawler.getLogs(limit);
+    res.json({ success: true, logs, count: logs.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 手动触发爬取
+router.post('/crawler/trigger', async (req, res) => {
+  try {
+    logger.info('收到手动触发爬取请求');
+    crawler.manualCrawl().then(() => {
+      logger.info('手动爬取完成');
+    }).catch((error) => {
+      logger.error('手动爬取失败:', error.message);
+    });
+    res.json({ success: true, message: '爬取任务已触发' });
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });

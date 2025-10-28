@@ -74,6 +74,9 @@ function App() {
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showLogs, setShowLogs] = useState(false);
+  const [logs, setLogs] = useState<any[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   useEffect(() => {
     fetchOverview();
@@ -107,6 +110,44 @@ function App() {
 
   const handleRefresh = () => {
     fetchOverview();
+  };
+
+  const fetchLogs = async () => {
+    try {
+      setLogsLoading(true);
+      const response = await fetch(`${API_BASE}/api/crawler/logs?limit=100`);
+      const data = await response.json();
+      if (data.success) {
+        setLogs(data.logs);
+      }
+    } catch (err) {
+      console.error('Error fetching logs:', err);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  const handleShowLogs = () => {
+    if (!showLogs) {
+      fetchLogs();
+    }
+    setShowLogs(!showLogs);
+  };
+
+  const handleTriggerCrawl = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/crawler/trigger`, {
+        method: 'POST'
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert('爬取任务已触发！');
+        setTimeout(() => fetchLogs(), 2000);
+      }
+    } catch (err) {
+      console.error('Error triggering crawl:', err);
+      alert('触发失败，请重试');
+    }
   };
 
   if (loading) {
@@ -143,12 +184,28 @@ function App() {
         <div className="header-content">
           <div className="header-inner">
             <h1 className="app-title">雷神一二布布的电量监控</h1>
-            <button
-              onClick={handleRefresh}
-              className="btn btn-primary"
-            >
-              刷新数据
-            </button>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={handleRefresh}
+                className="btn btn-primary"
+              >
+                刷新数据
+              </button>
+              <button
+                onClick={handleTriggerCrawl}
+                className="btn btn-primary"
+                style={{ backgroundColor: '#28a745' }}
+              >
+                手动爬取
+              </button>
+              <button
+                onClick={handleShowLogs}
+                className="btn btn-primary"
+                style={{ backgroundColor: '#17a2b8' }}
+              >
+                {showLogs ? '隐藏日志' : '查看日志'}
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -169,6 +226,55 @@ function App() {
           
           {/* 每月趋势 */}
           <MonthlyTrend />
+          
+          {/* 爬虫日志 */}
+          {showLogs && (
+            <div style={{ 
+              marginTop: '40px', 
+              padding: '20px', 
+              backgroundColor: '#1e1e1e', 
+              borderRadius: '8px',
+              color: '#fff',
+              maxHeight: '500px',
+              overflowY: 'auto'
+            }}>
+              <h2 style={{ marginBottom: '20px', color: '#17a2b8' }}>爬虫执行日志</h2>
+              {logsLoading ? (
+                <div>加载中...</div>
+              ) : logs.length === 0 ? (
+                <div>暂无日志</div>
+              ) : (
+                <div style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                  {logs.map((log, index) => (
+                    <div 
+                      key={index} 
+                      style={{ 
+                        padding: '8px',
+                        borderBottom: '1px solid #333',
+                        display: 'flex',
+                        gap: '15px'
+                      }}
+                    >
+                      <span style={{ color: '#888', minWidth: '150px' }}>
+                        {new Date(log.timestamp).toLocaleString('zh-CN')}
+                      </span>
+                      <span style={{ 
+                        color: log.action === 'success' ? '#28a745' : 
+                               log.action === 'error' || log.action === 'failed' ? '#dc3545' : 
+                               '#17a2b8',
+                        minWidth: '100px'
+                      }}>
+                        [{log.action}]
+                      </span>
+                      <span>
+                        {JSON.stringify(log, null, 2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </main>
     </div>

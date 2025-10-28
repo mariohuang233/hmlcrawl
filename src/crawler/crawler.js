@@ -14,6 +14,23 @@ class ElectricityCrawler {
     this.meterName = '2759弄18号402阳台';
     this.maxRetries = 3;
     this.retryDelay = 5000; // 5秒
+    
+    // 存储最近的日志（最多100条）
+    this.logEntries = [];
+    this.maxLogEntries = 100;
+  }
+  
+  // 添加日志条目
+  addLogEntry(entry) {
+    this.logEntries.unshift(entry);
+    if (this.logEntries.length > this.maxLogEntries) {
+      this.logEntries.pop();
+    }
+  }
+  
+  // 获取日志
+  getLogs(limit = 100) {
+    return this.logEntries.slice(0, limit);
   }
 
   // 启动定时任务
@@ -41,26 +58,62 @@ class ElectricityCrawler {
   // 爬取数据
   async crawlData() {
     let retryCount = 0;
+    const startTime = new Date();
     
     while (retryCount < this.maxRetries) {
       try {
         crawlerLogger.info(`开始爬取数据，第${retryCount + 1}次尝试`);
         
+        const logEntry = {
+          timestamp: new Date(),
+          action: 'crawl_start',
+          retryCount: retryCount + 1,
+          url: this.url
+        };
+        this.addLogEntry(logEntry);
+        
         const data = await this.fetchElectricityData();
         if (data) {
           await this.saveData(data);
+          const duration = Date.now() - startTime.getTime();
           crawlerLogger.info('数据爬取并保存成功');
+          
+          const successLog = {
+            timestamp: new Date(),
+            action: 'success',
+            duration: `${duration}ms`,
+            data: data,
+            retryCount: retryCount + 1
+          };
+          this.addLogEntry(successLog);
+          
           return;
         }
       } catch (error) {
         retryCount++;
         crawlerLogger.error(`第${retryCount}次尝试失败: ${error.message}`);
         
+        const errorLog = {
+          timestamp: new Date(),
+          action: 'error',
+          error: error.message,
+          retryCount: retryCount
+        };
+        this.addLogEntry(errorLog);
+        
         if (retryCount < this.maxRetries) {
           crawlerLogger.info(`${this.retryDelay/1000}秒后重试...`);
           await this.delay(this.retryDelay);
         } else {
           crawlerLogger.error(`爬取失败，已重试${this.maxRetries}次: ${error.message}`);
+          
+          const failLog = {
+            timestamp: new Date(),
+            action: 'failed',
+            error: error.message,
+            retryCount: retryCount
+          };
+          this.addLogEntry(failLog);
         }
       }
     }
