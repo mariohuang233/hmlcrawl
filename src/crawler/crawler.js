@@ -148,24 +148,34 @@ class ElectricityCrawler {
 
       // 如果上述方法没找到，尝试查找包含特定关键词的元素
       if (remainingKwh === null) {
-        const keywords = ['剩余', '余额', '电量', 'kWh', '度'];
-        for (const keyword of keywords) {
-          const elements = document.querySelectorAll('*');
-          for (const element of elements) {
-            const text = element.textContent.trim();
-            if (text.includes(keyword)) {
-              const match = text.match(/(\d+\.?\d*)/);
-              if (match) {
-                const num = parseFloat(match[1]);
-                if (num > 0 && num < 1000) {
-                  remainingKwh = num;
-                  crawlerLogger.info(`通过关键词"${keyword}"找到电量: ${num}`);
-                  break;
+        crawlerLogger.info('尝试通过关键词搜索剩余电量...');
+        // 查找包含"剩余电量:"的文本
+        const allText = document.body.textContent || document.body.innerText || '';
+        const remainingMatch = allText.match(/剩余电量:\s*(\d+\.?\d*)\s*kWh/i);
+        if (remainingMatch) {
+          remainingKwh = parseFloat(remainingMatch[1]);
+          crawlerLogger.info(`通过正则找到剩余电量: ${remainingKwh} kWh`);
+        } else {
+          // 备用方法：查找所有包含"剩余"的元素
+          const keywords = ['剩余', '余额', '电量', 'kWh'];
+          for (const keyword of keywords) {
+            const elements = document.querySelectorAll('*');
+            for (const element of elements) {
+              const text = element.textContent.trim();
+              if (text.includes(keyword)) {
+                const match = text.match(/(\d+\.?\d*)/);
+                if (match) {
+                  const num = parseFloat(match[1]);
+                  if (num > 0 && num < 1000) {
+                    remainingKwh = num;
+                    crawlerLogger.info(`通过关键词"${keyword}"找到电量: ${num}`);
+                    break;
+                  }
                 }
               }
             }
+            if (remainingKwh !== null) break;
           }
-          if (remainingKwh !== null) break;
         }
       }
 
