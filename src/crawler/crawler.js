@@ -124,7 +124,14 @@ class ElectricityCrawler {
     try {
       const html = await this.makeHttpRequest(this.url);
       crawlerLogger.info(`获取HTML成功，长度: ${html.length} 字符`);
-      crawlerLogger.info(`HTML前500字符: ${html.substring(0, 500)}`);
+      
+      // 添加调试日志到日志记录
+      this.addLogEntry({
+        timestamp: new Date(),
+        action: 'debug',
+        info: `HTML长度: ${html.length}字符`,
+        htmlPreview: html.substring(0, 300)
+      });
       
       const dom = new JSDOM(html);
       const document = dom.window.document;
@@ -135,10 +142,23 @@ class ElectricityCrawler {
       // 首先尝试查找所有数字，然后筛选出合理的电量值
       const allText = document.body ? document.body.textContent : '';
       crawlerLogger.info(`提取的文本长度: ${allText.length}`);
-      crawlerLogger.info(`文本前500字符: ${allText.substring(0, 500)}`);
+      
+      this.addLogEntry({
+        timestamp: new Date(),
+        action: 'debug',
+        info: `文本长度: ${allText.length}字符`,
+        textPreview: allText.substring(0, 300)
+      });
       
       const numberMatches = allText.match(/\d+\.?\d*/g);
       crawlerLogger.info(`找到数字匹配: ${numberMatches ? numberMatches.length : 0} 个`);
+      
+      this.addLogEntry({
+        timestamp: new Date(),
+        action: 'debug',
+        info: `找到数字: ${numberMatches ? numberMatches.length : 0} 个`,
+        numbers: numberMatches ? numberMatches.slice(0, 20) : []
+      });
       
       if (numberMatches) {
         // 筛选出合理的电量值（通常在0-1000之间，且包含小数点）
@@ -189,6 +209,13 @@ class ElectricityCrawler {
       }
 
       if (remainingKwh === null) {
+        // 记录解析失败的详细信息
+        this.addLogEntry({
+          timestamp: new Date(),
+          action: 'parse_failed',
+          info: '无法解析剩余电量',
+          allTextPreview: allText.substring(0, 1000)
+        });
         throw new Error('无法从网页中解析出剩余电量数据');
       }
 
