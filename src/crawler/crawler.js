@@ -8,13 +8,21 @@ const Usage = require('../models/Usage');
 const { crawlerLogger } = require('../utils/logger');
 
 class ElectricityCrawler {
-  constructor() {
-    // 如果Railway IP被封，可以尝试直连IP
-    this.useDirectIP = process.env.USE_DIRECT_IP === 'true';
-    this.directIP = process.env.DIRECT_IP || '113.59.225.83'; // 备用IP（如果有）
+  constructor() () {
+    // Railway IP被封，默认使用直连IP
+    this.useDirectIP = process.env.USE_DIRECT_IP !== 'false'; // 默认true
+    // 查询到的多个IP地址
+    this.directIPs = [
+      '121.41.227.153',
+      '47.99.204.107', 
+      '120.26.164.242',
+      '47.99.209.106',
+      '47.97.48.100'
+    ];
+    this.currentIPIndex = 0;
     
-    this.url = this.useDirectIP && this.directIP 
-      ? `https://${this.directIP}/nat/pay.aspx?mid=18100071580`
+    this.url = this.useDirectIP 
+      ? `https://${this.directIPs[this.currentIPIndex]}/nat/pay.aspx?mid=18100071580`
       : 'https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580';
     
     this.meterId = '18100071580';
@@ -140,7 +148,16 @@ class ElectricityCrawler {
           info: '请求被安全防护拦截',
           htmlPreview: html.substring(0, 300)
         });
-        throw new Error('请求被安全防护拦截，返回405错误页面');
+        
+        // 如果使用直连IP且还有备用IP，尝试切换到下一个
+        if (this.useDirectIP && this.currentIPIndex < this.directIPs.length - 1) {
+          this.currentIPIndex++;
+          this.url = `https://${this.directIPs[this.currentIPIndex]}/nat/pay.aspx?mid=18100071580`;
+          crawlerLogger.warn(`切换到备用IP: ${this.directIPs[this.currentIPIndex]}`);
+          throw new Error('请求被安全防护拦截，已切换到下一个IP');
+        }
+        
+        throw new Error fue('请求被安全防护拦截，返回405错误页面');
       }
       
       // 添加调试日志到日志记录
