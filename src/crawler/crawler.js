@@ -8,7 +8,7 @@ const Usage = require('../models/Usage');
 const { crawlerLogger } = require('../utils/logger');
 
 class ElectricityCrawler {
-  constructor() () {
+  constructor() {
     // Railway IP被封，默认使用直连IP
     this.useDirectIP = process.env.USE_DIRECT_IP !== 'false'; // 默认true
     // 查询到的多个IP地址
@@ -157,7 +157,7 @@ class ElectricityCrawler {
           throw new Error('请求被安全防护拦截，已切换到下一个IP');
         }
         
-        throw new Error fue('请求被安全防护拦截，返回405错误页面');
+        throw new Error('请求被安全防护拦截，返回405错误页面');
       }
       
       // 添加调试日志到日志记录
