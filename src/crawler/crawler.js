@@ -9,9 +9,11 @@ const { crawlerLogger } = require('../utils/logger');
 
 class ElectricityCrawler {
   constructor() {
-    // 暂时禁用直连IP（SSL证书问题）
-    this.useDirectIP = process.env.USE_DIRECT_IP === 'true'; // 默认false
-    // 查询到的多个IP地址
+    // 代理配置（如果有HTTP代理）
+    this.proxy = process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
+    
+    // 直连IP配置
+    this.useDirectIP = process.env.USE_DIRECT_IP === 'true';
     this.directIPs = [
       '121.41.227.153',
       '47.99.204.107', 
@@ -21,9 +23,11 @@ class ElectricityCrawler {
     ];
     this.currentIPIndex = 0;
     
-    this.url = this.useDirectIP 
-      ? `https://${this.directIPs[this.currentIPIndex]}/nat/pay.aspx?mid=18100071580`
-      : 'https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580';
+    this.baseUrl = this.useDirectIP 
+      ? `https://${this.directIPs[this.currentIPIndex]}`
+      : 'https://www.wap.cnyiot.com';
+    
+    this.url = `${this.baseUrl}/nat/pay.aspx?mid=18100071580`;
     
     this.meterId = '18100071580';
     this.meterName = '2759弄18号402阳台';
