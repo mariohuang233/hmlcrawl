@@ -9,6 +9,10 @@ const { crawlerLogger } = require('../utils/logger');
 
 class ElectricityCrawler {
   constructor() {
+    // Vercel中间代理配置（优先使用）
+    this.vercelProxyUrl = process.env.VERCEL_PROXY_URL;
+    this.useVercelProxy = !!this.vercelProxyUrl;
+    
     // 代理配置（如果有HTTP代理）
     this.proxy = process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
     
@@ -16,18 +20,19 @@ class ElectricityCrawler {
     this.useDirectIP = process.env.USE_DIRECT_IP === 'true';
     this.directIPs = [
       '121.41.227.153',
-      '47.99.204.107', 
+      '47.99.204.107',
       '120.26.164.242',
       '47.99.209.106',
       '47.97.48.100'
     ];
     this.currentIPIndex = 0;
     
-    this.baseUrl = this.useDirectIP 
-      ? `https://${this.directIPs[this.currentIPIndex]}`
-      : 'https://www.wap.cnyiot.com';
-    
-    this.url = `${this.baseUrl}/nat/pay.aspx?mid=18100071580`;
+    // 优先使用Vercel代理
+    this.url = this.useVercelProxy 
+      ? this.vercelProxyUrl
+      : this.useDirectIP 
+        ? `https://${this.directIPs[this.currentIPIndex]}/nat/pay.aspx?mid=18100071580`
+        : 'https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580';
     
     this.meterId = '18100071580';
     this.meterName = '2759弄18号402阳台';
