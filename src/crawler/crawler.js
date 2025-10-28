@@ -9,7 +9,7 @@ const { crawlerLogger } = require('../utils/logger');
 
 class ElectricityCrawler {
   constructor() {
-    this.url = 'http://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580';
+    this.url = 'https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580';
     this.meterId = '18100071580';
     this.meterName = '2759弄18号402阳台';
     this.maxRetries = 3;
@@ -212,19 +212,18 @@ class ElectricityCrawler {
         method: 'GET',
         headers: {
           'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-US;q=0.7',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
           'Accept-Encoding': 'gzip, deflate, br',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache',
+          'Cache-Control': 'max-age=0',
           'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1',
+          'Priority': 'u=0, i',
           'Sec-Fetch-Dest': 'document',
           'Sec-Fetch-Mode': 'navigate',
           'Sec-Fetch-Site': 'none',
           'Sec-Fetch-User': '?1',
-          'DNT': '1',
-          'Referer': 'https://www.google.com/',
+          'Upgrade-Insecure-Requests': '1',
+          'Cookie': 'ASP.NET_SessionId=nfjamz3w0ghy1ylk0va0lmc0; acw_tc=0a065e8c17616366073213047e304fa859766a718b4189c9e92b7f0476235f; SERVERID=e4be121af3f3646cf63ced9eae547fd4|1761636607|1761636607; SERVERCORSID=e4be121af3f3646cf63ced9eae547fd4|1761636607|1761636607',
           'Host': urlObj.hostname
         },
         timeout: 45000 // 增加超时时间
