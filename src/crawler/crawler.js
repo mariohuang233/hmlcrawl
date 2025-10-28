@@ -280,7 +280,7 @@ class ElectricityCrawler {
           'Sec-Fetch-Mode': 'navigate',
           'Sec-Fetch-Site': 'same-origin',
           'Sec-Fetch-User': '?1',
-          'Cookie': 'ASP.NET_SessionId=nfjamz3w0ghy1ylk0va0lmc0; acw_tc=0a065e8c17616366073213047e304fa859766a718b4189c9e92b7f0476235f; SERVERID=e4be121af3f3646cf63ced9eae547fd4|1761638078|1761636607; SERVERCORSID=e4be121af3f3646cf63ced9eae547fd4|1761638078|1761636607',
+          // 不发送Cookie，让服务器生成新会话
           'Referer': 'https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580',
           'Host': urlObj.hostname
         },
