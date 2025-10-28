@@ -9,7 +9,14 @@ const { crawlerLogger } = require('../utils/logger');
 
 class ElectricityCrawler {
   constructor() {
-    this.url = 'https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580';
+    // 如果Railway IP被封，可以尝试直连IP
+    this.useDirectIP = process.env.USE_DIRECT_IP === 'true';
+    this.directIP = process.env.DIRECT_IP || '113.59.225.83'; // 备用IP（如果有）
+    
+    this.url = this.useDirectIP && this.directIP 
+      ? `https://${this.directIP}/nat/pay.aspx?mid=18100071580`
+      : 'https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580';
+    
     this.meterId = '18100071580';
     this.meterName = '2759弄18号402阳台';
     this.maxRetries = 3;
@@ -282,7 +289,8 @@ class ElectricityCrawler {
           'Sec-Fetch-User': '?1',
           // 不发送Cookie，让服务器生成新会话
           'Referer': 'http://www.wap.cnyiot.com/',
-          'Host': urlObj.hostname
+          'Host': 'www.wap.cnyiot.com'  // 始终使用原始Host，即使直连IP
+
         },
         timeout: 45000 // 增加超时时间
       };
