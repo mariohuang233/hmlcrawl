@@ -1,6 +1,6 @@
 {
   "name": "electricity-middleware",
-  "version": "1.0.0",
+  ""version": "1.0.0"",
   "description": "电力数据中间层代理",
   "main": "api/fetch.js",
   "scripts": {
@@ -9,6 +9,9 @@
   },
   "keywords": ["proxy", "middleware"],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  }
 }
 
