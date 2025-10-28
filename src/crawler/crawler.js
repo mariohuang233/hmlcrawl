@@ -9,9 +9,9 @@ const { crawlerLogger } = require('../utils/logger');
 
 class ElectricityCrawler {
   constructor() {
-    // Vercel中间代理配置（优先使用）
-    this.vercelProxyUrl = process.env.VERCEL_PROXY_URL;
-    this.useVercelProxy = !!this.vercelProxyUrl;
+    // 通用代理配置（支持Vercel、本地代理等）
+    this.proxyUrl = process.env.PROXY_URL || process.env.VERCEL_PROXY_URL;
+    this.useProxy = !!this.proxyUrl;
     
     // 代理配置（如果有HTTP代理）
     this.proxy = process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
@@ -27,12 +27,15 @@ class ElectricityCrawler {
     ];
     this.currentIPIndex = 0;
     
-    // 优先使用Vercel代理
-    this.url = this.useVercelProxy 
-      ? this.vercelProxyUrl
+    // 目标URL
+    this.targetUrl = 'https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580';
+    
+    // 如果有代理，使用代理；否则使用直连
+    this.url = this.useProxy 
+      ? this.proxyUrl
       : this.useDirectIP 
         ? `https://${this.directIPs[this.currentIPIndex]}/nat/pay.aspx?mid=18100071580`
-        : 'https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580';
+        : this.targetUrl;
     
     this.meterId = '18100071580';
     this.meterName = '2759弄18号402阳台';
@@ -42,6 +45,8 @@ class ElectricityCrawler {
     // 存储最近的日志（最多100条）
     this.logEntries = [];
     this.maxLogEntries = 100;
+    
+    crawlerLogger.info(`爬虫配置: 使用代理=${this.useProxy}, 直连IP=${this.useDirectIP}`);
   }
   
   // 添加日志条目
