@@ -9,8 +9,8 @@ const { crawlerLogger } = require('../utils/logger');
 
 class ElectricityCrawler {
   constructor() {
-    // Railway IP被封，默认使用直连IP
-    this.useDirectIP = process.env.USE_DIRECT_IP !== 'false'; // 默认true
+    // 暂时禁用直连IP（SSL证书问题）
+    this.useDirectIP = process.env.USE_DIRECT_IP === 'true'; // 默认false
     // 查询到的多个IP地址
     this.directIPs = [
       '121.41.227.153',
