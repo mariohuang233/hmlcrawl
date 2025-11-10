@@ -316,11 +316,16 @@ class ElectricityCrawler {
           'Upgrade-Insecure-Requests': '1',
           'Sec-Fetch-Dest': 'document',
           'Sec-Fetch-Mode': 'navigate',
-          'Sec-Fetch-Site': 'none',
+          // 在访问代理域名（loca.lt/localhost/127.0.0.1）时，使用代理域名作为Host，避免被localtunnel安全页拦截
+          'Sec-Fetch-Site': ['loca.lt', 'localhost', '127.0.0.1'].some(h => urlObj.hostname.endsWith(h)) ? 'same-origin' : 'none',
           'Sec-Fetch-User': '?1',
           // 不发送Cookie，让服务器生成新会话
-          'Referer': 'http://www.wap.cnyiot.com/',
-          'Host': 'www.wap.cnyiot.com'  // 始终使用原始Host，即使直连IP
+          'Referer': ['loca.lt', 'localhost', '127.0.0.1'].some(h => urlObj.hostname.endsWith(h))
+            ? `${urlObj.protocol}//${urlObj.hostname}/`
+            : 'http://www.wap.cnyiot.com/',
+          'Host': ['loca.lt', 'localhost', '127.0.0.1'].some(h => urlObj.hostname.endsWith(h))
+            ? urlObj.hostname
+            : 'www.wap.cnyiot.com'
 
         },
         timeout: 45000 // 增加超时时间
