@@ -14,7 +14,7 @@ const https = require('https');
 const { URL } = require('url');
 const zlib = require('zlib');
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const TARGET_URL = 'https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580';
 
 const server = http.createServer((req, res) => {
@@ -24,12 +24,14 @@ const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
   if (req.method === 'OPTIONS') {
+    res.writeHead(204);
     return res.end();
   }
   
   // 只处理GET请求
   if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.writeHead(405, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ error: 'Method not allowed' }));
   }
   
   console.log(`[${new Date().toISOString()}] 收到请求: ${req.url}`);
@@ -95,33 +97,37 @@ const server = http.createServer((req, res) => {
       // 检查是否被拦截
       if (data.includes('<title>405</title>') || data.includes('安全防护')) {
         console.log('⚠️  被安全防护拦截');
-        res.status(500).json({
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
           error: '被拦截',
           html: data.substring(0, 1000),
           isBlocked: true
-        });
+        }));
       } else {
         console.log('✅ 成功获取数据');
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.send(data);
+        return res.end(data);
       }
     });
     
     stream.on('error', (error) => {
       console.error('解压错误:', error);
-      res.status(500).json({ error: error.message });
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: error.message }));
     });
   });
   
   proxyReq.on('error', (error) => {
     console.error('请求错误:', error);
-    res.status(500).json({ error: error.message });
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ error: error.message }));
   });
   
   proxyReq.on('timeout', () => {
     console.error('请求超时');
     proxyReq.destroy();
-    res.status(504).json({ error: 'Request timeout' });
+    res.writeHead(504, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ error: 'Request timeout' }));
   });
 });
 
