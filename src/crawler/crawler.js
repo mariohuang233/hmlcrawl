@@ -308,7 +308,7 @@ class ElectricityCrawler {
         headers: {
           'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
           'Accept-Encoding': 'gzip, deflate, br',
           'Cache-Control': 'max-age=0',
           'Connection': 'keep-alive',
@@ -326,6 +326,21 @@ class ElectricityCrawler {
         timeout: 45000 // 增加超时时间
       };
 
+      // 在通过 localtunnel/本地代理时跳过自签名证书校验，避免 self-signed certificate 错误
+      try {
+        if (isHttps) {
+          const skipHosts = ['loca.lt', 'localhost', '127.0.0.1'];
+          const shouldSkipTlsVerify = skipHosts.some(h => options.hostname.endsWith(h));
+          if (shouldSkipTlsVerify) {
+            options.agent = new https.Agent({ rejectUnauthorized: false });
+            // 额外防御：避免主机名校验失败
+            options.checkServerIdentity = () => undefined;
+          }
+        }
+      } catch (_) {
+        // 兜底：忽略设置失败，保持默认行为
+      }
+
       // 添加更长的随机延迟，模拟真实用户
       const delay = Math.floor(Math.random() * 3000) + 2000; // 2-5秒随机延迟
       
@@ -333,8 +348,9 @@ class ElectricityCrawler {
         const req = httpModule.request(options, (res) => {
           let data = '';
           
-          // 处理gzip压缩
-          if (res.headers['content-encoding'] === 'gzip') {
+          // 处理gzip/deflate/br压缩
+          const encoding = (res.headers['content-encoding'] || '').toLowerCase();
+          if (encoding === 'gzip') {
             const zlib = require('zlib');
             const gunzip = zlib.createGunzip();
             res.pipe(gunzip);
@@ -347,7 +363,7 @@ class ElectricityCrawler {
             gunzip.on('error', (error) => {
               reject(error);
             });
-          } else if (res.headers['content-encoding'] === 'deflate') {
+          } else if (encoding === 'deflate') {
             const zlib = require('zlib');
             const inflate = zlib.createInflate();
             res.pipe(inflate);
@@ -358,6 +374,19 @@ class ElectricityCrawler {
               resolve(data);
             });
             inflate.on('error', (error) => {
+              reject(error);
+            });
+          } else if (encoding === 'br') {
+            const zlib = require('zlib');
+            const brotli = zlib.createBrotliDecompress();
+            res.pipe(brotli);
+            brotli.on('data', (chunk) => {
+              data += chunk.toString();
+            });
+            brotli.on('end', () => {
+              resolve(data);
+            });
+            brotli.on('error', (error) => {
               reject(error);
             });
           } else {
