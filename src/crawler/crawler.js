@@ -155,7 +155,7 @@ class ElectricityCrawler {
       crawlerLogger.info(`获取HTML成功，长度: ${html.length} 字符`);
       
       // 检查是否被拦截
-      if (html.includes('blocked') || html.includes('<title>405</title>') || html.includes('安全威胁') || html.includes('被阻断')) {
+      if (html.includes('blocked') || html.includes('<title>405</title>') || html.includes('安全威胁') || html.includes('被阻断') || html.includes('Tunnel website ahead!')) {
         this.addLogEntry({
           timestamp: new Date(),
           action: 'blocked',
@@ -163,12 +163,30 @@ class ElectricityCrawler {
           htmlPreview: html.substring(0, 300)
         });
         
+        // 如果当前使用代理且是localtunnel，优先切换到VERCEL代理
+        const vercelUrl = process.env.VERCEL_PROXY_URL;
+        if (this.useProxy && typeof this.proxyUrl === 'string' && this.proxyUrl.includes('loca.lt') && vercelUrl) {
+          this.url = vercelUrl;
+          this.proxyUrl = vercelUrl;
+          crawlerLogger.warn(`代理被拦截，切换到Vercel代理: ${vercelUrl}`);
+          throw new Error('请求被安全防护拦截，切换Vercel代理重试');
+        }
+
         // 如果使用直连IP且还有备用IP，尝试切换到下一个
         if (this.useDirectIP && this.currentIPIndex < this.directIPs.length - 1) {
           this.currentIPIndex++;
           this.url = `https://${this.directIPs[this.currentIPIndex]}/nat/pay.aspx?mid=18100071580`;
           crawlerLogger.warn(`切换到备用IP: ${this.directIPs[this.currentIPIndex]}`);
           throw new Error('请求被安全防护拦截，已切换到下一个IP');
+        }
+
+        // 如果当前使用代理但没有Vercel代理，尝试回退到直连IP
+        if (this.useProxy && !vercelUrl) {
+          this.useDirectIP = true;
+          this.currentIPIndex = 0;
+          this.url = `https://${this.directIPs[this.currentIPIndex]}/nat/pay.aspx?mid=18100071580`;
+          crawlerLogger.warn(`代理被拦截，回退到直连IP: ${this.directIPs[this.currentIPIndex]}`);
+          throw new Error('请求被安全防护拦截，回退直连IP重试');
         }
         
         throw new Error('请求被安全防护拦截，返回405错误页面');
@@ -300,6 +318,10 @@ class ElectricityCrawler {
       const isHttps = urlObj.protocol === 'https:';
       const httpModule = isHttps ? https : http;
       
+      const targetHost = 'www.wap.cnyiot.com';
+      const proxyHosts = ['loca.lt', 'localhost', '127.0.0.1', 'vercel.app', 'ngrok-free.app'];
+      const isProxyHost = proxyHosts.some(h => urlObj.hostname.endsWith(h));
+
       const options = {
         hostname: urlObj.hostname,
         port: urlObj.port || (isHttps ? 443 : 80),
@@ -316,16 +338,11 @@ class ElectricityCrawler {
           'Upgrade-Insecure-Requests': '1',
           'Sec-Fetch-Dest': 'document',
           'Sec-Fetch-Mode': 'navigate',
-          // 在访问代理域名（loca.lt/localhost/127.0.0.1）时，使用代理域名作为Host，避免被localtunnel安全页拦截
-          'Sec-Fetch-Site': ['loca.lt', 'localhost', '127.0.0.1'].some(h => urlObj.hostname.endsWith(h)) ? 'same-origin' : 'none',
+          'Sec-Fetch-Site': isProxyHost ? 'same-origin' : 'none',
           'Sec-Fetch-User': '?1',
           // 不发送Cookie，让服务器生成新会话
-          'Referer': ['loca.lt', 'localhost', '127.0.0.1'].some(h => urlObj.hostname.endsWith(h))
-            ? `${urlObj.protocol}//${urlObj.hostname}/`
-            : 'http://www.wap.cnyiot.com/',
-          'Host': ['loca.lt', 'localhost', '127.0.0.1'].some(h => urlObj.hostname.endsWith(h))
-            ? urlObj.hostname
-            : 'www.wap.cnyiot.com'
+          'Referer': isProxyHost ? `${urlObj.protocol}//${urlObj.hostname}/` : `https://${targetHost}/`,
+          'Host': isProxyHost ? urlObj.hostname : targetHost
 
         },
         timeout: 45000 // 增加超时时间
