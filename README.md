@@ -92,6 +92,21 @@ npm start
    - `PORT`: 端口号（Railway会自动分配）
 3. 部署完成后，Railway会自动启动服务
 
+#### 本地爬虫 + Railway 服务
+
+如果你希望在本地电脑进行爬取，并把数据写入同一个 MongoDB，同时把 Web/API 部署到 Railway，请按以下步骤：
+
+- 在 Railway 环境变量中设置：`ENABLE_CRAWLER=false`，让线上实例不自动启动爬虫。
+- 在本地创建 `.env.local`（或直接使用系统环境变量）并配置：
+  - `MONGO_URI` 指向与 Railway 相同的数据库
+  - 可选：`USE_DIRECT_IP=true`（建议直连，不走 localtunnel）
+  - 可选：`PROXY_URL=http://localhost:3000`（如使用本地代理）
+- 本地启动爬虫：
+  ```bash
+  npm run crawler:local
+  ```
+- 验证数据：访问 Railway 的 `/api/latest`，应能看到数据随着本地爬虫周期性更新。
+
 ### Zeabur 部署
 
 项目已包含完整的Zeabur配置文件：

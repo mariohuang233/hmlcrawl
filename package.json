@@ -9,7 +9,8 @@
     "build": "cd frontend && npm ci --prefer-offline --no-audit && npm run build",
     "prebuild": "echo 'Building frontend...'",
     "postbuild": "echo 'Build completed!'",
-    "diagnose": "node diagnose.js"
+    "diagnose": "node diagnose.js",
+    "crawler:local": "node scripts/run-local-crawler.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

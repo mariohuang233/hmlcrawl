@@ -9,6 +9,7 @@ require('dotenv').config();
 const logger = require('./src/utils/logger');
 const crawler = require('./src/crawler/crawler');
 const apiRoutes = require('./src/api/routes');
+const ENABLE_CRAWLER = process.env.ENABLE_CRAWLER === 'true';
 
 const app = express();
 
@@ -97,8 +98,13 @@ mongoose.connect(MONGO_URI, mongooseOptions)
   logger.info('MongoDB连接成功');
   logger.info(`连接地址: ${MONGO_URI.replace(/\/\/.*@/, '//***@')}`); // 隐藏密码
   
-  // 启动定时爬虫
-  crawler.start();
+  // 启动定时爬虫（由环境变量控制）
+  if (ENABLE_CRAWLER) {
+    logger.info('ENABLE_CRAWLER=true，启动定时爬虫');
+    crawler.start();
+  } else {
+    logger.info('ENABLE_CRAWLER=false，当前实例不自动启动爬虫');
+  }
 })
 .catch((error) => {
   logger.error('MongoDB连接失败:', error.message);
