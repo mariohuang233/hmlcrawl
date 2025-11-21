@@ -10,7 +10,8 @@
     "prebuild": "echo 'Building frontend...'",
     "postbuild": "echo 'Build completed!'",
     "diagnose": "node diagnose.js",
-    "crawler:local": "node scripts/run-local-crawler.js"
+    "crawler:local": "node scripts/run-local-crawler.js",
+    "oneclick": "node scripts/oneclick.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

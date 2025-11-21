@@ -107,6 +107,23 @@ npm start
   ```
 - 验证数据：访问 Railway 的 `/api/latest`，应能看到数据随着本地爬虫周期性更新。
 
+#### 一键运行（本地）
+
+- 默认直连模式（推荐，避免 localtunnel 405）：
+  ```bash
+  npm run oneclick
+  ```
+- 代理模式（需要公网入口时使用）：
+  ```bash
+  ONECLICK_MODE=proxy npm run oneclick
+  ```
+- 可选：指定本地环境文件路径
+  ```bash
+  LOCAL_ENV_PATH=.env.local npm run oneclick
+  ```
+
+说明：代理模式会启动本地代理并尝试 LocalTunnel 暴露公网地址，失败时会提示使用 `ngrok http 3000`。Railway 如需走公网入口，可将 `PROXY_URL` 配置为脚本输出的公网地址。
+
 ### Zeabur 部署
 
 项目已包含完整的Zeabur配置文件：
