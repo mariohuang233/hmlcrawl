@@ -20,7 +20,6 @@ require('dotenv').config({ path: envPath });
 
 const mongoose = require('mongoose');
 const logger = require('../src/utils/logger');
-const crawler = require('../src/crawler/crawler');
 
 const MODE = (process.env.ONECLICK_MODE || 'direct').toLowerCase();
 const PORT = Number(process.env.PORT) || 3000;
@@ -75,11 +74,16 @@ async function connectMongoAndStartCrawler(env) {
   await mongoose.connect(MONGO_URI, mongooseOptions);
   logger.info('MongoDB连接成功');
 
+  // 在加载爬虫前设置运行环境
   Object.assign(process.env, env);
   logger.info(`爬虫启动参数: USE_DIRECT_IP=${process.env.USE_DIRECT_IP || 'false'} PROXY_URL=${process.env.PROXY_URL || ''}`);
 
+  // 动态加载爬虫，确保读取到最新环境变量
+  const crawler = require('../src/crawler/crawler');
   crawler.start();
   logger.info('爬虫定时任务已启动；按 Ctrl+C 退出');
+  // 立即执行一次手动采集，便于验证
+  await crawler.manualCrawl();
 }
 
 (async () => {
@@ -105,7 +109,9 @@ async function connectMongoAndStartCrawler(env) {
       });
     } else {
       // 直连模式：不依赖公网入口，使用直连IP抓取
-      await connectMongoAndStartCrawler({ USE_DIRECT_IP: 'true' });
+      // 在模块加载前设置直连模式
+      process.env.USE_DIRECT_IP = process.env.USE_DIRECT_IP || 'true';
+      await connectMongoAndStartCrawler({ USE_DIRECT_IP: process.env.USE_DIRECT_IP });
       logger.info('当前为直连模式，已避开 localtunnel 的 405 安全页拦截风险');
       logger.info('如需公网入口再切换：ONECLICK_MODE=proxy npm run oneclick');
     }
