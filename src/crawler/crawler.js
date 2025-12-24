@@ -450,4 +450,63 @@ class ElectricityCrawler {
   }
 }
 
-module.exports = new ElectricityCrawler();
+// 新增: 仅解析HTML用于前端用户上报逻辑，不关心url，只处理html文本
+async function parseHtml(html) {
+  const { JSDOM } = require('jsdom');
+  const meterId = '18100071580';    // 如需动态传，可扩展参数
+  const meterName = '2759弄18号402阳台';
+
+  const dom = new JSDOM(html);
+  const document = dom.window.document;
+  let remainingKwh = null;
+  const allText = document.body ? document.body.textContent : '';
+
+  // 复用老逻辑，数字规则
+  const numberMatches = allText.match(/\d+\.?\d*/g);
+  if (numberMatches) {
+    const validNumbers = numberMatches
+      .map(num => parseFloat(num))
+      .filter(num => num > 0 && num < 1000 && num.toString().includes('.'))
+      .sort((a, b) => b - a);
+    if (validNumbers.length > 0) {
+      remainingKwh = validNumbers[0];
+    }
+  }
+  // 关键词匹配兜底
+  if (remainingKwh === null) {
+    const remainingMatch = allText.match(/剩余电量:\s*(\d+\.?\d*)\s*kWh/i);
+    if (remainingMatch) {
+      remainingKwh = parseFloat(remainingMatch[1]);
+    } else {
+      const keywords = ['剩余', '余额', '电量', 'kWh'];
+      for (const keyword of keywords) {
+        const elements = document.querySelectorAll('*');
+        for (const element of elements) {
+          const text = element.textContent.trim();
+          if (text.includes(keyword)) {
+            const match = text.match(/(\d+\.?\d*)/);
+            if (match) {
+              const num = parseFloat(match[1]);
+              if (num > 0 && num < 1000) {
+                remainingKwh = num;
+                break;
+              }
+            }
+          }
+        }
+        if (remainingKwh !== null) break;
+      }
+    }
+  }
+
+  if (remainingKwh === null) throw new Error('无法解析剩余电量');
+  return {
+    meter_id: meterId,
+    meter_name: meterName,
+    remaining_kwh: remainingKwh,
+    collected_at: new Date()
+  };
+}
+
+module.exports = Object.assign(new ElectricityCrawler(), { parseHtml });
+

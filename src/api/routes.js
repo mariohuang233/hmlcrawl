@@ -883,4 +883,18 @@ router.use((err, req, res, next) => {
   });
 });
 
+// 新增：前端用户代理汇报抓取数据入口
+router.post('/reportData', async (req, res) => {
+  try {
+    const { data } = req.body;
+    if (!data) return res.status(400).json({ error: '缺少data参数' });
+    const parsed = await crawler.parseHtml(data);
+    await crawler.saveData(parsed);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
+

