@@ -14,8 +14,77 @@ const {
   getBeijingMonthEnd
 } = require('../utils/timezone');
 
-// 简单的内存缓存
-const cache = new Map();
+// 改进的内存缓存系统
+class Cache {
+  constructor(maxSize = 200, defaultTTL = 2 * 60 * 1000) {
+    this.cache = new Map();
+    this.maxSize = maxSize;
+    this.defaultTTL = defaultTTL;
+    this.hits = 0;
+    this.misses = 0;
+    this.cleanupInterval = setInterval(() => this.cleanup(), 5 * 60 * 1000); // 每5分钟清理一次过期缓存
+  }
+
+  get(key) {
+    const entry = this.cache.get(key);
+    if (!entry) {
+      this.misses++;
+      return null;
+    }
+    
+    if (Date.now() - entry.timestamp > entry.ttl) {
+      this.cache.delete(key);
+      this.misses++;
+      return null;
+    }
+    
+    this.hits++;
+    return entry.data;
+  }
+
+  set(key, data, ttl = this.defaultTTL) {
+    // 如果缓存已满，清理最旧的10%条目
+    if (this.cache.size >= this.maxSize) {
+      const entriesToRemove = Math.ceil(this.maxSize * 0.1);
+      const oldestKeys = [...this.cache.entries()]
+        .sort((a, b) => a[1].timestamp - b[1].timestamp)
+        .slice(0, entriesToRemove)
+        .map(entry => entry[0]);
+      
+      oldestKeys.forEach(key => this.cache.delete(key));
+    }
+    
+    this.cache.set(key, { data, timestamp: Date.now(), ttl });
+  }
+
+  cleanup() {
+    const now = Date.now();
+    let cleaned = 0;
+    
+    for (const [key, entry] of this.cache.entries()) {
+      if (now - entry.timestamp > entry.ttl) {
+        this.cache.delete(key);
+        cleaned++;
+      }
+    }
+    
+    if (cleaned > 0) {
+      logger.info(`缓存清理: 移除了 ${cleaned} 个过期条目, 当前缓存大小: ${this.cache.size}`);
+    }
+  }
+
+  getStats() {
+    return {
+      size: this.cache.size,
+      hits: this.hits,
+      misses: this.misses,
+      hitRate: this.hits + this.misses > 0 ? (this.hits / (this.hits + this.misses) * 100).toFixed(1) + '%' : '0%'
+    };
+  }
+}
+
+// 创建全局缓存实例
+const cache = new Cache(200, 2 * 60 * 1000);
 const CACHE_TTL = 2 * 60 * 1000; // 2分钟缓存
 
 /**
@@ -26,25 +95,16 @@ const CACHE_TTL = 2 * 60 * 1000; // 2分钟缓存
 function cacheMiddleware(key, ttl = CACHE_TTL) {
   return (req, res, next) => {
     const cacheKey = `${key}_${req.url}`;
-    const cached = cache.get(cacheKey);
+    const cachedData = cache.get(cacheKey);
     
-    if (cached && Date.now() - cached.timestamp < ttl) {
-      return res.json(cached.data);
+    if (cachedData) {
+      return res.json(cachedData);
     }
     
     // 重写res.json以缓存响应
     const originalJson = res.json;
     res.json = function(data) {
-      cache.set(cacheKey, { data, timestamp: Date.now() });
-      // 清理过期缓存
-      if (cache.size > 100) {
-        const now = Date.now();
-        for (const [k, v] of cache.entries()) {
-          if (now - v.timestamp > ttl) {
-            cache.delete(k);
-          }
-        }
-      }
+      cache.set(cacheKey, data, ttl);
       return originalJson.call(this, data);
     };
     
@@ -53,11 +113,51 @@ function cacheMiddleware(key, ttl = CACHE_TTL) {
 }
 
 /**
- * 错误处理包装器
+ * 增强型错误处理包装器
  */
 function asyncHandler(fn) {
   return (req, res, next) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
+    Promise.resolve(fn(req, res, next)).catch(error => {
+      // 分类错误类型，提供更友好的错误信息
+      let errorMessage = error.message;
+      let statusCode = 500;
+      let errorType = 'internal_error';
+      
+      // 数据库错误
+      if (error.name === 'MongoError' || error.name === 'MongooseError') {
+        errorMessage = '数据库操作失败，请稍后重试';
+        errorType = 'database_error';
+      }
+      
+      // 验证错误
+      else if (error.name === 'ValidationError') {
+        errorMessage = '数据验证失败: ' + Object.values(error.errors).map(err => err.message).join(', ');
+        statusCode = 400;
+        errorType = 'validation_error';
+      }
+      
+      // 路径参数错误
+      else if (error.name === 'CastError') {
+        errorMessage = '无效的参数格式';
+        statusCode = 400;
+        errorType = 'parameter_error';
+      }
+      
+      // 404错误
+      else if (error.name === 'NotFoundError') {
+        errorMessage = '请求的资源不存在';
+        statusCode = 404;
+        errorType = 'not_found';
+      }
+      
+      // 创建自定义错误对象
+      const customError = new Error(errorMessage);
+      customError.originalError = error;
+      customError.statusCode = statusCode;
+      customError.errorType = errorType;
+      
+      next(customError);
+    });
   };
 }
 
@@ -69,13 +169,32 @@ function asyncHandler(fn) {
  */
 async function calculateElectricityPrediction(meterId, currentTime) {
   try {
-    // 获取不同时间窗口的数据
-    const hours6Ago = new Date(currentTime.getTime() - 6 * 60 * 60 * 1000);
-    const hours24Ago = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000);
+    // 获取不同时间窗口的数据（优化：直接从数据库获取最近7天数据，避免重复查询）
     const days7Ago = new Date(currentTime.getTime() - 7 * 24 * 60 * 60 * 1000);
     
-    // 获取数据
-    const data7Days = await Usage.getUsageInRange(meterId, days7Ago, currentTime);
+    // 使用findOne获取最新数据，比getUsageInRange更高效
+    const latestData = await Usage.findOne({ meter_id: meterId }).sort({ collected_at: -1 });
+    if (!latestData) {
+      return {
+        predicted_time: null,
+        hours_remaining: null,
+        consumption_rate: null,
+        status: 'insufficient_data',
+        message: '数据不足，无法预测',
+        data_points: 0
+      };
+    }
+    
+    const currentRemaining = latestData.remaining_kwh;
+    
+    // 获取7天内的所有数据（用于预测）
+    const data7Days = await Usage.find({
+      meter_id: meterId,
+      collected_at: {
+        $gte: days7Ago,
+        $lte: currentTime
+      }
+    }).sort({ collected_at: 1 }).lean(); // 使用lean()提高查询性能
     
     if (data7Days.length < 2) {
       return {
@@ -87,10 +206,6 @@ async function calculateElectricityPrediction(meterId, currentTime) {
         data_points: data7Days.length
       };
     }
-    
-    // 获取当前剩余电量
-    const latestData = data7Days[data7Days.length - 1];
-    const currentRemaining = latestData.remaining_kwh;
     
     // 预处理数据：移除充值异常点
     const cleanedData = removeRechargeAnomalies(data7Days);
@@ -106,6 +221,11 @@ async function calculateElectricityPrediction(meterId, currentTime) {
         has_recharge: data7Days.length > cleanedData.length
       };
     }
+    
+    // 预计算时间窗口边界（避免重复计算）
+    const now = currentTime.getTime();
+    const hours6Ago = new Date(now - 6 * 60 * 60 * 1000);
+    const hours24Ago = new Date(now - 24 * 60 * 60 * 1000);
     
     // 计算多窗口消耗速率
     const shortTermRate = calculateConsumptionRate(cleanedData, hours6Ago, currentTime);
@@ -142,7 +262,7 @@ async function calculateElectricityPrediction(meterId, currentTime) {
     const hoursRemaining = currentRemaining / weightedRate;
     
     // 计算预计用完时间
-    const predictedDepletionTime = new Date(currentTime.getTime() + hoursRemaining * 60 * 60 * 1000);
+    const predictedDepletionTime = new Date(now + hoursRemaining * 60 * 60 * 1000);
     
     // 检查预测是否有效
     if (predictedDepletionTime <= currentTime || hoursRemaining < 0) {
@@ -272,11 +392,19 @@ function calculateWeeklyPatternRate(data, currentTime) {
   // 获取当前小时
   const currentHour = currentTime.getHours();
   
+  // 预先计算时间窗口边界，避免重复计算
+  const hourLowerBound = (currentHour - 2 + 24) % 24;
+  const hourUpperBound = (currentHour + 2) % 24;
+  
   // 筛选相同时段的数据（±2小时容差）
-  const patternData = data.filter(d => {
+  const patternData = [];
+  for (const d of data) {
     const hour = d.collected_at.getHours();
-    return Math.abs(hour - currentHour) <= 2;
-  });
+    if ((hourLowerBound <= hourUpperBound && hour >= hourLowerBound && hour <= hourUpperBound) ||
+        (hourLowerBound > hourUpperBound && (hour >= hourLowerBound || hour <= hourUpperBound))) {
+      patternData.push(d);
+    }
+  }
   
   return calculateConsumptionRate(patternData, new Date(0), new Date());
 }

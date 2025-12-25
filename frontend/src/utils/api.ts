@@ -1,4 +1,4 @@
-const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
+export const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
 
 export interface ApiResponse<T> {
   data?: T;
@@ -22,10 +22,37 @@ export async function fetchAPI<T>(
         ...options?.headers,
       },
       ...options,
+      credentials: 'include',
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      
+      // 根据状态码提供更具体的错误信息
+      switch (response.status) {
+        case 400:
+          errorMessage = '请求参数错误，请检查输入';
+          break;
+        case 401:
+          errorMessage = '未授权访问，请重新登录';
+          break;
+        case 403:
+          errorMessage = '拒绝访问，没有权限';
+          break;
+        case 404:
+          errorMessage = '请求的资源不存在';
+          break;
+        case 500:
+          errorMessage = '服务器内部错误，请稍后重试';
+          break;
+        case 502:
+        case 503:
+        case 504:
+          errorMessage = '服务器暂时不可用，请稍后重试';
+          break;
+      }
+      
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -37,6 +64,10 @@ export async function fetchAPI<T>(
     return data as T;
   } catch (err) {
     if (err instanceof Error) {
+      // 网络错误处理
+      if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+        throw new Error('网络连接失败，请检查网络设置');
+      }
       throw err;
     }
     throw new Error('网络请求失败');

@@ -4,6 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
+const compression = require('compression');
 require('dotenv').config();
 
 const logger = require('./src/utils/logger');
@@ -13,32 +14,53 @@ const ENABLE_CRAWLER = process.env.ENABLE_CRAWLER === 'true';
 
 const app = express();
 
-// 数据过滤中间件 - 过滤14:40之后的脏数据
+// 数据过滤中间件 - 过滤特定时间之后的脏数据
 const filterDirtyData = (req, res, next) => {
-  const originalJson = res.json;
-  res.json = function(data) {
-    if (data && data.data && Array.isArray(data.data)) {
-      // 过滤掉今天14:40之后的数据
-      const cutoffTime = new Date(2025, 9, 23, 6, 40, 0); // UTC 6:40 = 北京时间 14:40
-      data.data = data.data.filter(item => {
-        if (item.collected_at) {
-          return new Date(item.collected_at) < cutoffTime;
-        }
-        return true;
-      });
-    }
-    originalJson.call(this, data);
-  };
+  // 只有在数据请求时才应用过滤，避免影响其他API响应
+  if (req.path.startsWith('/api/') && (req.path.includes('trend') || req.path.includes('overview'))) {
+    const originalJson = res.json;
+    res.json = function(data) {
+      if (data && data.data && Array.isArray(data.data)) {
+        // 过滤掉指定时间之后的数据
+        const cutoffTime = new Date(2025, 9, 23, 6, 40, 0); // UTC 6:40 = 北京时间 14:40
+        data.data = data.data.filter(item => {
+          if (item.collected_at) {
+            return new Date(item.collected_at) < cutoffTime;
+          }
+          return true;
+        });
+      }
+      originalJson.call(this, data);
+    };
+  }
   next();
 };
 
 const PORT = process.env.PORT || 3000;
 
 // 中间件
-app.use(helmet());
-app.use(cors());
-app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
-app.use(express.json());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "http:", "https:"]
+    }
+  }
+}));
+app.use(compression()); // 添加响应压缩中间件
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['*'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true
+}));
+app.use(morgan('combined', { 
+  stream: { write: message => logger.info(message.trim()) },
+  skip: (req, res) => res.statusCode < 400 // 只记录错误响应
+}));
+app.use(express.json({ limit: '1mb' })); // 限制JSON请求大小
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // 健康检查端点（用于Zeabur等平台）- 必须在静态文件之前
 app.get('/health', (req, res) => {
@@ -56,7 +78,12 @@ app.get('/ping', (req, res) => {
 });
 
 // 静态文件服务（前端构建文件）
-app.use(express.static(path.join(__dirname, 'frontend/build')));
+app.use(express.static(path.join(__dirname, 'frontend/build'), {
+  maxAge: '1d', // 设置静态文件缓存1天
+  etag: true, // 启用ETag
+  lastModified: true, // 启用Last-Modified
+  cacheControl: true // 启用Cache-Control头
+}));
 
 // API路由
 app.use('/api', apiRoutes);
@@ -65,6 +92,45 @@ app.use('/api', apiRoutes);
 app.get('*', (req, res) => {
   const indexPath = path.join(__dirname, 'frontend/build', 'index.html');
   res.sendFile(indexPath);
+});
+
+// 全局错误处理中间件
+app.use((error, req, res, next) => {
+  // 使用日志记录详细错误信息（包括原始错误）
+  if (error.originalError) {
+    logger.error('全局错误处理 - 原始错误:', error.originalError);
+  } else {
+    logger.error('全局错误处理 - 错误:', error);
+  }
+  
+  // 设置响应状态码和错误信息
+  const statusCode = error.statusCode || 500;
+  const errorMessage = error.message || '服务器内部错误';
+  const errorType = error.errorType || 'internal_error';
+  
+  // 返回友好的JSON错误响应
+  res.status(statusCode).json({
+    error: errorType,
+    message: errorMessage,
+    status: statusCode,
+    timestamp: new Date().toISOString(),
+    path: req.originalUrl,
+    method: req.method,
+    // 生产环境不返回详细错误信息
+    ...(process.env.NODE_ENV === 'development' && error.stack ? { stack: error.stack.split('\n') } : {})
+  });
+});
+
+// 404处理中间件
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'not_found',
+    message: '请求的API端点不存在',
+    status: 404,
+    timestamp: new Date().toISOString(),
+    path: req.originalUrl,
+    method: req.method
+  });
 });
 
 // MongoDB连接配置
@@ -82,6 +148,11 @@ const mongooseOptions = {
   useUnifiedTopology: true,
   serverSelectionTimeoutMS: 5000, // 5秒超时
   socketTimeoutMS: 45000, // 45秒socket超时
+  connectTimeoutMS: 10000, // 10秒连接超时
+  heartbeatFrequencyMS: 10000, // 10秒心跳检测
+  maxPoolSize: 10, // 连接池最大10个连接
+  minPoolSize: 2, // 连接池最小2个连接
+  waitQueueTimeoutMS: 3000, // 连接池等待超时3秒
 };
 
 // 启动服务器（即使MongoDB连接失败也启动，但会记录错误）

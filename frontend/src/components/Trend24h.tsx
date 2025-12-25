@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 // 使用fetch替代axios
-
-const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
+import { fetchAPI, retryRequest, formatErrorMessage } from '../utils/api';
 
 interface TrendData {
   time: string;
@@ -14,6 +13,7 @@ interface TrendData {
 const Trend24h: React.FC = () => {
   const [data, setData] = useState<TrendData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   
   // 使用Intersection Observer检测组件是否进入视口
@@ -45,17 +45,9 @@ const Trend24h: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/trend/24h`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const rawData = await response.json();
-      
-      if (rawData.error) {
-        throw new Error(rawData.message || rawData.error);
-      }
+      setError(null);
+      // 使用统一的API封装和重试机制
+      const rawData = await retryRequest(() => fetchAPI('/api/trend/24h'), 3, 1000);
       
       // 按15分钟间隔聚合数据
       const aggregatedData = aggregateDataBy15Min(rawData);
@@ -63,6 +55,8 @@ const Trend24h: React.FC = () => {
       setData(aggregatedData);
     } catch (error) {
       console.error('Error fetching 24h trend:', error);
+      const errorMessage = formatErrorMessage(error);
+      setError(errorMessage);
       // 设置空数据，避免白屏
       setData([]);
     } finally {
@@ -430,6 +424,42 @@ const Trend24h: React.FC = () => {
     );
   }
 
+  // 如果有错误，显示错误信息
+  if (error) {
+    return (
+      <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
+        <h2 className="card-title">过去24小时用电趋势</h2>
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'column',
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          height: '300px',
+          color: '#FF3B30',
+          fontSize: '14px',
+          padding: '20px'
+        }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
+          <p style={{ marginBottom: '16px', textAlign: 'center' }}>{error}</p>
+          <button 
+            onClick={fetchData}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#007AFF',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            重新加载
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // 如果数据为空，显示提示信息
   if (data.length === 0) {
     return (
@@ -443,7 +473,7 @@ const Trend24h: React.FC = () => {
           color: '#8E8E93',
           fontSize: '14px'
         }}>
-          暂无数据或数据加载中...
+          暂无数据可用
         </div>
       </div>
     );

@@ -6,8 +6,7 @@ import TodayUsage from './components/TodayUsage';
 import DailyTrend from './components/DailyTrend';
 import MonthlyTrend from './components/MonthlyTrend';
 import './App.css';
-
-const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
+import { fetchAPI, retryRequest, formatErrorMessage, API_BASE } from './utils/api';
 
 interface WindowAnalysis {
   rate: number;
@@ -70,6 +69,27 @@ interface OverviewData {
   };
 }
 
+interface LogEntry {
+  timestamp: string;
+  action: string;
+  duration?: string;
+  data?: any;
+  error?: string;
+  retryCount?: number;
+}
+
+interface LogResponse {
+  success: boolean;
+  logs: LogEntry[];
+  error?: string;
+}
+
+interface TriggerResponse {
+  success: boolean;
+  error?: string;
+  message?: string;
+}
+
 function App() {
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -84,37 +104,36 @@ function App() {
     // 用户代理分布式爬虫：通过前端主动请求目标网站并上报，受CORS限制
     if (window.location.hostname !== 'localhost') {
       fetch('https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580')
-        .then(res => res.text())
+        .then(res => {
+          if (!res.ok) throw new Error(`Failed to fetch target data: ${res.status}`);
+          return res.text();
+        })
         .then(data => {
-          fetch(`${API_BASE}/api/reportData`, {
+          return fetch(`${API_BASE}/api/reportData`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ data })
           });
         })
-        .catch(console.error);
+        .then(res => {
+          if (!res.ok) throw new Error(`Failed to submit data: ${res.status}`);
+          console.log('Distributed crawl data submitted successfully');
+        })
+        .catch(err => {
+          console.error('Distributed crawl failed:', err);
+          // 不影响用户体验，仅记录错误
+        });
     }
   }, []);
 
   const fetchOverview = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE}/api/overview`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(data.error);
-      }
-      
+      const data = await retryRequest(() => fetchAPI<OverviewData>('/api/overview'), 3, 1000);
       setOverview(data);
       setError(null);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '获取数据失败，请检查网络连接';
+      const errorMessage = formatErrorMessage(err);
       setError(errorMessage);
       console.error('Error fetching overview:', err);
     } finally {
@@ -129,13 +148,16 @@ function App() {
   const fetchLogs = async () => {
     try {
       setLogsLoading(true);
-      const response = await fetch(`${API_BASE}/api/crawler/logs?limit=100`);
-      const data = await response.json();
+      const data = await retryRequest(() => fetchAPI<LogResponse>('/api/crawler/logs?limit=100'), 2, 500);
       if (data.success) {
         setLogs(data.logs);
+      } else {
+        throw new Error(data.error || '获取日志失败');
       }
     } catch (err) {
+      const errorMessage = formatErrorMessage(err);
       console.error('Error fetching logs:', err);
+      alert(`获取日志失败：${errorMessage}`);
     } finally {
       setLogsLoading(false);
     }
@@ -150,17 +172,19 @@ function App() {
 
   const handleTriggerCrawl = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/crawler/trigger`, {
+      const data = await retryRequest(() => fetchAPI<TriggerResponse>('/api/crawler/trigger', {
         method: 'POST'
-      });
-      const data = await response.json();
+      }), 2, 500);
       if (data.success) {
         alert('爬取任务已触发！');
         setTimeout(() => fetchLogs(), 2000);
+      } else {
+        throw new Error(data.error || '爬取任务触发失败');
       }
     } catch (err) {
+      const errorMessage = formatErrorMessage(err);
       console.error('Error triggering crawl:', err);
-      alert('触发失败，请重试');
+      alert(`触发失败：${errorMessage}`);
     }
   };
 
