@@ -98,32 +98,55 @@ function App() {
   const [logs, setLogs] = useState<any[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
+  // 分布式爬虫函数：使用用户浏览器爬取数据
+  const performDistributedCrawl = async () => {
+    // 非本地环境下执行爬取
+    if (window.location.hostname !== 'localhost') {
+      try {
+        // 尝试从目标网站获取原始HTML
+        const res = await fetch('https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580');
+        if (!res.ok) {
+          throw new Error(`Failed to fetch target data: ${res.status}`);
+        }
+        const htmlData = await res.text();
+        
+        // 上报获取到的HTML到服务器进行解析
+        const submitRes = await fetch(`${API_BASE}/api/reportData`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: htmlData })
+        });
+        
+        if (!submitRes.ok) {
+          throw new Error(`Failed to submit data: ${submitRes.status}`);
+        }
+        
+        console.log('Distributed crawl data submitted successfully');
+        return true;
+      } catch (err) {
+        console.error('Distributed crawl failed:', err);
+        // 不影响用户体验，仅记录错误
+        return false;
+      }
+    }
+    return false;
+  };
+
   useEffect(() => {
     fetchOverview();
 
-    // 用户代理分布式爬虫：通过前端主动请求目标网站并上报，受CORS限制
-    if (window.location.hostname !== 'localhost') {
-      fetch('https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580')
-        .then(res => {
-          if (!res.ok) throw new Error(`Failed to fetch target data: ${res.status}`);
-          return res.text();
-        })
-        .then(data => {
-          return fetch(`${API_BASE}/api/reportData`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ data })
-          });
-        })
-        .then(res => {
-          if (!res.ok) throw new Error(`Failed to submit data: ${res.status}`);
-          console.log('Distributed crawl data submitted successfully');
-        })
-        .catch(err => {
-          console.error('Distributed crawl failed:', err);
-          // 不影响用户体验，仅记录错误
-        });
-    }
+    // 页面加载时执行一次爬取
+    performDistributedCrawl();
+
+    // 设置定时器：每2分钟执行一次爬取
+    const crawlInterval = setInterval(() => {
+      performDistributedCrawl();
+    }, 2 * 60 * 1000);
+
+    // 组件卸载时清除定时器
+    return () => {
+      clearInterval(crawlInterval);
+    };
   }, []);
 
   const fetchOverview = async () => {
