@@ -199,10 +199,10 @@ const gracefulShutdown = (signal) => {
   server.close(() => {
     logger.info('HTTP服务器已关闭');
     
-    mongoose.connection.close(false, () => {
-      logger.info('MongoDB连接已关闭');
-      process.exit(0);
-    });
+    // 新版本Mongoose不再支持close()方法的回调函数
+    mongoose.connection.close(false);
+    logger.info('MongoDB连接已关闭');
+    process.exit(0);
   });
   
   // 强制关闭超时

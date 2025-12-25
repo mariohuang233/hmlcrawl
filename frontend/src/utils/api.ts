@@ -98,7 +98,7 @@ export async function retryRequest<T>(
   maxRetries: number = 3,
   delay: number = 1000
 ): Promise<T> {
-  let lastError: Error;
+  let lastError: Error = new Error('请求失败');
   
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -111,6 +111,6 @@ export async function retryRequest<T>(
     }
   }
   
-  throw lastError!;
+  throw lastError;
 }
 

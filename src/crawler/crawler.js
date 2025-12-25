@@ -309,37 +309,51 @@ class ElectricityCrawler {
         textPreview: allText.substring(0, 300)
       });
       
-      // 1. 优先使用关键词匹配（最准确）
-      const remainingMatch = allText.match(/剩余电量:\s*(\d+\.?\d*)\s*kWh/i);
+      // 1. 优先使用更灵活的正则匹配（处理不同格式）
+      const remainingMatch = allText.match(/剩余电量[:：]\s*([\d.]+)\s*kWh?/i);
       if (remainingMatch) {
         remainingKwh = parseFloat(remainingMatch[1]);
         crawlerLogger.info(`通过正则找到剩余电量: ${remainingKwh} kWh`);
       } else {
-        // 2. 备用：查找包含特定关键词的元素
-        crawlerLogger.info('尝试通过关键词搜索剩余电量...');
-        const keywords = ['剩余电量', '剩余', '余额', '电量', 'kWh'];
-        for (const keyword of keywords) {
-          const elements = document.querySelectorAll('*');
-          for (const element of elements) {
-            const text = element.textContent.trim();
-            if (text.includes(keyword)) {
-              const match = text.match(/(\d+\.?\d*)/);
+        // 2. 备用：通过DOM选择器精确查找包含"剩余电量"的元素
+        crawlerLogger.info('尝试通过DOM选择器查找剩余电量...');
+        const elements = document.querySelectorAll('*');
+        for (const element of elements) {
+          const text = element.textContent.trim();
+          if (text.includes('剩余电量')) {
+            // 查找包含"剩余电量"的父元素或相邻元素
+            const parentElement = element.parentElement;
+            if (parentElement) {
+              const parentText = parentElement.textContent;
+              const match = parentText.match(/剩余电量[:：]\s*([\d.]+)/);
               if (match) {
-                const num = parseFloat(match[1]);
-                // 缩小合理范围，实际电量通常在0-100kWh之间
-                if (num > 0 && num <= 100) {
-                  remainingKwh = num;
-                  crawlerLogger.info(`通过关键词"${keyword}"找到电量: ${num}`);
-                  break;
-                }
+                remainingKwh = parseFloat(match[1]);
+                crawlerLogger.info(`通过父元素找到剩余电量: ${remainingKwh} kWh`);
+                break;
               }
             }
           }
-          if (remainingKwh !== null) break;
         }
       }
       
-      // 3. 最后才考虑数字规则（兜底）
+      // 3. 备用：查找所有包含"剩余"和"电量"的元素
+      if (remainingKwh === null) {
+        crawlerLogger.info('尝试通过关键词组合查找剩余电量...');
+        const elements = document.querySelectorAll('*');
+        for (const element of elements) {
+          const text = element.textContent.trim();
+          if (text.includes('剩余') && text.includes('电量')) {
+            const match = text.match(/([\d.]+)/);
+            if (match) {
+              remainingKwh = parseFloat(match[1]);
+              crawlerLogger.info(`通过关键词组合找到剩余电量: ${remainingKwh} kWh`);
+              break;
+            }
+          }
+        }
+      }
+      
+      // 4. 最后才考虑数字规则（兜底），但改进规则使其更智能
       if (remainingKwh === null) {
         const numberMatches = allText.match(/\d+\.?\d*/g);
         crawlerLogger.info(`找到数字匹配: ${numberMatches ? numberMatches.length : 0} 个`);
@@ -355,11 +369,12 @@ class ElectricityCrawler {
           // 筛选出合理的电量值（缩小范围到0-100kWh）
           const validNumbers = numberMatches
             .map(num => parseFloat(num))
-            .filter(num => num > 0 && num <= 100 && num.toString().includes('.'))
-            .sort((a, b) => b - a); // 按降序排列，取最大值
+            .filter(num => num > 0 && num <= 100 && num.toString().includes('.')) // 缩小范围到0-100
+            .sort((a, b) => a - b); // 按升序排序，更可能找到实际电量
           
           crawlerLogger.info(`有效数字: ${validNumbers.length} 个`);
           
+          // 尝试找到最接近上一次记录或最合理的电量值
           if (validNumbers.length > 0) {
             remainingKwh = validNumbers[0];
             crawlerLogger.info(`从网页中找到电量数字: ${validNumbers.join(', ')}`);
@@ -542,43 +557,59 @@ async function parseHtml(html) {
   let remainingKwh = null;
   const allText = document.body ? document.body.textContent : '';
 
-  // 1. 优先使用关键词匹配（最准确）
-  const remainingMatch = allText.match(/剩余电量:\s*(\d+\.?\d*)\s*kWh/i);
+  // 1. 优先使用更灵活的正则匹配（处理不同格式）
+  const remainingMatch = allText.match(/剩余电量[:：]\s*([\d.]+)\s*kWh?/i);
   if (remainingMatch) {
     remainingKwh = parseFloat(remainingMatch[1]);
   } else {
-    // 2. 备用：查找包含特定关键词的元素
-    const keywords = ['剩余电量', '剩余', '余额', '电量', 'kWh'];
-    for (const keyword of keywords) {
-      const elements = document.querySelectorAll('*');
-      for (const element of elements) {
-        const text = element.textContent.trim();
-        if (text.includes(keyword)) {
-          const match = text.match(/(\d+\.?\d*)/);
+    // 2. 备用：通过DOM选择器精确查找包含"剩余电量"的元素
+    const elements = document.querySelectorAll('*');
+    for (const element of elements) {
+      const text = element.textContent.trim();
+      if (text.includes('剩余电量')) {
+        // 查找包含"剩余电量"的父元素或相邻元素
+        const parentElement = element.parentElement;
+        if (parentElement) {
+          const parentText = parentElement.textContent;
+          const match = parentText.match(/剩余电量[:：]\s*([\d.]+)/);
           if (match) {
-            const num = parseFloat(match[1]);
-            // 缩小合理范围，实际电量通常在0-100kWh之间
-            if (num > 0 && num <= 100) {
-              remainingKwh = num;
-              break;
-            }
+            remainingKwh = parseFloat(match[1]);
+            break;
           }
         }
       }
-      if (remainingKwh !== null) break;
     }
   }
   
-  // 3. 最后才考虑数字规则（兜底）
+  // 3. 备用：查找所有包含"剩余"的元素
+  if (remainingKwh === null) {
+    const elements = document.querySelectorAll('*');
+    for (const element of elements) {
+      const text = element.textContent.trim();
+      if (text.includes('剩余') && text.includes('电量')) {
+        const match = text.match(/([\d.]+)/);
+        if (match) {
+          remainingKwh = parseFloat(match[1]);
+          break;
+        }
+      }
+    }
+  }
+  
+  // 4. 最后才考虑数字规则（兜底），但改进规则使其更智能
   if (remainingKwh === null) {
     const numberMatches = allText.match(/\d+\.?\d*/g);
     if (numberMatches) {
       const validNumbers = numberMatches
         .map(num => parseFloat(num))
         .filter(num => num > 0 && num <= 100 && num.toString().includes('.')) // 缩小范围到0-100
-        .sort((a, b) => b - a);
+        .sort((a, b) => a - b); // 按升序排序，更可能找到实际电量
+      
+      // 尝试找到最接近上一次记录或最合理的电量值
       if (validNumbers.length > 0) {
         remainingKwh = validNumbers[0];
+        // 如果有多个数字，优先选择与"剩余电量"相关的位置附近的数字
+        // 这里可以根据实际情况进一步优化
       }
     }
   }

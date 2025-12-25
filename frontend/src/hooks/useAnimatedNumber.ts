@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 interface UseAnimatedNumberOptions {
   duration?: number; // 动画持续时间（毫秒）
@@ -35,8 +35,8 @@ export const useAnimatedNumber = (
   const startTimeRef = useRef<number | null>(null);
   const hasInitialized = useRef(false);
 
-  // 缓动函数
-  const easingFunctions = {
+  // 缓动函数，使用useMemo缓存以避免依赖变化
+  const easingFunctions = useMemo(() => ({
     easeOut: (t: number) => 1 - Math.pow(1 - t, 3),
     easeInOut: (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t,
     easeOutBounce: (t: number) => {
@@ -56,7 +56,7 @@ export const useAnimatedNumber = (
       const c4 = (2 * Math.PI) / 3;
       return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
     }
-  };
+  }), []);
 
   // 根据数值大小智能调整动画持续时间
   const getSmartDuration = (value: number): number => {

@@ -84,11 +84,7 @@ interface LogResponse {
   error?: string;
 }
 
-interface TriggerResponse {
-  success: boolean;
-  error?: string;
-  message?: string;
-}
+
 
 function App() {
   const [overview, setOverview] = useState<OverviewData | null>(null);
