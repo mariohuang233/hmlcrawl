@@ -47,7 +47,7 @@ const Trend24h: React.FC = () => {
     try {
       setError(null);
       // 使用统一的API封装和重试机制
-      const rawData = await retryRequest(() => fetchAPI('/api/trend/24h'), 3, 1000);
+      const rawData = await retryRequest(() => fetchAPI<any[]>('/api/trend/24h'), 3, 1000);
       
       // 按15分钟间隔聚合数据
       const aggregatedData = aggregateDataBy15Min(rawData);
