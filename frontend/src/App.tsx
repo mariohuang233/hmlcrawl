@@ -100,8 +100,8 @@ function App() {
 
   // 分布式爬虫函数：使用用户浏览器爬取数据
   const performDistributedCrawl = async () => {
-    // 非本地环境下执行爬取
-    if (window.location.hostname !== 'localhost') {
+    // 移除本地环境限制，允许在开发环境测试爬取功能
+    // if (window.location.hostname !== 'localhost') {
       try {
         // 尝试从目标网站获取原始HTML
         const res = await fetch('https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580');
@@ -121,15 +121,15 @@ function App() {
           throw new Error(`Failed to submit data: ${submitRes.status}`);
         }
         
-        console.log('Distributed crawl data submitted successfully');
+        console.log('✅ 利用用户浏览器爬取数据成功，并已提交到服务器');
+        console.log('📊 爬取的HTML数据已发送到/api/reportData端点进行解析');
+        console.log('🔄 页面数据将自动刷新以显示最新结果');
         return true;
       } catch (err) {
-        console.error('Distributed crawl failed:', err);
+        console.error('利用用户浏览器爬取失败:', err);
         // 不影响用户体验，仅记录错误
         return false;
       }
-    }
-    return false;
   };
 
   useEffect(() => {
@@ -195,18 +195,19 @@ function App() {
 
   const handleTriggerCrawl = async () => {
     try {
-      const data = await retryRequest(() => fetchAPI<TriggerResponse>('/api/crawler/trigger', {
-        method: 'POST'
-      }), 2, 500);
-      if (data.success) {
-        alert('爬取任务已触发！');
+      console.log('开始利用用户浏览器爬取数据...');
+      const success = await performDistributedCrawl();
+      if (success) {
+        alert('浏览器爬取任务已触发并成功提交数据！');
+        // 爬取成功后刷新数据
+        fetchOverview();
         setTimeout(() => fetchLogs(), 2000);
       } else {
-        throw new Error(data.error || '爬取任务触发失败');
+        throw new Error('浏览器爬取任务提交失败');
       }
     } catch (err) {
       const errorMessage = formatErrorMessage(err);
-      console.error('Error triggering crawl:', err);
+      console.error('利用用户浏览器爬取失败:', err);
       alert(`触发失败：${errorMessage}`);
     }
   };
