@@ -6,7 +6,7 @@ import TodayUsage from './components/TodayUsage';
 import DailyTrend from './components/DailyTrend';
 import MonthlyTrend from './components/MonthlyTrend';
 import './App.css';
-import { fetchAPI, retryRequest, formatErrorMessage, API_BASE } from './utils/api';
+import { fetchAPI, retryRequest, formatErrorMessage } from './utils/api';
 
 interface WindowAnalysis {
   rate: number;

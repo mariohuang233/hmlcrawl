@@ -77,6 +77,9 @@ app.get('/ping', (req, res) => {
   res.status(200).send('pong');
 });
 
+// API路由
+app.use('/api', apiRoutes);
+
 // 静态文件服务（前端构建文件）
 app.use(express.static(path.join(__dirname, 'frontend/build'), {
   maxAge: '1d', // 设置静态文件缓存1天
@@ -84,9 +87,6 @@ app.use(express.static(path.join(__dirname, 'frontend/build'), {
   lastModified: true, // 启用Last-Modified
   cacheControl: true // 启用Cache-Control头
 }));
-
-// API路由
-app.use('/api', apiRoutes);
 
 // 前端路由（React Router）- 必须放在最后
 app.get('*', (req, res) => {
