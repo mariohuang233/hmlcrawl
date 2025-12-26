@@ -51,10 +51,17 @@ app.use(helmet({
 }));
 app.use(compression()); // 添加响应压缩中间件
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['*'],
+  origin: true, // 动态允许请求来源，支持credentials
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
+
+// 或者更严格的配置，明确允许特定来源
+// app.use(cors({
+//   origin: ['https://thoryierbubu.up.railway.app', 'http://localhost:3000'],
+//   methods: ['GET', 'POST', 'PUT', 'DELETE'],
+//   credentials: true
+// }));
 app.use(morgan('combined', { 
   stream: { write: message => logger.info(message.trim()) },
   skip: (req, res) => res.statusCode < 400 // 只记录错误响应

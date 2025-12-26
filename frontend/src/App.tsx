@@ -129,20 +129,34 @@ function App() {
       setDistributedProgress(50);
       
       if (!res.ok) {
-        throw new Error(`Failed to fetch target data: ${res.status}`);
+        throw new Error(`Failed to fetch target data: ${res.status} ${res.statusText}`);
       }
       const htmlData = await res.text();
-      console.log('📥 成功获取目标网站HTML数据');
+      console.log('📥 成功获取目标网站HTML数据，长度:', htmlData.length);
       setDistributedProgress(70);
       
       // 使用封装的fetchAPI函数上报数据，包含更好的错误处理
       console.log('📤 正在将数据发送到服务器...');
       console.log('API_BASE:', API_BASE);
+      console.log('完整API URL:', `${API_BASE}/api/reportData`);
       
-      await fetchAPI('/api/reportData', {
+      // 直接使用fetch进行测试，不使用fetchAPI封装
+      const response = await fetch(`${API_BASE}/api/reportData`, {
         method: 'POST',
-        body: JSON.stringify({ data: htmlData })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ data: htmlData }),
+        credentials: 'omit', // 不发送凭据，避免跨域问题
       });
+      
+      console.log('服务器响应状态:', response.status, response.statusText);
+      const responseData = await response.json();
+      console.log('服务器响应数据:', responseData);
+      
+      if (!response.ok) {
+        throw new Error(`服务器请求失败: ${response.status} ${response.statusText}`);
+      }
       
       clearInterval(progressInterval);
       setDistributedProgress(100);
@@ -162,6 +176,13 @@ function App() {
     } catch (err) {
       console.error('利用用户浏览器爬取失败:', err);
       console.error('错误详情:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
+      console.error('错误堆栈:', err instanceof Error ? err.stack : '无堆栈信息');
+      
+      // 检查是否为跨域错误
+      if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
+        console.error('这可能是跨域错误，请检查服务器CORS设置');
+      }
+      
       setDistributedStatus('failed');
       setDistributedProgress(0);
       
