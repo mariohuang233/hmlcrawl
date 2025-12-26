@@ -96,36 +96,28 @@ function App() {
 
   // 分布式爬虫函数：使用用户浏览器爬取数据
   const performDistributedCrawl = async () => {
-    // 移除本地环境限制，允许在开发环境测试爬取功能
-    // if (window.location.hostname !== 'localhost') {
-      try {
-        // 尝试从目标网站获取原始HTML
-        const res = await fetch('https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580');
-        if (!res.ok) {
-          throw new Error(`Failed to fetch target data: ${res.status}`);
-        }
-        const htmlData = await res.text();
-        
-        // 上报获取到的HTML到服务器进行解析
-        const submitRes = await fetch(`${API_BASE}/api/reportData`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ data: htmlData })
-        });
-        
-        if (!submitRes.ok) {
-          throw new Error(`Failed to submit data: ${submitRes.status}`);
-        }
-        
-        console.log('✅ 利用用户浏览器爬取数据成功，并已提交到服务器');
-        console.log('📊 爬取的HTML数据已发送到/api/reportData端点进行解析');
-        console.log('🔄 页面数据将自动刷新以显示最新结果');
-        return true;
-      } catch (err) {
-        console.error('利用用户浏览器爬取失败:', err);
-        // 不影响用户体验，仅记录错误
-        return false;
+    try {
+      // 尝试从目标网站获取原始HTML
+      const res = await fetch('https://www.wap.cnyiot.com/nat/pay.aspx?mid=18100071580');
+      if (!res.ok) {
+        throw new Error(`Failed to fetch target data: ${res.status}`);
       }
+      const htmlData = await res.text();
+      
+      // 使用封装的fetchAPI函数上报数据，包含更好的错误处理
+      await fetchAPI('/api/reportData', {
+        method: 'POST',
+        body: JSON.stringify({ data: htmlData })
+      });
+      
+      console.log('✅ 利用用户浏览器爬取数据成功，并已提交到服务器');
+      console.log('📊 爬取的HTML数据已发送到/api/reportData端点进行解析');
+      console.log('🔄 页面数据将自动刷新以显示最新结果');
+      return true;
+    } catch (err) {
+      console.error('利用用户浏览器爬取失败:', err);
+      return false;
+    }
   };
 
   useEffect(() => {
