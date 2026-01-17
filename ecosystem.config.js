@@ -1,7 +1,7 @@
 module.exports = {
   apps: [{
     name: 'electricity-crawler',
-    script: 'node scripts/oneclick.js',
+    script: './scripts/run-local-crawler.js',
     cwd: 'D:\\projects\\hml\\hml\\hmlcrawl-main',
     instances: 1,
     autorestart: true,
@@ -9,7 +9,7 @@ module.exports = {
     max_memory_restart: '1G',
     env: {
       NODE_ENV: 'production',
-      ONECLICK_MODE: 'direct',
+      USE_DIRECT_IP: 'true',
       LOCAL_ENV_PATH: '.env.local'
     },
     error_file: './logs/pm2-error.log',
