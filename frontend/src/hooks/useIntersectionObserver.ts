@@ -43,7 +43,7 @@ export const useIntersectionObserver = (
     return () => {
       observer.unobserve(element);
     };
-  }, [threshold, rootMargin]);
+  }, [threshold, rootMargin, hasTriggered]);
 
   return {
     elementRef,
