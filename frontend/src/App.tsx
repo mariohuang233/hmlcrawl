@@ -177,20 +177,17 @@ function App() {
       <header className="app-header">
         <div className="header-content">
           <div className="header-inner">
-            <h1 className="app-title">雷神一二布布的电量监控</h1>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                onClick={handleRefresh}
-                className="btn btn-primary"
-              >
-                刷新数据
-              </button>
+            <div className="app-title-section">
+              <h1 className="app-title">雷神一二布布的电量监控</h1>
+              <p className="app-subtitle">实时监控 · 智能分析 · 数据可视化</p>
+            </div>
+            <div className="header-actions">
               <button
                 onClick={handleShowLogs}
-                className="btn btn-primary"
-                style={{ backgroundColor: '#17a2b8' }}
+                className="btn btn-icon"
+                title={showLogs ? '隐藏日志' : '查看日志'}
               >
-                {showLogs ? '隐藏日志' : '查看日志'}
+                <span className="btn-icon-text">{showLogs ? '×' : '📋'}</span>
               </button>
             </div>
           </div>
@@ -210,49 +207,27 @@ function App() {
           <MonthlyTrend />
           
           {showLogs && (
-            <div style={{ 
-              marginTop: '40px', 
-              padding: '20px', 
-              backgroundColor: '#1e1e1e', 
-              borderRadius: '8px',
-              color: '#fff',
-              maxHeight: '500px',
-              overflowY: 'auto'
-            }}>
-              <h2 style={{ marginBottom: '20px', color: '#17a2b8' }}>本地爬虫日志</h2>
-              <div style={{ marginBottom: '15px', fontSize: '14px', color: '#aaa' }}>
-                显示最近50条本地爬虫日志
-              </div>
+            <div className="logs-section">
+              <h2 className="logs-title">本地爬虫日志</h2>
+              <div className="logs-subtitle">显示最近50条本地爬虫日志</div>
               {logsLoading ? (
-                <div>加载中...</div>
+                <div className="logs-loading">加载中...</div>
               ) : logs.length === 0 ? (
-                <div>暂无日志</div>
+                <div className="logs-empty">暂无日志</div>
               ) : (
-                <div style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                <div className="logs-list">
                   {logs.map((log, index) => (
                     <div 
                       key={index} 
-                      style={{ 
-                        padding: '8px',
-                        borderBottom: '1px solid #333',
-                        display: 'flex',
-                        gap: '15px',
-                        flexWrap: 'wrap'
-                      }}
+                      className={`log-entry log-entry-${log.level}`}
                     >
-                      <span style={{ color: '#888', minWidth: '150px' }}>
+                      <span className="log-time">
                         {new Date(log.timestamp).toLocaleString('zh-CN')}
                       </span>
-                      <span style={{ 
-                        color: log.level === 'error' ? '#dc3545' : 
-                               log.level === 'warn' ? '#ffc107' : 
-                               '#17a2b8',
-                        minWidth: '80px',
-                        fontWeight: 'bold'
-                      }}>
-                        [{log.level.toUpperCase()}]
+                      <span className={`log-level log-level-${log.level}`}>
+                        {log.level.toUpperCase()}
                       </span>
-                      <span style={{ flex: 1, minWidth: '300px' }}>
+                      <span className="log-message">
                         {log.message}
                       </span>
                     </div>
