@@ -8,15 +8,15 @@ echo    雷神电量监控 - 一键启动
 echo ========================================
 echo.
 
-REM 检查是否已经运行
+REM Check if already running
 tasklist /FI "IMAGENAME eq node.exe" 2>nul | find /I "node.exe" >nul
 if %ERRORLEVEL% equ 0 (
-    echo [警告] Node.js 进程已在运行
+    echo [WARNING] Node.js process is already running
     echo.
-    echo 正在检查 PM2 状态...
+    echo Checking PM2 status...
     call :check_pm2
 ) else (
-    echo [启动] 启动 PM2 爬虫...
+    echo [START] Starting PM2 crawler...
     call :start_crawler
 )
 
@@ -26,12 +26,12 @@ goto :end
 cd /d "%~dp0"
 npm.cmd run pm2:status >nul 2>&1
 if %ERRORLEVEL% equ 0 (
-    echo [状态] PM2 爬虫正在运行
+    echo [STATUS] PM2 crawler is running
     echo.
-    echo 正在启动服务器...
+    echo Starting server...
     call :start_server
 ) else (
-    echo [启动] PM2 爬虫未运行，正在启动...
+    echo [START] PM2 crawler is not running, starting...
     call :start_crawler
 )
 goto :end
@@ -39,15 +39,15 @@ goto :end
 :start_crawler
 cd /d "%~dp0"
 echo.
-echo [1/2] 启动 PM2 爬虫...
+echo [1/2] Starting PM2 crawler...
 npm.cmd run pm2:start
 if %ERRORLEVEL% equ 0 (
-    echo [成功] PM2 爬虫启动成功
+    echo [SUCCESS] PM2 crawler started successfully
     echo.
-    echo 正在启动服务器...
+    echo Starting server...
     call :start_server
 ) else (
-    echo [错误] PM2 爬虫启动失败
+    echo [ERROR] PM2 crawler failed to start
     echo.
     pause
     exit /b 1
@@ -55,22 +55,22 @@ if %ERRORLEVEL% equ 0 (
 
 :start_server
 echo.
-echo [2/2] 启动服务器...
+echo [2/2] Starting server...
 start /B "" cmd /c "cd /d "%~dp0" && npm.cmd start"
 echo.
-echo [完成] 所有服务已启动
+echo [COMPLETE] All services started
 echo.
 echo ========================================
-echo   爬虫: http://localhost:3000/health
-echo   前端: http://localhost:3000
+echo   Crawler: http://localhost:3000/health
+echo   Frontend: http://localhost:3000
 echo ========================================
 echo.
-echo 提示: 关闭此窗口不会停止服务
-echo       如需停止，请运行 stop-all.bat
+echo Note: Closing this window will NOT stop services
+echo       To stop, run stop-all.bat
 echo.
 timeout /t 5 >nul
 
 :end
 echo.
-echo 按任意键退出...
+echo Press any key to exit...
 pause >nul

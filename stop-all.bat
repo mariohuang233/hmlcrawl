@@ -8,29 +8,29 @@ echo    雷神电量监控 - 停止所有服务
 echo ========================================
 echo.
 
-echo [1/2] 停止 PM2 爬虫...
+echo [1/2] Stopping PM2 crawler...
 cd /d "%~dp0"
 npm.cmd run pm2:stop
 if %ERRORLEVEL% equ 0 (
-    echo [成功] PM2 爬虫已停止
+    echo [SUCCESS] PM2 crawler stopped
 ) else (
-    echo [警告] PM2 爬虫停止失败或未运行
+    echo [WARNING] PM2 crawler stop failed or not running
 )
 
 echo.
-echo [2/2] 停止服务器...
+echo [2/2] Stopping server...
 taskkill /F /IM node.exe /FI "WINDOWTITLE eq npm*start*" 2>nul
 if %ERRORLEVEL% equ 0 (
-    echo [成功] 服务器已停止
+    echo [SUCCESS] Server stopped
 ) else (
-    echo [警告] 服务器未运行
+    echo [WARNING] Server not running
 )
 
 echo.
 echo ========================================
-echo   所有服务已停止
+echo   All services stopped
 echo ========================================
 echo.
-echo 提示: 运行 start-all.bat 重新启动
+echo Note: Run start-all.bat to restart
 echo.
 timeout /t 3 >nul
