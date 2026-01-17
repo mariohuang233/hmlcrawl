@@ -11,7 +11,13 @@
     "postbuild": "echo 'Build completed!'",
     "diagnose": "node diagnose.js",
     "crawler:local": "node scripts/run-local-crawler.js",
-    "oneclick": "node scripts/oneclick.js"
+    "oneclick": "node scripts/oneclick.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop ecosystem.config.js",
+    "pm2:restart": "pm2 restart ecosystem.config.js",
+    "pm2:logs": "pm2 logs",
+    "pm2:delete": "pm2 delete ecosystem.config.js",
+    "pm2:status": "pm2 status"
   },
   "dependencies": {
     "compression": "^1.8.1",
@@ -28,7 +34,8 @@
   "devDependencies": {
     "localtunnel": "^2.0.2",
     "ngrok": "^5.0.0-beta.2",
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.0.2",
+    "pm2": "^5.4.3"
   },
   "engines": {
     "node": ">=18.0.0",
