@@ -73,8 +73,8 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
   
   // 使用Intersection Observer检测组件是否进入视口
   const { elementRef, hasTriggered } = useIntersectionObserver({
-    threshold: 0.2,
-    rootMargin: '0px 0px -50px 0px'
+    threshold: 0.1,
+    rootMargin: '0px 0px -100px 0px'
   });
   
   // 检查数据完整性

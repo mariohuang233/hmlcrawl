@@ -6,9 +6,6 @@ interface UseIntersectionObserverOptions {
   triggerOnce?: boolean;
 }
 
-/**
- * 检测元素是否进入视口的Hook
- */
 export const useIntersectionObserver = (
   options: UseIntersectionObserverOptions = {}
 ) => {
@@ -46,7 +43,7 @@ export const useIntersectionObserver = (
     return () => {
       observer.unobserve(element);
     };
-  }, [threshold, rootMargin, hasTriggered]);
+  }, [threshold, rootMargin]);
 
   return {
     elementRef,
