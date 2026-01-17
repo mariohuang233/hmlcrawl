@@ -156,7 +156,12 @@ class ElectricityCrawler {
 
   // 启动定时任务
   start() {
-    // 改为15分钟执行一次，并添加随机延迟
+    // 立即执行一次爬取（不等待定时任务）
+    this.crawlData().catch(error => {
+      crawlerLogger.error(`初始爬取失败: ${error.message}`);
+    });
+
+    // 每15分钟执行一次，并添加随机延迟
     cron.schedule('*/15 * * * *', () => {
       // 添加随机延迟 0-300秒（0-5分钟）
       const randomDelay = Math.floor(Math.random() * 300) * 1000;
@@ -166,14 +171,8 @@ class ElectricityCrawler {
     }, {
       timezone: 'Asia/Shanghai'
     });
-    
+
     crawlerLogger.info('爬虫定时任务已启动，每15分钟执行一次（带随机延迟）');
-    
-    // 启动时也添加随机延迟
-    const initialDelay = Math.floor(Math.random() * 60 + 30) * 1000; // 30-90秒
-    setTimeout(() => {
-      this.crawlData();
-    }, initialDelay);
   }
 
   // 爬取数据
