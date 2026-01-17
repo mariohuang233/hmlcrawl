@@ -1,0 +1,17 @@
+{
+  "name": "electricity-middleware",
+  "version": "1.0.0",
+  "description": "电力数据中间层代理",
+  "main": "api/fetch.js",
+  "scripts": {
+    "start": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "keywords": ["proxy", "middleware"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  }
+}
+

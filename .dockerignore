@@ -1,0 +1,16 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+README.md
+.env
+.DS_Store
+logs
+*.log
+frontend/node_modules
+frontend/build
+.vscode
+.idea
+*.md
+!README.md
+diagnose.js

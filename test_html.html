@@ -1,0 +1,141 @@
+
+ 
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head  >
+    <meta charset="utf-8"/>
+ <title>辰域智控系统</title>
+        <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
+     <link rel="stylesheet" href="//www.storage.cnyiot.com/sys/wap/css/weui.min.css"/>
+    <link rel="stylesheet" href="//www.storage.cnyiot.com/sys/wap/css/jquery-weui.min.css"/>
+    <link rel="shortcut icon" href="//www.storage.cnyiot.com/sys/web/img/favicon.ico" type="image/x-icon" /> 
+     <style>
+      /*2019年3月15日15:37:49 输入框靠右对齐*/
+.weui-cell__bd > input {
+    text-align: right ;
+    font-size:15px;
+}
+.weui-cell__bd > p {
+    text-align: right;
+    font-size:15px;
+}
+
+ .mydialog {
+    position: fixed;
+    z-index: 5000; 
+    bottom: 0;
+    left: 0;
+    right:0;   
+    top:initial;
+    width:initial;
+    text-align:initial;
+    max-width:initial;
+    background-color: #fff; 
+    border-radius: 18px 18px 0 0;
+    overflow: hidden;
+    -webkit-transform:initial;
+    transform:initial;
+}
+ img {
+    vertical-align: middle;
+    border-style: none;
+}
+  </style>
+</head>
+  
+<body>
+    
+    <!-- 必须写在 <body> 中，不能通过 JS 动态创建 -->
+    <wx-open-launch-weapp id="wx-launch-btn" username="gh_2d744721b43f" path=""  style="display: block; position: fixed; z-index: -1; visibility: hidden; pointer-events: none;">
+        <template>
+            <div style="display: flex; justify-content: center; align-items: center; font-size: 18px; color: #4F90F5; width: 150px; line-height: 48px;">
+                确认充值
+            </div>
+        </template>
+    </wx-open-launch-weapp>
+     <div id="head"  style=" color:black;  line-height : 50px;text-align:center;position: fixed; top: 0; width: 100%;z-index:10;background-color:white; " >
+         充值中心 
+    </div>
+    
+       <div id="body" style="overflow-y: auto; width: 100%;padding-bottom:100px  ;margin-top:50px;background-color:white;  ">
+           <div style="padding:0 50px;text-align: center;position:relative; ">
+               <img src='//www.storage.cnyiot.com/sys/wap/img/topupbg.png' style="width: auto; height: auto; max-width: 100%; max-height: 100%;" />
+           </div>
+
+           <div style="box-shadow: 0px 10px 40px 0px rgba(0,64,128,0.1); border-radius: 8px; margin: -30px 10px 10px 10px; padding: 10px 15px 10px; font-size: 15px;background-color: white; position:relative">
+               
+               <div style="margin:5px 0">  
+                   <span>表&ensp;名&ensp;称:</span>
+                   <label    style="margin-left:5px;font-weight:bold;color: #0063F7;">2759弄18号402阳台</label>
+               </div>
+               <div style="margin:5px 0">  
+                   <span>表&ensp;&ensp;&ensp;&ensp;号:</span>
+                   <label id="metid"  style="margin-left:5px;">18100071580</label>
+               </div>
+                
+     
+               
+               <div style="margin:5px 0">
+                   <span>剩余电量:</span>
+                   <label style="min-width:75px;margin-left:5px;display:inline-block;">9.61</label>  <span>kWh</span>
+               </div> 
+   
+            
+            <div style="margin:5px 0">
+                <span>剩余金额:</span>
+                <label style="min-width:75px;margin-left:5px;display:inline-block;color: #3293C6;font-weight:bold;">9.61</label>  <span>元 </span>
+            </div> 
+       
+               <div>
+                   <span>综合费用:</span>
+                   <label  style="min-width:75px;margin-left:5px;display:inline-block;">1</label>  <span>元/kWh</span>
+               </div>  
+             <p  style="font-size:12px;color: gray; padding: 5px 0; "></p>   
+           </div>
+              <div  style="box-shadow:0px 10px 40px 0px rgba(0,64,128,0.1);border-radius:8px;margin: 20px 10px 10px 10px;padding :10px 15px; font-size: 15px;">
+                <div>充值金额:</div>
+                  <div  style="border-bottom: 1px solid #e5e5e5;display:flex;margin:0px 0 5px;">
+                        <input id="sellallMoney" maxlength="10" style="padding-left:5px;height:30px;margin-left:-5px;"  class="weui-input" type="text"   placeholder="请输入金额" onkeyup="CheckInputIntFloat2()">
+                        <input id="sellKwh" style="display:none;" >
+                          <input id="sellMoney" style="display:none;" >
+                      <span style="margin:auto">元</span>
+                  </div> 
+               <p id="minwarm" style="font-size:12px;display:none;  color: orange; padding: 5px 0;  "></p>
+                   <div style="display: flex; text-align: center; justify-content: space-around; flex-wrap: wrap;margin: 30px 10px 0;">
+                      <div style="border-radius: 8px; border: 2px solid #5caafc;color:#5caafc; padding: 8px; width: 60px; margin: 0 5px;" onclick="clkval(50);">50</div>
+                      <div style="border-radius: 8px; border: 2px solid #5caafc;color:#5caafc; padding: 8px; width: 60px; margin: 0 5px;" onclick="clkval(100);">100</div>
+                      <div style="border-radius: 8px; border: 2px solid #5caafc;color:#5caafc; padding: 8px; width: 60px; margin: 0 5px;" onclick="clkval(200);">200</div>
+                  </div>
+                  <div style="display: flex; text-align: center; justify-content: space-around; flex-wrap: wrap; margin: 20px 10px;">
+                      <div style="border-radius: 8px; border: 2px solid #5caafc;color:#5caafc; padding: 8px; width: 60px; margin: 0 5px;" onclick="clkval(300);">300</div>
+                      <div style="border-radius: 8px; border: 2px solid #5caafc;color:#5caafc; padding: 8px; width: 60px; margin: 0 5px;" onclick="clkval(500);">500</div>
+                      <div style="border-radius: 8px; border: 2px solid #5caafc;color:#5caafc; padding: 8px; width: 60px; margin: 0 5px;" onclick="clkval(1000);">1000</div>
+                  </div>
+            </div> 
+            <div class="weui-btn-area" style="margin-top:40px;">
+                <a class="weui-btn weui-btn_primary" href="javascript:subClick()" id="submit_btn" style="display:none;background-image:linear-gradient(45deg,#0064FF,#00BCFF);border-radius:17px">提交</a>
+            </div>
+           <div class="row form-group">
+               <label class="control-label " id="token_rst"></label>
+           </div>
+        
+       </div>
+
+</body>
+
+    
+ <script src="//www.storage.cnyiot.com/sys/wap/js/jquery-2.2.4.min.js"></script>
+<script src="//www.storage.cnyiot.com/sys/wap/js/fastclick.min.js"></script>
+<script src="//www.storage.cnyiot.com/sys/wap/js/jquery-weui.min.js"></script> 
+    <script src="//www.storage.cnyiot.com/sys/wap/js/jweixin-1.6.0.js"></script>
+<script src="//www.storage.cnyiot.com/sys/web/js/FloatDeal.js"></script>
+       <script>  
+           var MetSellMin = 0.00;
+           var MetPrice = 1;
+           var MetID = '18100071580'; 
+    </script>  
+      <script src="//www.storage.cnyiot.com/sys/wap/aspxjc/pay-2.0.min.js" type="text/javascript"></script> 
+     
+</html>

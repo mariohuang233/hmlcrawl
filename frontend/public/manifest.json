@@ -1,0 +1,25 @@
+{
+  "short_name": "电量监控",
+  "name": "雷神一二布布的电量监控",
+  "icons": [
+    {
+      "src": "bubu.png",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "bubu.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "bubu.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#2563eb",
+  "background_color": "#f9fafb"
+}

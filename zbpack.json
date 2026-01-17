@@ -1,0 +1,10 @@
+{
+  "dockerfile": "Dockerfile",
+  "port": 3000,
+  "health_check": {
+    "path": "/health",
+    "interval": 30,
+    "timeout": 10
+  }
+}
+
