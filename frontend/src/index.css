@@ -677,6 +677,11 @@ code {
   opacity: 1;
 }
 
+.stat-card.animate-in {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
 .stat-value {
   font-size: var(--text-3xl);
   font-weight: 700;
