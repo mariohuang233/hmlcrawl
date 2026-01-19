@@ -110,7 +110,7 @@ function App() {
       if (data.success && data.logs) {
         const formattedLogs = data.logs.map((log: any) => ({
           timestamp: log.timestamp || log.time,
-          level: log.level || (log.action === 'error' || log.action === 'failed' ? 'error' : 'info'),
+          level: log.level || ((log.action === 'error' || log.action === 'failed') ? 'error' : 'info'),
           message: log.message || log.info || JSON.stringify(log.data || log, null, 2)
         }));
         setLogs(formattedLogs);
