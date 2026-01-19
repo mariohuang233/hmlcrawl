@@ -129,6 +129,43 @@ class ElectricityCrawler {
   
   // 获取日志
   getLogs(limit = 100) {
+    const fs = require('fs');
+    const path = require('path');
+    const logsDir = path.join(__dirname, '../../../logs');
+    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const logFile = path.join(logsDir, `fetch-${today}.log`);
+    
+    try {
+      if (fs.existsSync(logFile)) {
+        const content = fs.readFileSync(logFile, 'utf8');
+        const lines = content.split('\n').filter(line => line.trim());
+        const logs = [];
+        
+        for (const line of lines) {
+          try {
+            const jsonMatch = line.match(/\{[^}]+\}/);
+            if (jsonMatch) {
+              const logEntry = JSON.parse(jsonMatch[0]);
+              if (logEntry.action && logEntry.timestamp) {
+                logs.push({
+                  timestamp: logEntry.timestamp,
+                  level: logEntry.action === 'error' || logEntry.action === 'failed' ? 'error' : 'info',
+                  message: logEntry.action === 'error' ? logEntry.error : logEntry.info,
+                  data: logEntry.data || logEntry
+                });
+              }
+            }
+          } catch (e) {
+            // 忽略解析失败的行
+          }
+        }
+        
+        return logs.slice(0, limit);
+      }
+    } catch (error) {
+      crawlerLogger.error(`读取日志文件失败: ${error.message}`);
+    }
+    
     return this.logEntries.slice(0, limit);
   }
   
