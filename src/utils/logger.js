@@ -2,8 +2,8 @@ const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
 
-// 确保logs目录存在
-const logsDir = path.join(__dirname, '../../logs');
+// 确保logs目录存在 - 使用项目根目录
+const logsDir = path.join(__dirname, '../../../logs');
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
