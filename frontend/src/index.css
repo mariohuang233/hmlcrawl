@@ -169,15 +169,11 @@ body {
   gap: var(--space-sm);
 }
 
-.app-title::before {
-  content: '';
+.app-title-icon {
   width: 32px;
   height: 32px;
-  background-image: url('/bubu.png');
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
   border-radius: var(--radius-full);
+  object-fit: contain;
 }
 
 .app-subtitle {

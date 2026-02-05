@@ -6,6 +6,7 @@ import DailyTrend from './components/DailyTrend';
 import MonthlyTrend from './components/MonthlyTrend';
 import './App.css';
 import { fetchAPI, retryRequest, formatErrorMessage } from './utils/api';
+import bubuIcon from './assets/bubu.svg';
 
 interface WindowAnalysis {
   rate: number;
@@ -178,7 +179,10 @@ function App() {
         <div className="header-content">
           <div className="header-inner">
             <div className="app-title-section">
-              <h1 className="app-title">一二布布的电量监控</h1>
+              <h1 className="app-title">
+                <img src={bubuIcon} alt="一二布布" className="app-title-icon" />
+                一二布布的电量监控
+              </h1>
               <p className="app-subtitle">温暖守护，智能用电</p>
             </div>
             <div className="header-actions">
