@@ -1,172 +1,177 @@
-/* App特定样式 - 苹果式极简设计 */
+/* ============================================
+   App 特定样式 - 温暖简约主题
+   ============================================ */
 
-/* 主应用容器 */
-.app-container {
-  min-height: 100vh;
-  background-color: var(--bg-primary);
+/* 按钮图标文字 */
+.btn-icon-text {
+  font-size: 18px;
+  line-height: 1;
 }
 
-/* 头部样式 - 苹果官网 + Liquid Glass */
+/* 日志加载状态 */
+.logs-loading,
+.logs-empty {
+  text-align: center;
+  padding: var(--space-2xl);
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+/* 头部装饰 */
 .app-header {
-  background: var(--bg-glass);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
-  box-shadow: var(--shadow-glass);
-  border-bottom: 1px solid var(--border-glass);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  /* 增强玻璃效果 */
-  background-image: 
-    linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
-    linear-gradient(45deg, rgba(255, 255, 255, 0.05) 0%, transparent 100%);
+  position: relative;
 }
 
-.app-header::before {
+.app-header::after {
   content: '';
   position: absolute;
-  top: 0;
+  bottom: 0;
   left: 0;
   right: 0;
-  bottom: 0;
-  background: var(--gradient-glass);
-  opacity: 0.5;
-  pointer-events: none;
+  height: 1px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    var(--border-medium) 20%, 
+    var(--border-medium) 80%, 
+    transparent 100%
+  );
 }
 
-.header-content {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 var(--space-md);
+/* 卡片角落装饰 */
+.card-corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--primary-warm);
+  opacity: 0;
+  transition: all 0.3s ease;
 }
 
-.header-inner {
-  display: flex;
-  justify-content: space-between;
+.card-corner-tl {
+  top: 12px;
+  left: 12px;
+  border-right: none;
+  border-bottom: none;
+  border-radius: var(--radius-sm) 0 0 0;
+}
+
+.card-corner-tr {
+  top: 12px;
+  right: 12px;
+  border-left: none;
+  border-bottom: none;
+  border-radius: 0 var(--radius-sm) 0 0;
+}
+
+.card-corner-bl {
+  bottom: 12px;
+  left: 12px;
+  border-right: none;
+  border-top: none;
+  border-radius: 0 0 0 var(--radius-sm);
+}
+
+.card-corner-br {
+  bottom: 12px;
+  right: 12px;
+  border-left: none;
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) 0;
+}
+
+.card:hover .card-corner {
+  opacity: 0.3;
+}
+
+/* 状态指示器 */
+.status-indicator {
+  display: inline-flex;
   align-items: center;
-  padding: var(--space-md) 0;
-}
-
-.app-title {
-  font-size: var(--text-2xl);
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
-  letter-spacing: -0.03em;
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-.app-title::before {
-  content: '⚡';
-  font-size: var(--text-xl);
-  filter: drop-shadow(0 0 8px rgba(255, 149, 0, 0.3));
-}
-
-/* 主内容区域 */
-.app-main {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: var(--space-2xl) var(--space-md);
-}
-
-/* 网格布局 */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--space-lg);
-  margin-bottom: var(--space-2xl);
-}
-
-/* 错误状态 */
-.error-container {
-  min-height: 100vh;
-  background-color: var(--bg-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-md);
-}
-
-.error-content {
-  text-align: center;
-  background: var(--bg-secondary);
-  padding: var(--space-2xl);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-soft);
-  border: 1px solid var(--border-light);
-  max-width: 400px;
-  width: 100%;
-}
-
-.error-icon {
-  font-size: var(--text-4xl);
-  margin-bottom: var(--space-md);
-  opacity: 0.8;
-}
-
-.error-message {
-  color: var(--text-secondary);
-  margin-bottom: var(--space-lg);
-  font-size: var(--text-base);
-  line-height: 1.5;
-}
-
-/* 加载状态 */
-.loading-container {
-  min-height: 100vh;
-  background-color: var(--bg-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-md);
-}
-
-.loading-content {
-  text-align: center;
-}
-
-.loading-text {
-  margin-top: var(--space-md);
-  color: var(--text-secondary);
-  font-size: var(--text-base);
+  gap: var(--space-xs);
+  font-size: 12px;
   font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+.status-indicator::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-online {
+  color: var(--success);
+}
+
+.status-warning {
+  color: var(--warning);
+}
+
+.status-error {
+  color: var(--error);
+}
+
+/* 数字显示样式 */
+.digital-display {
+  font-family: var(--font-display);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+  font-weight: 600;
+  color: var(--primary-warm);
+}
+
+/* 分隔线 */
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    var(--border-light) 20%, 
+    var(--border-light) 80%, 
+    transparent 100%
+  );
+  margin: var(--space-lg) 0;
+}
+
+/* 标签样式 */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: var(--accent-orange-light);
+  color: var(--primary-warm-dark);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tag-warning {
+  background: #FFF3E0;
+  color: #E65100;
+}
+
+.tag-error {
+  background: #FFEBEE;
+  color: #C62828;
+}
+
+.tag-success {
+  background: #E8F5E9;
+  color: #2E7D32;
 }
 
 /* 响应式调整 */
 @media (max-width: 768px) {
-  .header-inner {
-    padding: var(--space-sm) 0;
+  .card-corner {
+    display: none;
   }
   
-  .app-title {
-    font-size: var(--text-xl);
-  }
-  
-  .app-main {
-    padding: var(--space-xl) var(--space-md);
-  }
-  
-  .stats-grid {
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: var(--space-md);
-  }
-  
-  .error-content,
-  .loading-content {
-    padding: var(--space-xl);
-  }
-}
-
-@media (max-width: 480px) {
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .app-title {
-    font-size: var(--text-lg);
+  .digital-display {
+    padding: var(--space-xs) var(--space-sm);
   }
 }

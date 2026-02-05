@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Overview from './components/Overview';
 import Trend24h from './components/Trend24h';
 import TodayUsage from './components/TodayUsage';
@@ -149,7 +149,7 @@ function App() {
       <div className="loading-container">
         <div className="loading-content fade-in">
           <div className="loading-spinner"></div>
-          <p className="loading-text">正在加载数据...</p>
+          <p className="loading-text">正在加载...</p>
         </div>
       </div>
     );
@@ -159,7 +159,7 @@ function App() {
     return (
       <div className="error-container">
         <div className="error-content fade-in">
-          <div className="error-icon">⚠️</div>
+          <div className="error-icon">😔</div>
           <p className="error-message">{error}</p>
           <button 
             onClick={handleRefresh}
@@ -178,8 +178,8 @@ function App() {
         <div className="header-content">
           <div className="header-inner">
             <div className="app-title-section">
-              <h1 className="app-title">雷神一二布布的电量监控</h1>
-              <p className="app-subtitle">实时监控 · 智能分析 · 数据可视化</p>
+              <h1 className="app-title">一二布布的电量监控</h1>
+              <p className="app-subtitle">温暖守护，智能用电</p>
             </div>
             <div className="header-actions">
               <button
@@ -187,7 +187,7 @@ function App() {
                 className="btn btn-icon"
                 title={showLogs ? '隐藏日志' : '查看日志'}
               >
-                <span className="btn-icon-text">{showLogs ? '×' : '📋'}</span>
+                <span className="btn-icon-text">{showLogs ? '✕' : '☰'}</span>
               </button>
             </div>
           </div>
@@ -208,8 +208,8 @@ function App() {
           
           {showLogs && (
             <div className="logs-section">
-              <h2 className="logs-title">本地爬虫日志</h2>
-              <div className="logs-subtitle">显示最近50条本地爬虫日志</div>
+              <h2 className="logs-title">系统日志</h2>
+              <div className="logs-subtitle">最近 50 条记录</div>
               {logsLoading ? (
                 <div className="logs-loading">加载中...</div>
               ) : logs.length === 0 ? (

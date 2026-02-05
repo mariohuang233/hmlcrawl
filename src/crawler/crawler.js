@@ -202,7 +202,7 @@ class ElectricityCrawler {
 
     // 每15分钟执行一次，并添加随机延迟
     try {
-      cron.schedule('*/15 * * * *', () => {
+      cron.schedule('0,15,30,45 * * * *', () => {
         crawlerLogger.info('定时任务触发，开始执行爬取...');
         // 添加随机延迟 0-300秒（0-5分钟）
         const randomDelay = Math.floor(Math.random() * 300) * 1000;

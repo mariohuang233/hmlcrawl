@@ -1,6 +1,7 @@
 const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
+const winstonDailyRotateFile = require('winston-daily-rotate-file');
 
 // 确保logs目录存在 - 使用项目根目录
 const logsDir = path.join(__dirname, '../../../logs');
@@ -56,10 +57,12 @@ const crawlerLogger = winston.createLogger({
     })
   ),
   transports: [
-    new winston.transports.File({
-      filename: path.join(logsDir, `fetch-${new Date().toISOString().split('T')[0].replace(/-/g, '')}.log`),
-      maxsize: 5242880, // 5MB
-      maxFiles: 7 // 保留7天
+    new winston.transports.Console(),
+    new winstonDailyRotateFile({
+      filename: path.join(logsDir, 'fetch-%DATE%.log'),
+      datePattern: 'YYYYMMDD',
+      maxSize: '5m',
+      maxFiles: '7d'
     })
   ]
 });
