@@ -6,7 +6,7 @@ import DailyTrend from './components/DailyTrend';
 import MonthlyTrend from './components/MonthlyTrend';
 import './App.css';
 import { fetchAPI, retryRequest, formatErrorMessage } from './utils/api';
-import bubuIcon from './assets/bubu.svg';
+import bubuIcon from './assets/bubu.png';
 
 interface WindowAnalysis {
   rate: number;
