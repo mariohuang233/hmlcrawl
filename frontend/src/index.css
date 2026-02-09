@@ -159,21 +159,68 @@ body {
 
 .app-title {
   font-family: var(--font-display);
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--primary-warm);
   margin: 0;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-md);
+}
+
+.logo-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-wrapper::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  background: linear-gradient(135deg, var(--primary-warm) 0%, var(--accent-orange) 50%, var(--accent-blue) 100%);
+  border-radius: var(--radius-full);
+  opacity: 0.15;
+  filter: blur(8px);
+  transition: all 0.3s ease;
+}
+
+.logo-wrapper:hover::before {
+  opacity: 0.25;
+  filter: blur(12px);
 }
 
 .app-title-icon {
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
   border-radius: var(--radius-full);
-  object-fit: contain;
+  object-fit: cover;
+  box-shadow: 
+    0 4px 12px rgba(139, 111, 92, 0.25),
+    0 0 0 4px rgba(255, 255, 255, 0.9),
+    0 0 0 6px rgba(139, 111, 92, 0.08);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  background: linear-gradient(145deg, #FFFFFF 0%, #FAF8F6 100%);
+  padding: 3px;
+  position: relative;
+  z-index: 1;
+}
+
+.app-title-icon:hover {
+  transform: scale(1.08) rotate(2deg);
+  box-shadow: 
+    0 6px 20px rgba(139, 111, 92, 0.3),
+    0 0 0 4px rgba(255, 255, 255, 0.95),
+    0 0 0 7px rgba(139, 111, 92, 0.12);
+}
+
+.app-title-text {
+  background: linear-gradient(135deg, var(--primary-warm) 0%, var(--primary-warm-dark) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .app-subtitle {

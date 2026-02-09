@@ -180,8 +180,10 @@ function App() {
           <div className="header-inner">
             <div className="app-title-section">
               <h1 className="app-title">
-                <img src={bubuIcon} alt="一二布布" className="app-title-icon" />
-                一二布布的电量监控
+                <div className="logo-wrapper">
+                  <img src={bubuIcon} alt="一二布布" className="app-title-icon" />
+                </div>
+                <span className="app-title-text">一二布布的电量监控</span>
               </h1>
               <p className="app-subtitle">温暖守护，智能用电</p>
             </div>
