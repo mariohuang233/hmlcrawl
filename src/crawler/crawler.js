@@ -132,40 +132,56 @@ class ElectricityCrawler {
     const fs = require('fs');
     const path = require('path');
     const logsDir = path.join(__dirname, '../../../logs');
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-    const logFile = path.join(logsDir, `fetch-${today}.log`);
     
     try {
-      if (fs.existsSync(logFile)) {
-        const content = fs.readFileSync(logFile, 'utf8');
-        const lines = content.split('\n').filter(line => line.trim());
-        const logs = [];
-        
-        for (const line of lines) {
-          try {
-            const jsonMatch = line.match(/\{[^}]+\}/);
-            if (jsonMatch) {
-              const logEntry = JSON.parse(jsonMatch[0]);
-              if (logEntry.action && logEntry.timestamp) {
-                logs.push({
-                  timestamp: logEntry.timestamp,
-                  level: logEntry.action === 'error' || logEntry.action === 'failed' ? 'error' : 'info',
-                  message: logEntry.action === 'error' ? logEntry.error : logEntry.info,
-                  data: logEntry.data || logEntry
-                });
+      // 获取所有日志文件并按日期排序（最新的在前）
+      const files = fs.readdirSync(logsDir)
+        .filter(f => f.startsWith('fetch-') && f.endsWith('.log'))
+        .sort((a, b) => b.localeCompare(a));
+      
+      const logs = [];
+      
+      // 读取最新的日志文件（最多读取2个文件以获取更多记录）
+      for (let i = 0; i < Math.min(files.length, 2); i++) {
+        const logFile = path.join(logsDir, files[i]);
+        try {
+          const content = fs.readFileSync(logFile, 'utf8');
+          const lines = content.split('\n').filter(line => line.trim());
+          
+          for (const line of lines) {
+            try {
+              const jsonMatch = line.match(/\{[^}]+\}/);
+              if (jsonMatch) {
+                const logEntry = JSON.parse(jsonMatch[0]);
+                if (logEntry.action && logEntry.timestamp) {
+                  logs.push({
+                    timestamp: logEntry.timestamp,
+                    level: logEntry.action === 'error' || logEntry.action === 'failed' ? 'error' : 'info',
+                    message: logEntry.action === 'error' ? logEntry.error : logEntry.info,
+                    data: logEntry.data || logEntry
+                  });
+                }
               }
+            } catch (e) {
+              // 忽略解析失败的行
             }
-          } catch (e) {
-            // 忽略解析失败的行
           }
+        } catch (e) {
+          crawlerLogger.error(`读取日志文件 ${files[i]} 失败: ${e.message}`);
         }
-        
+      }
+      
+      // 按时间戳排序（最新的在前）并返回
+      logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      
+      if (logs.length > 0) {
         return logs.slice(0, limit);
       }
     } catch (error) {
       crawlerLogger.error(`读取日志文件失败: ${error.message}`);
     }
     
+    // 如果没有文件日志，返回内存中的日志
     return this.logEntries.slice(0, limit);
   }
   
