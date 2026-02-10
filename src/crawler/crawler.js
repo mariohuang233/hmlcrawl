@@ -5,6 +5,7 @@ const { URL } = require('url');
 const { JSDOM } = require('jsdom');
 const cron = require('node-cron');
 const Usage = require('../models/Usage');
+const CrawlerLog = require('../models/CrawlerLog');
 const { crawlerLogger } = require('../utils/logger');
 
 // 爬虫配置常量
@@ -109,7 +110,7 @@ class ElectricityCrawler {
   }
   
   // 添加日志条目
-  addLogEntry(entry) {
+  async addLogEntry(entry) {
     // 确保条目包含时间戳
     const logEntry = {
       timestamp: new Date().toISOString(),
@@ -125,21 +126,55 @@ class ElectricityCrawler {
     
     // 同时记录到日志文件
     crawlerLogger.info(JSON.stringify(logEntry));
+    
+    // 同时写入MongoDB（异步，不阻塞）
+    try {
+      await CrawlerLog.addLog({
+        timestamp: logEntry.timestamp,
+        level: entry.action === 'error' || entry.action === 'failed' ? 'error' : 'info',
+        action: entry.action || 'unknown',
+        message: entry.error || entry.info || JSON.stringify(entry.data),
+        data: entry.data,
+        source: 'local'
+      });
+    } catch (e) {
+      // MongoDB写入失败不影响主流程
+      crawlerLogger.error(`日志写入MongoDB失败: ${e.message}`);
+    }
   }
   
   // 获取日志
-  getLogs(limit = 100) {
+  async getLogs(limit = 100) {
     const fs = require('fs');
     const path = require('path');
     const logsDir = path.join(__dirname, '../../../logs');
     
+    const logs = [];
+    
+    // 1. 首先尝试从MongoDB读取日志（包含本地爬虫的日志）
+    try {
+      const dbLogs = await CrawlerLog.getRecentLogs(limit);
+      if (dbLogs && dbLogs.length > 0) {
+        return dbLogs.map(log => ({
+          timestamp: log.timestamp,
+          level: log.level,
+          message: log.message,
+          action: log.action,
+          data: log.data,
+          source: log.source,
+          hostname: log.hostname
+        }));
+      }
+    } catch (e) {
+      crawlerLogger.error(`从MongoDB读取日志失败: ${e.message}`);
+    }
+    
+    // 2. 如果MongoDB没有日志，回退到文件日志
     try {
       // 获取所有日志文件并按日期排序（最新的在前）
       const files = fs.readdirSync(logsDir)
         .filter(f => f.startsWith('fetch-') && f.endsWith('.log'))
         .sort((a, b) => b.localeCompare(a));
-      
-      const logs = [];
       
       // 读取最新的日志文件（最多读取2个文件以获取更多记录）
       for (let i = 0; i < Math.min(files.length, 2); i++) {
@@ -181,7 +216,7 @@ class ElectricityCrawler {
       crawlerLogger.error(`读取日志文件失败: ${error.message}`);
     }
     
-    // 如果没有文件日志，返回内存中的日志
+    // 3. 如果没有文件日志，返回内存中的日志
     return this.logEntries.slice(0, limit);
   }
   
@@ -250,7 +285,7 @@ class ElectricityCrawler {
           retryCount: retryCount + 1,
           url: this.url
         };
-        this.addLogEntry(logEntry);
+        await this.addLogEntry(logEntry);
         
         const data = await this.fetchElectricityData();
         if (data) {
@@ -265,7 +300,7 @@ class ElectricityCrawler {
             data: data,
             retryCount: retryCount + 1
           };
-          this.addLogEntry(successLog);
+          await this.addLogEntry(successLog);
           
           return;
         }
@@ -279,7 +314,7 @@ class ElectricityCrawler {
           error: error.message,
           retryCount: retryCount
         };
-        this.addLogEntry(errorLog);
+        await this.addLogEntry(errorLog);
         
         if (retryCount < this.maxRetries) {
           crawlerLogger.info(`${this.retryDelay/1000}秒后重试...`);
@@ -293,7 +328,7 @@ class ElectricityCrawler {
             error: error.message,
             retryCount: retryCount
           };
-          this.addLogEntry(failLog);
+          await this.addLogEntry(failLog);
         }
       }
     }
@@ -307,7 +342,7 @@ class ElectricityCrawler {
       
       // 检查是否被拦截
       if (html.includes('blocked') || html.includes('<title>405</title>') || html.includes('安全威胁') || html.includes('被阻断') || html.includes('Tunnel website ahead!')) {
-        this.addLogEntry({
+        await this.addLogEntry({
           timestamp: new Date(),
           action: 'blocked',
           info: '请求被安全防护拦截',
@@ -344,7 +379,7 @@ class ElectricityCrawler {
       }
       
       // 添加调试日志到日志记录
-      this.addLogEntry({
+      await this.addLogEntry({
         timestamp: new Date(),
         action: 'debug',
         info: `HTML长度: ${html.length}字符`,
@@ -361,7 +396,7 @@ class ElectricityCrawler {
       const allText = document.body ? document.body.textContent : '';
       crawlerLogger.info(`提取的文本长度: ${allText.length}`);
       
-      this.addLogEntry({
+      await this.addLogEntry({
         timestamp: new Date(),
         action: 'debug',
         info: `文本长度: ${allText.length}字符`,
@@ -417,7 +452,7 @@ class ElectricityCrawler {
         const numberMatches = allText.match(/\d+\.?\d*/g);
         crawlerLogger.info(`找到数字匹配: ${numberMatches ? numberMatches.length : 0} 个`);
         
-        this.addLogEntry({
+        await this.addLogEntry({
           timestamp: new Date(),
           action: 'debug',
           info: `找到数字: ${numberMatches ? numberMatches.length : 0} 个`,
@@ -443,7 +478,7 @@ class ElectricityCrawler {
 
       if (remainingKwh === null) {
         // 记录解析失败的详细信息
-        this.addLogEntry({
+        await this.addLogEntry({
           timestamp: new Date(),
           action: 'parse_failed',
           info: '无法解析剩余电量',
