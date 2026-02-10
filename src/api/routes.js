@@ -980,9 +980,12 @@ router.post('/cleanup', async (req, res) => {
 router.get('/crawler/logs', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 100;
+    logger.info(`获取爬虫日志请求，限制: ${limit} 条`);
     const logs = crawler.getLogs(limit);
+    logger.info(`返回 ${logs.length} 条日志记录`);
     res.json({ success: true, logs, count: logs.length });
   } catch (error) {
+    logger.error('获取爬虫日志失败:', error.message);
     res.status(500).json({ error: error.message });
   }
 });

@@ -33,8 +33,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(morgan('combined', { 
-  stream: { write: message => logger.info(message.trim()) },
-  skip: (req, res) => res.statusCode < 400
+  stream: { write: message => logger.info(message.trim()) }
 }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
