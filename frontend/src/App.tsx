@@ -147,10 +147,35 @@ function App() {
 
   if (loading) {
     return (
-      <div className="loading-container">
-        <div className="loading-content fade-in">
-          <div className="loading-spinner"></div>
-          <p className="loading-text">正在加载...</p>
+      <div className="app-container">
+        <header className="app-header">
+          <div className="header-content">
+            <div className="header-inner">
+              <div className="app-title-section">
+                <h1 className="app-title">
+                  <div className="logo-wrapper">
+                    <img src={bubuIcon} alt="一二布布" className="app-title-icon" />
+                  </div>
+                  <span className="app-title-text">一二布布的电量监控</span>
+                </h1>
+                <p className="app-subtitle">温暖守护，智能用电</p>
+              </div>
+            </div>
+          </div>
+        </header>
+        <div className="skeleton-container">
+          <div className="skeleton-grid">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="skeleton-card">
+                <div className="skeleton skeleton-icon"></div>
+                <div className="skeleton skeleton-value"></div>
+                <div className="skeleton skeleton-label"></div>
+              </div>
+            ))}
+          </div>
+          <div className="skeleton-chart">
+            <div className="skeleton skeleton-chart-inner"></div>
+          </div>
         </div>
       </div>
     );
