@@ -14,12 +14,9 @@ interface AnimatedNumberProps {
   className?: string;
   style?: React.CSSProperties;
   onAnimationComplete?: () => void;
+  flashOnUpdate?: boolean;
 }
 
-/**
- * 带动画效果的数字组件
- * 支持从0到目标值的平滑动画
- */
 const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
   value,
   unit = '',
@@ -32,7 +29,8 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
   autoStart = true,
   className = '',
   style = {},
-  onAnimationComplete
+  onAnimationComplete,
+  flashOnUpdate = true
 }) => {
   const { animatedValue, isAnimating } = useAnimatedNumber(value, {
     duration,
@@ -41,19 +39,30 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
     precision,
     autoStart
   });
+  
+  const [prevValue, setPrevValue] = React.useState(value);
+  const [isUpdating, setIsUpdating] = React.useState(false);
 
-  // 监听动画完成
   React.useEffect(() => {
     if (!isAnimating && animatedValue === value && onAnimationComplete) {
       onAnimationComplete();
     }
   }, [isAnimating, animatedValue, value, onAnimationComplete]);
 
-  // 格式化显示值
+  React.useEffect(() => {
+    if (flashOnUpdate && prevValue !== value && value !== 0) {
+      setIsUpdating(true);
+      const timer = setTimeout(() => {
+        setIsUpdating(false);
+        setPrevValue(value);
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [value, prevValue, flashOnUpdate]);
+
   const formatValue = (val: number): string => {
-    if (val === 0 && value !== 0) return '0.00'; // 动画开始时的显示
+    if (val === 0 && value !== 0) return '0.00';
     
-    // 根据数值大小决定显示格式
     if (Math.abs(val) >= 1000) {
       return val.toLocaleString('zh-CN', { 
         minimumFractionDigits: precision,
@@ -69,7 +78,7 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
 
   return (
     <span 
-      className={`animated-number ${className} ${isAnimating ? 'animating' : ''}`}
+      className={`animated-number ${className} ${isAnimating ? 'animating' : ''} ${isUpdating ? 'updating' : ''}`}
       style={{
         display: 'inline-block',
         transition: 'transform 0.2s ease-out',

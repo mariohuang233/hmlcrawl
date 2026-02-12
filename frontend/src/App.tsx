@@ -83,12 +83,20 @@ function App() {
   const [showLogs, setShowLogs] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchOverview = useCallback(async () => {
+  const fetchOverview = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      } else {
+        setIsRefreshing(true);
+      }
       const data = await retryRequest(() => fetchAPI<OverviewData>('/api/overview'), 2, 500);
       setOverview(data);
+      setLastUpdate(new Date());
       setError(null);
     } catch (err) {
       const errorMessage = formatErrorMessage(err);
@@ -96,6 +104,7 @@ function App() {
       console.error('Error fetching overview:', err);
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   }, []);
 
@@ -128,7 +137,8 @@ function App() {
   }, []);
 
   const handleRefresh = useCallback(() => {
-    fetchOverview();
+    setRefreshKey(prev => prev + 1);
+    fetchOverview(true);
     if (showLogs) {
       fetchLogs();
     }
@@ -143,6 +153,14 @@ function App() {
 
   useEffect(() => {
     fetchOverview();
+  }, [fetchOverview]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchOverview(true);
+      setRefreshKey(prev => prev + 1);
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, [fetchOverview]);
 
   if (loading) {
@@ -210,9 +228,24 @@ function App() {
                 </div>
                 <span className="app-title-text">一二布布的电量监控</span>
               </h1>
-              <p className="app-subtitle">温暖守护，智能用电</p>
+              <p className="app-subtitle">
+                温暖守护，智能用电
+                {lastUpdate && (
+                  <span className="last-update">
+                    · 更新于 {lastUpdate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </p>
             </div>
             <div className="header-actions">
+              <button
+                onClick={handleRefresh}
+                className={`btn btn-icon ${isRefreshing ? 'refreshing' : ''}`}
+                title="刷新数据"
+                disabled={isRefreshing}
+              >
+                <span className="btn-icon-text">{isRefreshing ? '⟳' : '↻'}</span>
+              </button>
               <button
                 onClick={handleShowLogs}
                 className="btn btn-icon"
@@ -229,13 +262,13 @@ function App() {
         <div className="fade-in">
           {overview && <Overview data={overview} />}
           
-          <Trend24h />
+          <Trend24h key={`trend24h-${refreshKey}`} />
           
-          <TodayUsage />
+          <TodayUsage key={`today-${refreshKey}`} />
           
-          <DailyTrend />
+          <DailyTrend key={`daily-${refreshKey}`} />
           
-          <MonthlyTrend />
+          <MonthlyTrend key={`monthly-${refreshKey}`} />
           
           {showLogs && (
             <div className="logs-section">
