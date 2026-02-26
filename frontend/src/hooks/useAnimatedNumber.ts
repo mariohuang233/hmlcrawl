@@ -127,8 +127,9 @@ export const useAnimatedNumber = (
 
   // 当目标值改变时，重新开始动画
   useEffect(() => {
-    if (targetValue !== 0 && !hasInitialized.current && autoStart) {
-      hasInitialized.current = true;
+    if (targetValue !== 0 && autoStart) {
+      // 重置初始化状态，允许重新触发动画
+      hasInitialized.current = false;
       startAnimation();
     }
   }, [targetValue, startAnimation, autoStart]);

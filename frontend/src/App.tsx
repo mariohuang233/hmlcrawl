@@ -260,7 +260,7 @@ function App() {
 
       <main className="app-main">
         <div className="fade-in">
-          {overview && <Overview data={overview} />}
+          {overview && <Overview key={`overview-${refreshKey}`} data={overview} />}
           
           <Trend24h key={`trend24h-${refreshKey}`} />
           

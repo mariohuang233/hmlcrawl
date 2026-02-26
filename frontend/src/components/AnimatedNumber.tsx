@@ -52,9 +52,10 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
   React.useEffect(() => {
     if (flashOnUpdate && prevValue !== value && value !== 0) {
       setIsUpdating(true);
+      // 立即更新 prevValue，避免重复触发
+      setPrevValue(value);
       const timer = setTimeout(() => {
         setIsUpdating(false);
-        setPrevValue(value);
       }, 600);
       return () => clearTimeout(timer);
     }
