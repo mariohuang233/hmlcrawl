@@ -34,6 +34,7 @@ export const useAnimatedNumber = (
   const animationRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const hasInitialized = useRef(false);
+  const prevTargetValue = useRef<number | null>(null);
 
   // 缓动函数，使用useMemo缓存以避免依赖变化
   const easingFunctions = useMemo(() => ({
@@ -128,9 +129,13 @@ export const useAnimatedNumber = (
   // 当目标值改变时，重新开始动画
   useEffect(() => {
     if (targetValue !== 0 && autoStart) {
-      // 重置初始化状态，允许重新触发动画
-      hasInitialized.current = false;
-      startAnimation();
+      // 只有当目标值真正发生变化时才触发动画
+      if (prevTargetValue.current !== targetValue) {
+        prevTargetValue.current = targetValue;
+        // 重置初始化状态，允许重新触发动画
+        hasInitialized.current = false;
+        startAnimation();
+      }
     }
   }, [targetValue, startAnimation, autoStart]);
 
