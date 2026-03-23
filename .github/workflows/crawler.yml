@@ -1,0 +1,49 @@
+name: Electricity Crawler
+
+on:
+  schedule:
+    - cron: '0,15,30,45 * * * *'
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: false
+        default: 'info'
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Run crawler
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          METER_ID: ${{ secrets.METER_ID }}
+          METER_NAME: ${{ secrets.METER_NAME }}
+          USE_DIRECT_IP: 'true'
+          ENABLE_CRAWLER: 'false'
+        run: |
+          echo "Starting electricity crawler..."
+          node scripts/run-local-crawler.js
+        timeout-minutes: 3
+
+      - name: Upload crawler logs
+        if: always()
+        run: |
+          if [ -f logs/crawler.log ]; then
+            echo "=== Latest Crawler Logs ==="
+            tail -50 logs/crawler.log
+          fi
