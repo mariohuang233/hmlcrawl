@@ -67,6 +67,26 @@ interface OverviewProps {
   data: OverviewData;
 }
 
+interface StatItem {
+  value: number | string;
+  label: string;
+  unit: string;
+  icon: string;
+  precision: number;
+  delay: number;
+  prefix?: string;
+  suffix?: string;
+  subtitle?: string;
+  warning?: boolean;
+  isStatic?: boolean;
+  comparison?: {
+    text: string;
+    color: string;
+    secondaryText?: string;
+    secondaryColor?: string;
+  };
+}
+
 const Overview: React.FC<OverviewProps> = ({ data }) => {
   const { elementRef, hasTriggered } = useIntersectionObserver({
     threshold: 0.01,

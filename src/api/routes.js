@@ -581,9 +581,9 @@ router.get('/overview', cacheMiddleware('overview', 60000), asyncHandler(async (
     }
 
     const now = new Date();
-    const todayStart = getBeijingTodayStart(now); // 使用北京时间计算今天开始时间
-    const weekStart = getBeijingWeekStart(now); // 使用北京时间计算本周一开始时间
-    const monthStart = getBeijingMonthStart(now); // 使用北京时间计算本月1号开始时间
+    const todayStart = getBeijingTodayStart(now);
+    const weekStart = getBeijingWeekStart(now);
+    const monthStart = getBeijingMonthStart(now);
 
     // 计算对比时间范围
     const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
@@ -598,77 +598,67 @@ router.get('/overview', cacheMiddleware('overview', 60000), asyncHandler(async (
     const lastWeekSameDayStart = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
     const lastWeekSameDayEnd = new Date(lastWeekSameDayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
     
-    try {
-      const [todayStats, weekStats, monthStats, latestUsage, yesterdayStats, lastWeekStats, lastMonthStats, lastWeekSameDayStats] = await Promise.all([
-        Usage.calculateUsageStats('18100071580', todayStart, now),
-        Usage.calculateUsageStats('18100071580', weekStart, now),
-        Usage.calculateUsageStats('18100071580', monthStart, now),
-        Usage.getLatestUsage('18100071580'),
-        Usage.calculateUsageStats('18100071580', yesterdayStart, yesterdayEnd),
-        Usage.calculateUsageStats('18100071580', lastWeekStart, lastWeekEnd),
-        Usage.calculateUsageStats('18100071580', lastMonthStart, lastMonthEnd),
-        Usage.calculateUsageStats('18100071580', lastWeekSameDayStart, lastWeekSameDayEnd)
-      ]);
+    const meterId = process.env.METER_ID || '18100071580';
+    
+    const [todayStats, weekStats, monthStats, latestUsage, yesterdayStats, lastWeekStats, lastMonthStats, lastWeekSameDayStats] = await Promise.all([
+      Usage.calculateUsageStats(meterId, todayStart, now),
+      Usage.calculateUsageStats(meterId, weekStart, now),
+      Usage.calculateUsageStats(meterId, monthStart, now),
+      Usage.getLatestUsage(meterId),
+      Usage.calculateUsageStats(meterId, yesterdayStart, yesterdayEnd),
+      Usage.calculateUsageStats(meterId, lastWeekStart, lastWeekEnd),
+      Usage.calculateUsageStats(meterId, lastMonthStart, lastMonthEnd),
+      Usage.calculateUsageStats(meterId, lastWeekSameDayStart, lastWeekSameDayEnd)
+    ]);
 
-      // 检查数据覆盖范围
-      const earliestData = await Usage.findOne({ meter_id: '18100071580' }).sort({ collected_at: 1 });
-      const dataStartDate = earliestData ? earliestData.collected_at : null;
-      
-      // 判断数据是否完整
-      const weekDataComplete = dataStartDate ? dataStartDate <= weekStart : false;
-      const monthDataComplete = dataStartDate ? dataStartDate <= monthStart : false;
+    // 检查数据覆盖范围
+    const earliestData = await Usage.findOne({ meter_id: meterId }).sort({ collected_at: 1 });
+    const dataStartDate = earliestData ? earliestData.collected_at : null;
+    
+    // 判断数据是否完整
+    const weekDataComplete = dataStartDate ? dataStartDate <= weekStart : false;
+    const monthDataComplete = dataStartDate ? dataStartDate <= monthStart : false;
 
-      // 计算预计用完时间
-      const prediction = await calculateElectricityPrediction('18100071580', now);
+    // 计算预计用完时间
+    const prediction = await calculateElectricityPrediction(meterId, now);
 
-      // 计算本月预计费用（智能预测）
-      const monthPrediction = calculateMonthCostPrediction(monthStats, now, monthStart);
-      
-      // 计算对比百分比
-      const todayVsYesterday = calculatePercentageChange(todayStats.totalUsage, yesterdayStats.totalUsage);
-      const todayVsLastWeekSameDay = calculatePercentageChange(todayStats.totalUsage, lastWeekSameDayStats.totalUsage);
-      const weekVsLastWeek = calculatePercentageChange(weekStats.totalUsage, lastWeekStats.totalUsage);
-      const monthVsLastMonth = calculatePercentageChange(monthStats.totalUsage, lastMonthStats.totalUsage);
-      const costVsLastMonth = calculatePercentageChange(monthPrediction.estimated_cost, lastMonthStats.totalUsage * 1);
+    // 计算本月预计费用（智能预测）
+    const monthPrediction = calculateMonthCostPrediction(monthStats, now, monthStart);
+    
+    // 计算对比百分比
+    const todayVsYesterday = calculatePercentageChange(todayStats.totalUsage, yesterdayStats.totalUsage);
+    const todayVsLastWeekSameDay = calculatePercentageChange(todayStats.totalUsage, lastWeekSameDayStats.totalUsage);
+    const weekVsLastWeek = calculatePercentageChange(weekStats.totalUsage, lastWeekStats.totalUsage);
+    const monthVsLastMonth = calculatePercentageChange(monthStats.totalUsage, lastMonthStats.totalUsage);
+    const costVsLastMonth = calculatePercentageChange(monthPrediction.estimated_cost, lastMonthStats.totalUsage * 1);
 
-      res.json({
-        current_remaining: latestUsage ? latestUsage.remaining_kwh : 0,
-        today_usage: todayStats.totalUsage,
-        week_usage: weekStats.totalUsage,
-        month_usage: monthStats.totalUsage,
-        month_cost: monthPrediction.estimated_cost, // 智能预测的预计费用
-        // 对比数据
-        comparisons: {
-          today_vs_yesterday: todayVsYesterday,
-          today_vs_last_week_same_day: todayVsLastWeekSameDay,
-          week_vs_last_week: weekVsLastWeek,
-          month_vs_last_month: monthVsLastMonth,
-          cost_vs_last_month: costVsLastMonth,
-          yesterday_usage: yesterdayStats.totalUsage,
-          last_week_same_day_usage: lastWeekSameDayStats.totalUsage,
-          last_week_usage: lastWeekStats.totalUsage,
-          last_month_usage: lastMonthStats.totalUsage,
-          last_month_cost: lastMonthStats.totalUsage * 1
-        },
-        // 预计用完时间
-        predicted_depletion: prediction,
-        // 数据完整性信息
-        data_coverage: {
-          earliest_data: dataStartDate,
-          week_data_complete: weekDataComplete,
-          month_data_complete: monthDataComplete,
-          week_actual_start: dataStartDate && dataStartDate > weekStart ? dataStartDate : weekStart,
-          month_actual_start: dataStartDate && dataStartDate > monthStart ? dataStartDate : monthStart
-        }
-      });
-    } catch (error) {
-      logger.error('API错误:', error);
-      res.status(500).json({
-        error: '服务器内部错误',
-        message: '获取数据时发生错误，请稍后重试',
-        status: 'internal_error'
-      });
-    }
+    res.json({
+      current_remaining: latestUsage ? latestUsage.remaining_kwh : 0,
+      today_usage: todayStats.totalUsage,
+      week_usage: weekStats.totalUsage,
+      month_usage: monthStats.totalUsage,
+      month_cost: monthPrediction.estimated_cost,
+      comparisons: {
+        today_vs_yesterday: todayVsYesterday,
+        today_vs_last_week_same_day: todayVsLastWeekSameDay,
+        week_vs_last_week: weekVsLastWeek,
+        month_vs_last_month: monthVsLastMonth,
+        cost_vs_last_month: costVsLastMonth,
+        yesterday_usage: yesterdayStats.totalUsage,
+        last_week_same_day_usage: lastWeekSameDayStats.totalUsage,
+        last_week_usage: lastWeekStats.totalUsage,
+        last_month_usage: lastMonthStats.totalUsage,
+        last_month_cost: lastMonthStats.totalUsage * 1
+      },
+      predicted_depletion: prediction,
+      data_coverage: {
+        earliest_data: dataStartDate,
+        week_data_complete: weekDataComplete,
+        month_data_complete: monthDataComplete,
+        week_actual_start: dataStartDate && dataStartDate > weekStart ? dataStartDate : weekStart,
+        month_actual_start: dataStartDate && dataStartDate > monthStart ? dataStartDate : monthStart
+      }
+    });
 }));
 
 // 获取过去24小时趋势
@@ -1023,6 +1013,33 @@ router.post('/reportData', async (req, res) => {
     await crawler.saveData(parsed);
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 新增：手机端轻量数据上报接口（手机只发送解析好的数据）
+router.post('/report', async (req, res) => {
+  try {
+    const { meter_id, meter_name, remaining_kwh, collected_at } = req.body;
+
+    if (!meter_id || remaining_kwh === undefined) {
+      return res.status(400).json({ error: '缺少必要参数: meter_id, remaining_kwh' });
+    }
+
+    const usageData = {
+      meter_id: meter_id || process.env.METER_ID || '18100071580',
+      meter_name: meter_name || process.env.METER_NAME || '2759弄18号402阳台',
+      remaining_kwh: parseFloat(remaining_kwh),
+      collected_at: collected_at ? new Date(collected_at) : new Date()
+    };
+
+    const usage = new Usage(usageData);
+    await usage.save();
+
+    logger.info(`手机上报数据成功: ${remaining_kwh} kWh`);
+    res.json({ success: true, message: '数据已接收' });
+  } catch (err) {
+    logger.error('手机上报数据失败:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
