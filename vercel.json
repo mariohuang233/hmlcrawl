@@ -1,0 +1,18 @@
+{
+  "functions": {
+    "api/crawl.js": {
+      "maxDuration": 30
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/crawl",
+      "schedule": "*/15 * * * *"
+    }
+  ],
+  "buildCommand": "cd frontend && npm install --prefer-offline --no-audit && npm run build",
+  "installCommand": "npm install --prefer-offline --no-audit",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api/index.js" }
+  ]
+}
