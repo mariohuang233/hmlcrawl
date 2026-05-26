@@ -999,12 +999,16 @@ router.post('/crawler/trigger', async (req, res) => {
 router.get('/crawler/status', async (req, res) => {
   try {
     const stats = crawler.getStats();
-    const isCloud = !!process.env.RAILWAY_SERVICE_NAME || !!process.env.ZEABUR_SERVICE_NAME;
+    const IS_RAILWAY = !!process.env.RAILWAY_SERVICE_NAME;
+    const IS_ZEABUR = !!process.env.ZEABUR_SERVICE_NAME;
+    const IS_RENDER = !!process.env.RENDER;
+    const IS_VERCEL = !!process.env.VERCEL;
+    const platform = IS_RENDER ? 'render' : IS_RAILWAY ? 'railway' : IS_ZEABUR ? 'zeabur' : IS_VERCEL ? 'vercel' : 'local';
     res.json({
       success: true,
       stats,
-      environment: isCloud ? 'cloud' : 'local',
-      platform: process.env.RAILWAY_SERVICE_NAME ? 'railway' : process.env.ZEABUR_SERVICE_NAME ? 'zeabur' : 'local',
+      environment: IS_RENDER || IS_RAILWAY || IS_ZEABUR || IS_VERCEL ? 'cloud' : 'local',
+      platform,
       uptime: process.uptime(),
       server_time: new Date().toISOString()
     });

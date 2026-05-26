@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: electricity-monitor
+    runtime: node
+    repo: https://github.com/mariohuang233/hmlcrawl
+    plan: free
+    region: singapore
+    buildCommand: npm install && cd frontend && npm install && npm run build
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: METER_ID
+        value: 18100071580
+      - key: METER_NAME
+        value: 2759弄18号402阳台
+
+jobs:
+  - type: cron
+    name: electricity-crawler
+    runtime: node
+    schedule: "*/15 * * * *"
+    startCommand: node api/render-crawl.js
+    region: singapore
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: METER_ID
+        value: 18100071580
+      - key: METER_NAME
+        value: 2759弄18号402阳台

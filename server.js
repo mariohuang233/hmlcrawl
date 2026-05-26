@@ -13,7 +13,9 @@ const apiRoutes = require('./src/api/routes');
 // 云端环境检测
 const IS_RAILWAY = !!process.env.RAILWAY_SERVICE_NAME || !!process.env.RAILWAY_STATIC_URL;
 const IS_ZEABUR = !!process.env.ZEABUR_SERVICE_NAME || !!process.env.ZEABUR_DOMAIN;
-const IS_CLOUD = IS_RAILWAY || IS_ZEABUR;
+const IS_RENDER = !!process.env.RENDER || process.env.RENDER === 'true';
+const IS_VERCEL = !!process.env.VERCEL || process.env.VERCEL === '1';
+const IS_CLOUD = IS_RAILWAY || IS_ZEABUR || IS_RENDER || IS_VERCEL;
 
 // 云端始终启用爬虫，本地需要显式设置 ENABLE_CRAWLER=true
 const ENABLE_CRAWLER = IS_CLOUD ? true : process.env.ENABLE_CRAWLER === 'true';
@@ -51,7 +53,7 @@ app.get('/health', (req, res) => {
     uptime: process.uptime(),
     mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     crawler: ENABLE_CRAWLER ? 'enabled' : 'disabled',
-    environment: IS_RAILWAY ? 'railway' : IS_ZEABUR ? 'zeabur' : 'local',
+    environment: IS_RENDER ? 'render' : IS_RAILWAY ? 'railway' : IS_ZEABUR ? 'zeabur' : IS_VERCEL ? 'vercel' : 'local',
     node_version: process.version
   });
 });
@@ -132,7 +134,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`环境: ${process.env.NODE_ENV || 'development'}`);
   
   if (IS_CLOUD) {
-    const cloudName = IS_RAILWAY ? 'Railway' : 'Zeabur';
+    const cloudName = IS_RENDER ? 'Render' : IS_RAILWAY ? 'Railway' : IS_ZEABUR ? 'Zeabur' : 'Vercel';
     logger.info(`==============================`);
     logger.info(`${cloudName} 云端保障爬虫已激活`);
     logger.info(`爬虫将在15分钟后开始周期性采集`);
@@ -147,10 +149,14 @@ mongoose.connect(MONGO_URI, mongooseOptions)
   logger.info(`连接地址: ${MONGO_URI.replace(/\/\/.*@/, '//***@')}`);
   
   if (IS_CLOUD) {
-    const cloudName = IS_RAILWAY ? 'Railway' : 'Zeabur';
+    const cloudName = IS_RENDER ? 'Render' : IS_RAILWAY ? 'Railway' : IS_ZEABUR ? 'Zeabur' : 'Vercel';
     logger.info(`${cloudName} 云端实例: 自动启动保障爬虫`);
     crawler.start();
-    crawler.startCloudBackup?.();
+    if (!IS_RENDER) {
+      crawler.startCloudBackup?.();
+    } else {
+      logger.info('Render 环境: 使用 Cron Job 定时触发爬虫，跳过内置备份');
+    }
   } else if (ENABLE_CRAWLER) {
     logger.info('ENABLE_CRAWLER=true，启动定时爬虫');
     crawler.start();
