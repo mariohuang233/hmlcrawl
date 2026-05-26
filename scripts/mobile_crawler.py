@@ -1,16 +1,27 @@
 #!/usr/bin/env python3
 """
-手机端轻量爬虫 - 用于旧手机/平板
+iPad/手机端轻量爬虫 - 用于旧 iPad/手机
 功耗极低(~2-3W)，只负责爬取和上报数据
+通过多个云端地址上报，只要一个在线就能成功
 
 使用方法:
     python3 mobile_crawler.py
 
-依赖:
-    Android: pkg install python curl -y
-    iOS: apk add python curl (iSH)
+iOS (iSH App):
+    1. App Store 搜索 "iSH Shell" 安装
+    2. 打开 iSH，运行:
+       apk add python3 curl git
+       git clone https://github.com/mariohuang233/hmlcrawl.git
+       cd hmlcrawl
+       python3 scripts/mobile_crawler.py
 
-定时: 每15分钟自动执行
+Android (Termux):
+    pkg install python curl
+    git clone https://github.com/mariohuang233/hmlcrawl.git
+    cd hmlcrawl
+    python3 scripts/mobile_crawler.py
+
+定时: 每15分钟自动执行，后台常驻
 """
 
 import urllib.request
@@ -19,17 +30,30 @@ import json
 import time
 import re
 import random
+import os
+import sys
 from datetime import datetime
 
 # ============ 配置 ============
-# 你的后端地址（部署在 Railway/Zeabur 上的地址）
-BACKEND_URL = "https://your-app.railway.app/api/report"
+# 多个云端后端地址（按优先级排序，自动选择可用的）
+BACKEND_URLS = [
+    # 替换成你实际部署的地址，去掉下面注释并填写
+    # "https://你的railway项目.up.railway.app/api/report",
+    # "https://你的zeabur项目.zeabur.app/api/report",
+    # "https://你的render项目.onrender.com/api/report",
+    # "https://你的vercel项目.vercel.app/api/report",
+]
+
+# 如果未配置云端地址，可以改为直接写入本地文件
+# 然后由本地爬虫自动同步到数据库
+LOCAL_OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mobile_data")
+os.makedirs(LOCAL_OUTPUT_DIR, exist_ok=True)
 
 # 电表配置
 METER_ID = "18100071580"
 METER_NAME = "2759弄18号402阳台"
 
-# 目标网站配置
+# 目标网站
 TARGET_HOST = "www.wap.cnyiot.com"
 DIRECT_IPS = [
     "121.41.227.153",
@@ -39,25 +63,33 @@ DIRECT_IPS = [
     "47.97.48.100"
 ]
 
-# 爬取间隔（秒）- 15分钟 = 900秒
+# 爬取间隔（秒）
 FETCH_INTERVAL = 15 * 60
 
-# 重试次数
+# 重试配置
 MAX_RETRIES = 3
 RETRY_DELAY = 5
 
+
 def log(msg):
     """打印带时间戳的日志"""
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
+    line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}"
+    print(line)
+    try:
+        log_file = os.path.join(LOCAL_OUTPUT_DIR, "mobile_crawler.log")
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except:
+        pass
+
 
 def fetch_html():
     """获取网页HTML"""
-    # 随机选择一个IP
     ip = random.choice(DIRECT_IPS)
     url = f"https://{ip}/nat/pay.aspx?mid={METER_ID}"
 
     headers = {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
+        'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
         'Accept-Encoding': 'gzip, deflate, br',
@@ -70,11 +102,9 @@ def fetch_html():
     req = urllib.request.Request(url, headers=headers)
     req.add_header('Cache-Control', 'no-cache')
 
-    # 随机延迟 0.5-1.5秒
     time.sleep(random.uniform(0.5, 1.5))
 
     try:
-        # 忽略SSL证书验证（直连IP时需要）
         import ssl
         context = ssl.create_default_context()
         context.check_hostname = False
@@ -87,15 +117,14 @@ def fetch_html():
         log(f"请求失败: {e}")
         return None
 
+
 def parse_remaining_kwh(html):
     """从HTML中解析剩余电量"""
     if not html:
         return None
 
-    # 提取所有文本内容
     text = html
 
-    # 方法1: 正则匹配 "剩余电量: xxx kWh"
     patterns = [
         r'剩余电量[:：]\s*([\d.]+)\s*kWh?',
         r'剩余[:：]\s*([\d.]+)\s*kWh?',
@@ -106,23 +135,21 @@ def parse_remaining_kwh(html):
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             kwh = float(match.group(1))
-            if 0 < kwh < 1000:  # 合理范围
+            if 0 < kwh < 1000:
                 log(f"通过正则找到剩余电量: {kwh} kWh")
                 return kwh
 
-    # 方法2: 查找所有数字，筛选合理值
     numbers = re.findall(r'\d+\.?\d*', text)
     valid_numbers = []
     for num in numbers:
         try:
             val = float(num)
-            if 0.5 < val < 100 and '.' in num:  # 0.5-100kWh，有小数
+            if 0.5 < val < 100 and '.' in num:
                 valid_numbers.append(val)
         except:
             pass
 
     if valid_numbers:
-        # 按升序排列，取中间值
         valid_numbers.sort()
         kwh = valid_numbers[len(valid_numbers) // 2]
         log(f"通过数字筛选找到剩余电量: {kwh} kWh")
@@ -130,8 +157,53 @@ def parse_remaining_kwh(html):
 
     return None
 
+
+def save_to_local_file(meter_id, meter_name, remaining_kwh):
+    """保存到本地文件（当云端不可用时的备份方案）"""
+    record = {
+        "meter_id": meter_id,
+        "meter_name": meter_name,
+        "remaining_kwh": remaining_kwh,
+        "collected_at": datetime.now().isoformat()
+    }
+    filename = f"data_{datetime.now().strftime('%Y%m%d')}.json"
+    filepath = os.path.join(LOCAL_OUTPUT_DIR, filename)
+
+    records = []
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                records = json.load(f)
+        except:
+            records = []
+
+    records.append(record)
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(records, f, ensure_ascii=False, indent=2)
+
+    log(f"数据已保存到本地: {filepath} ({remaining_kwh} kWh)")
+    return True
+
+
+def try_report_to_url(url, data):
+    """尝试上报到单个URL"""
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(data).encode('utf-8'),
+            headers={'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=15) as response:
+            result = response.read().decode('utf-8')
+            log(f"上报成功 -> {url}")
+            return True
+    except Exception as e:
+        log(f"上报失败 {url}: {str(e)[:50]}")
+        return False
+
+
 def report_to_backend(meter_id, meter_name, remaining_kwh):
-    """上报数据到后端"""
+    """上报数据 - 尝试多个云端地址，全部失败则存本地"""
     data = {
         "meter_id": meter_id,
         "meter_name": meter_name,
@@ -139,20 +211,19 @@ def report_to_backend(meter_id, meter_name, remaining_kwh):
         "collected_at": datetime.now().isoformat()
     }
 
-    try:
-        req = urllib.request.Request(
-            BACKEND_URL,
-            data=json.dumps(data).encode('utf-8'),
-            headers={'Content-Type': 'application/json'}
-        )
+    uploaded = False
+    if BACKEND_URLS:
+        for url in BACKEND_URLS:
+            if try_report_to_url(url, data):
+                uploaded = True
+                break
 
-        with urllib.request.urlopen(req, timeout=30) as response:
-            result = response.read().decode('utf-8')
-            log(f"上报成功: {result}")
-            return True
-    except Exception as e:
-        log(f"上报失败: {e}")
-        return False
+    if uploaded:
+        return True
+    else:
+        log("所有云端地址均不可用，保存到本地文件")
+        return save_to_local_file(meter_id, meter_name, remaining_kwh)
+
 
 def crawl_and_report():
     """执行一次爬取并上报"""
@@ -177,23 +248,38 @@ def crawl_and_report():
 
     return False
 
+
 def main():
     """主循环"""
     log("=" * 40)
-    log("手机端爬虫启动")
-    log(f"后端地址: {BACKEND_URL}")
+    log("iPad/手机端爬虫启动")
     log(f"电表ID: {METER_ID}")
-    log(f"爬取间隔: {FETCH_INTERVAL}秒 ({FETCH_INTERVAL // 60}分钟)")
+    log(f"爬取间隔: {FETCH_INTERVAL // 60}分钟")
+    if BACKEND_URLS:
+        log(f"云端地址: {len(BACKEND_URLS)} 个")
+        for u in BACKEND_URLS:
+            log(f"  - {u}")
+    else:
+        log("未配置云端地址，数据将保存到本地文件")
+    log(f"本地数据目录: {LOCAL_OUTPUT_DIR}")
     log("=" * 40)
 
-    # 启动后立即执行一次
     crawl_and_report()
 
-    # 进入定时循环
     while True:
         log(f"等待{FETCH_INTERVAL // 60}分钟后下一次爬取...")
         time.sleep(FETCH_INTERVAL)
         crawl_and_report()
 
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        log("爬虫已手动停止")
+        sys.exit(0)
+    except Exception as e:
+        log(f"未捕获异常: {e}")
+        # 异常后等待5分钟自动重启
+        time.sleep(300)
+        main()
