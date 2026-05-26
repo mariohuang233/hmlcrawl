@@ -10,7 +10,13 @@ require('dotenv').config({ path: process.env.LOCAL_ENV_PATH || '.env.local' });
 const logger = require('./src/utils/logger');
 const crawler = require('./src/crawler/crawler');
 const apiRoutes = require('./src/api/routes');
-const ENABLE_CRAWLER = process.env.ENABLE_CRAWLER === 'true';
+// 云端环境检测
+const IS_RAILWAY = !!process.env.RAILWAY_SERVICE_NAME || !!process.env.RAILWAY_STATIC_URL;
+const IS_ZEABUR = !!process.env.ZEABUR_SERVICE_NAME || !!process.env.ZEABUR_DOMAIN;
+const IS_CLOUD = IS_RAILWAY || IS_ZEABUR;
+
+// 云端始终启用爬虫，本地需要显式设置 ENABLE_CRAWLER=true
+const ENABLE_CRAWLER = IS_CLOUD ? true : process.env.ENABLE_CRAWLER === 'true';
 
 const app = express();
 
@@ -40,10 +46,13 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 app.get('/health', (req, res) => {
   res.status(200).json({ 
-    status: 'ok', 
+    status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    crawler: ENABLE_CRAWLER ? 'enabled' : 'disabled',
+    environment: IS_RAILWAY ? 'railway' : IS_ZEABUR ? 'zeabur' : 'local',
+    node_version: process.version
   });
 });
 
@@ -121,6 +130,15 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`服务器已启动在端口 ${PORT}`);
   logger.info(`健康检查端点: http://localhost:${PORT}/health`);
   logger.info(`环境: ${process.env.NODE_ENV || 'development'}`);
+  
+  if (IS_CLOUD) {
+    const cloudName = IS_RAILWAY ? 'Railway' : 'Zeabur';
+    logger.info(`==============================`);
+    logger.info(`${cloudName} 云端保障爬虫已激活`);
+    logger.info(`爬虫将在15分钟后开始周期性采集`);
+    logger.info(`同时作为本地爬虫的备份保障`);
+    logger.info(`==============================`);
+  }
 });
 
 mongoose.connect(MONGO_URI, mongooseOptions)
@@ -128,7 +146,12 @@ mongoose.connect(MONGO_URI, mongooseOptions)
   logger.info('MongoDB连接成功');
   logger.info(`连接地址: ${MONGO_URI.replace(/\/\/.*@/, '//***@')}`);
   
-  if (ENABLE_CRAWLER) {
+  if (IS_CLOUD) {
+    const cloudName = IS_RAILWAY ? 'Railway' : 'Zeabur';
+    logger.info(`${cloudName} 云端实例: 自动启动保障爬虫`);
+    crawler.start();
+    crawler.startCloudBackup?.();
+  } else if (ENABLE_CRAWLER) {
     logger.info('ENABLE_CRAWLER=true，启动定时爬虫');
     crawler.start();
   } else {

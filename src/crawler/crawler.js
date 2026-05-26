@@ -638,6 +638,35 @@ class ElectricityCrawler {
     crawlerLogger.info('手动触发数据爬取');
     await this.crawlData();
   }
+
+  // 云端保障爬虫 - 用于 Railway/Zeabur 部署作为本地爬虫的备份
+  // 相比本地爬虫，云端爬虫具有以下特点：
+  // 1. 启动时随机延迟 0-30 分钟，避免所有实例同时爬取
+  // 2. 每30分钟执行一次（而非15分钟），降低目标服务器压力
+  // 3. 与本地爬虫共享同一 MongoDB，自动去重
+  // 4. 如果本地爬虫正常运行，云端爬虫采集的数据是冗余的，但无害
+  startCloudBackup() {
+    const randomStartupDelay = Math.floor(Math.random() * 30) * 60 * 1000;
+    crawlerLogger.info(`云端保障爬虫准备就绪，将在 ${Math.round(randomStartupDelay / 60000)} 分钟后开始首次采集（每隔30分钟一次）`);
+
+    setTimeout(() => {
+      this.crawlData().catch(error => {
+        crawlerLogger.error(`云端爬虫首次采集失败: ${error.message}`);
+      });
+
+      cron.schedule('0,30 * * * *', () => {
+        const randomDelay = Math.floor(Math.random() * 120) * 1000;
+        crawlerLogger.info('云端爬虫定时任务触发');
+        setTimeout(() => {
+          this.crawlData();
+        }, randomDelay);
+      }, {
+        timezone: 'Asia/Shanghai'
+      });
+
+      crawlerLogger.info('云端保障爬虫已启动，每30分钟执行一次');
+    }, randomStartupDelay);
+  }
 }
 
 // 新增: 仅解析HTML用于前端用户上报逻辑，不关心url，只处理html文本

@@ -8,44 +8,53 @@ echo    雷神电量监控 - 开机自启动
 echo ========================================
 echo.
 
-REM Get current script directory
 set SCRIPT_DIR=%~dp0
+cd /d "%SCRIPT_DIR%"
 
-REM Check if already running
-tasklist /FI "IMAGENAME eq node.exe" 2>nul | find /I "node.exe" >nul
-if %ERRORLEVEL% equ 0 (
-    echo [SKIP] Services already running, no need to start
-    echo.
-    echo To restart, run stop-all.bat then start-all.bat
-    echo.
-    timeout /t 3 >nul
+REM 检查 .env.local
+if not exist ".env.local" (
+    echo [WARNING] 未找到 .env.local 配置文件！
+    echo 请先运行 setup-crawler.bat 配置环境变量
+    timeout /t 10 >nul
     goto :end
 )
 
-echo.
-echo [START] Starting PM2 crawler...
-cd /d "%SCRIPT_DIR%"
-start /MIN "" cmd /c "npm.cmd run pm2:start"
+REM 检查是否已运行
+tasklist /FI "IMAGENAME eq node.exe" 2>nul | find /I "node.exe" >nul
+if %ERRORLEVEL% equ 0 (
+    REM 检查是否有爬虫相关进程
+    wmic process where "name='node.exe' and commandline like '%%watchdog%%'" get processid 2>nul | find /V "ProcessId" | find /V "" >nul
+    if !ERRORLEVEL! equ 0 (
+        echo [SKIP] Crawler watchdog already running
+        timeout /t 3 >nul
+        goto :end
+    )
+)
 
 echo.
-echo [WAIT] Waiting 5 seconds before starting server...
-timeout /t 5 /nobreak >nul
+echo [START] Starting crawler watchdog...
+start /MIN "" cmd /c "node scripts\watchdog.js"
+timeout /t 3 /nobreak >nul
 
 echo.
-echo [START] Starting server...
-start /MIN "" cmd /c "npm.cmd start"
+echo [START] Starting crawler...
+start /MIN "" cmd /c "node scripts\run-local-crawler.js"
+timeout /t 3 /nobreak >nul
+
+echo.
+echo [START] Starting web server...
+start /MIN "" cmd /c "node server.js"
 
 echo.
 echo ========================================
 echo   All services started
 echo ========================================
 echo.
-echo   Crawler: http://localhost:3000/health
-echo   Frontend: http://localhost:3000
+echo   Crawler: runs every 15 minutes
+echo   Watchdog: checks every 5 minutes
+echo   Server: http://localhost:3000
+echo   Logs: .\logs\fetch-*.log
 echo ========================================
-echo.
-echo Note: This window will close in 5 seconds
-echo       To view logs, run logs.bat
 echo.
 timeout /t 5 >nul
 

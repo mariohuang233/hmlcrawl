@@ -995,6 +995,24 @@ router.post('/crawler/trigger', async (req, res) => {
   }
 });
 
+// 爬虫状态信息
+router.get('/crawler/status', async (req, res) => {
+  try {
+    const stats = crawler.getStats();
+    const isCloud = !!process.env.RAILWAY_SERVICE_NAME || !!process.env.ZEABUR_SERVICE_NAME;
+    res.json({
+      success: true,
+      stats,
+      environment: isCloud ? 'cloud' : 'local',
+      platform: process.env.RAILWAY_SERVICE_NAME ? 'railway' : process.env.ZEABUR_SERVICE_NAME ? 'zeabur' : 'local',
+      uptime: process.uptime(),
+      server_time: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 全局错误处理中间件
 router.use((err, req, res, next) => {
   console.error('API错误:', err);
@@ -1040,6 +1058,70 @@ router.post('/report', async (req, res) => {
     res.json({ success: true, message: '数据已接收' });
   } catch (err) {
     logger.error('手机上报数据失败:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 批量数据上报 - 用于本地爬虫向云端同步历史数据
+// 当本地爬虫采集到数据但无法写入 MongoDB 时，可批量上报到云端 API
+router.post('/report/batch', async (req, res) => {
+  try {
+    const { records } = req.body;
+
+    if (!records || !Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ error: '缺少 records 参数或数组为空' });
+    }
+
+    if (records.length > 500) {
+      return res.status(400).json({ error: '单次最多上报500条记录' });
+    }
+
+    let saved = 0;
+    let skipped = 0;
+    const errors = [];
+
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i];
+      try {
+        if (!record.remaining_kwh) {
+          skipped++;
+          continue;
+        }
+
+        const usageData = {
+          meter_id: record.meter_id || process.env.METER_ID || '18100071580',
+          meter_name: record.meter_name || process.env.METER_NAME || '2759弄18号402阳台',
+          remaining_kwh: parseFloat(record.remaining_kwh),
+          collected_at: record.collected_at ? new Date(record.collected_at) : new Date()
+        };
+
+        const existing = await Usage.findOne({
+          meter_id: usageData.meter_id,
+          collected_at: usageData.collected_at
+        });
+
+        if (existing) {
+          skipped++;
+          continue;
+        }
+
+        const usage = new Usage(usageData);
+        await usage.save();
+        saved++;
+      } catch (e) {
+        errors.push({ index: i, error: e.message });
+      }
+    }
+
+    logger.info(`批量上报: 保存 ${saved} 条, 跳过 ${skipped} 条, 错误 ${errors.length} 条`);
+    res.json({
+      success: true,
+      saved,
+      skipped,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (err) {
+    logger.error('批量上报失败:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
