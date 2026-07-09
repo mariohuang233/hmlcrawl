@@ -73,13 +73,20 @@ mongo_client = None
 def get_mongo_client():
     global mongo_client
     if mongo_client is None and HAS_MONGODB and MONGO_URI:
-        try:
-            mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
-            mongo_client.admin.command('ping')
-            log("MongoDB 连接成功")
-        except Exception as e:
-            log(f"MongoDB 连接失败: {e}")
-            mongo_client = None
+        for attempt in range(3):
+            try:
+                mongo_client = MongoClient(MONGO_URI, 
+                    serverSelectionTimeoutMS=15000,
+                    connectTimeoutMS=15000,
+                    socketTimeoutMS=15000)
+                mongo_client.admin.command('ping')
+                log("MongoDB 连接成功")
+                return mongo_client
+            except Exception as e:
+                log(f"MongoDB 连接失败 (尝试 {attempt + 1}/3): {str(e)[:80]}")
+                if attempt < 2:
+                    time.sleep(2)
+        mongo_client = None
     return mongo_client
 
 
@@ -87,9 +94,16 @@ def save_to_mongo(record):
     if not HAS_MONGODB:
         log("未安装 pymongo，请运行: pip install pymongo")
         return False
+    
     client = get_mongo_client()
     if not client:
-        return False
+        log("MongoDB 不可用，尝试重新连接...")
+        mongo_client = None
+        client = get_mongo_client()
+        if not client:
+            log("MongoDB 重新连接失败")
+            return False
+    
     try:
         db = client['electricity']
         usage_data = {
@@ -102,7 +116,8 @@ def save_to_mongo(record):
         log(f"MongoDB 写入成功: {result.inserted_id}")
         return True
     except Exception as e:
-        log(f"MongoDB 写入失败: {e}")
+        log(f"MongoDB 写入失败: {str(e)[:80]}")
+        mongo_client = None
         return False
 
 
@@ -238,13 +253,35 @@ def _parse_by_keyword(text):
 
 
 def _parse_by_number_heuristic(text):
-    """兜底：查找所有带小数的合理数字"""
+    """兜底：查找所有带小数的合理数字（必须包含小数点，与JS端一致）"""
     nums = re.findall(r'\d+\.\d+', text)
     valid = [float(n) for n in nums if 0.5 < float(n) < 100]
     if not valid:
         return None
     valid.sort()
     return valid[len(valid) // 2]
+
+
+def _parse_by_dom(text):
+    """模拟JS端 _parseByDom：查找包含'剩余电量'的元素，提取其所在上下文的数值"""
+    patterns = [
+        r'<[^>]*>([^<]*剩余电量[^<]*)<[^>]*>',
+        r'<[^>]*>([^<]*剩余[^<]*电量[^<]*)<[^>]*>',
+    ]
+    for pattern in patterns:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        for match in matches:
+            m = re.search(r'剩余电量[:：]\s*([\d.]+)', match)
+            if m:
+                val = float(m.group(1))
+                if 0 < val < 100:
+                    return val
+            m2 = re.search(r'剩余[:：]\s*([\d.]+)', match)
+            if m2:
+                val = float(m2.group(1))
+                if 0 < val < 100:
+                    return val
+    return None
 
 
 def smart_parse(html):
@@ -255,8 +292,8 @@ def smart_parse(html):
     text = html
     strategies = [
         ("正则匹配", lambda: _parse_by_regex(text)),
+        ("DOM解析", lambda: _parse_by_dom(text)),
         ("关键词匹配", lambda: _parse_by_keyword(text)),
-        ("HTML标签", lambda: _parse_html_tag(text)),
         ("数字启发式", lambda: _parse_by_number_heuristic(text)),
     ]
 
