@@ -39,10 +39,10 @@ from datetime import datetime, timezone
 
 # ============ 配置 ============
 BACKEND_URLS = [
-    # "https://你的railway项目.up.railway.app/api/report",
-    # "https://你的zeabur项目.zeabur.app/api/report",
-    # "https://你的render项目.onrender.com/api/report",
+    "https://your-railway-project.up.railway.app/api/report",
 ]
+
+API_TOKEN = ""
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mobile_data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -287,17 +287,16 @@ def get_pending_uploads(limit=100):
 def try_upload(url, record):
     try:
         data = json.dumps(record).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={
-                "Content-Type": "application/json",
-                "X-Source": record.get("source", "ipad"),
-                "X-Format-Version": str(record.get("format_version", 1)),
-                "X-Crawl-Id": record.get("crawl_id", ""),
-                "User-Agent": "hmlcrawl-mobile/2.0"
-            }
-        )
+        headers = {
+            "Content-Type": "application/json",
+            "X-Source": record.get("source", "ipad"),
+            "X-Format-Version": str(record.get("format_version", 1)),
+            "X-Crawl-Id": record.get("crawl_id", ""),
+            "User-Agent": "hmlcrawl-mobile/2.0"
+        }
+        if API_TOKEN:
+            headers["X-API-Token"] = API_TOKEN
+        req = urllib.request.Request(url, data=data, headers=headers)
         with urllib.request.urlopen(req, timeout=15) as resp:
             result = resp.read().decode("utf-8")
             log(f"上传成功 -> {url}")
