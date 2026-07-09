@@ -1,12 +1,8 @@
 /**
- * 监控告警系统 - 支持多渠道通知
+ * 监控告警系统 - Server酱微信推送
  *
  * 环境变量配置:
  *   SERVER_CHAN_KEY       - Server酱SendKey（微信推送）
- *   WECHAT_WEBHOOK_URL    - 企业微信机器人Webhook
- *   EMAIL_HOST/USER/PASS  - 邮件SMTP配置
- *   TELEGRAM_BOT_TOKEN    - Telegram Bot Token
- *   TELEGRAM_CHAT_ID      - 接收告警的 Chat ID
  *   ALERT_LEVEL           - 告警级别: error | warn | info (默认: warn)
  *
  * 使用:
@@ -16,20 +12,11 @@
  */
 
 const https = require('https');
-const http = require('http');
 const { URL } = require('url');
 const { crawlerLogger } = require('./logger');
 
 const CONFIG = {
-  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
-  telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
-  wechatWebhookUrl: process.env.WECHAT_WEBHOOK_URL || '',
   serverChanKey: process.env.SERVER_CHAN_KEY || '',
-  emailHost: process.env.EMAIL_HOST || '',
-  emailPort: parseInt(process.env.EMAIL_PORT) || 465,
-  emailUser: process.env.EMAIL_USER || '',
-  emailPass: process.env.EMAIL_PASS || '',
-  emailTo: process.env.EMAIL_TO || '',
   alertLevel: process.env.ALERT_LEVEL || 'warn',
   hostname: require('os').hostname(),
   cooldownMs: 5 * 60 * 1000
@@ -51,82 +38,6 @@ function isThrottled(key) {
   }
   THROTTLE.set(key, Date.now());
   return false;
-}
-
-async function sendTelegram(message) {
-  if (!CONFIG.telegramBotToken || !CONFIG.telegramChatId) {
-    return false;
-  }
-
-  return new Promise((resolve) => {
-    const urlObj = new URL(`https://api.telegram.org/bot${CONFIG.telegramBotToken}/sendMessage`);
-    const body = JSON.stringify({
-      chat_id: CONFIG.telegramChatId,
-      text: message,
-      parse_mode: 'HTML',
-      disable_notification: false
-    });
-
-    const options = {
-      hostname: urlObj.hostname,
-      port: 443,
-      path: urlObj.pathname,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body)
-      },
-      timeout: 10000
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => resolve(res.statusCode === 200));
-    });
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => { req.destroy(); resolve(false); });
-    req.write(body);
-    req.end();
-  });
-}
-
-async function sendWechat(message) {
-  if (!CONFIG.wechatWebhookUrl) {
-    return false;
-  }
-
-  return new Promise((resolve) => {
-    const urlObj = new URL(CONFIG.wechatWebhookUrl);
-    const body = JSON.stringify({
-      msgtype: 'text',
-      text: {
-        content: message.replace(/<[^>]*>/g, '')
-      }
-    });
-
-    const options = {
-      hostname: urlObj.hostname,
-      port: urlObj.port || 443,
-      path: urlObj.pathname + urlObj.search,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body)
-      },
-      timeout: 10000
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => resolve(res.statusCode === 200));
-    });
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => { req.destroy(); resolve(false); });
-    req.write(body);
-    req.end();
-  });
 }
 
 async function sendServerChan(title, message) {
@@ -195,40 +106,6 @@ function formatServerChanDesp(message) {
     .substring(0, 32768);
 }
 
-async function sendEmail(subject, message) {
-  if (!CONFIG.emailHost || !CONFIG.emailUser || !CONFIG.emailPass || !CONFIG.emailTo) {
-    return false;
-  }
-
-  return new Promise((resolve) => {
-    const smtp = require('nodemailer');
-    const transporter = smtp.createTransport({
-      host: CONFIG.emailHost,
-      port: CONFIG.emailPort,
-      secure: CONFIG.emailPort === 465,
-      auth: {
-        user: CONFIG.emailUser,
-        pass: CONFIG.emailPass
-      }
-    });
-
-    transporter.sendMail({
-      from: CONFIG.emailUser,
-      to: CONFIG.emailTo,
-      subject: subject,
-      text: message.replace(/<[^>]*>/g, ''),
-      html: `<pre>${message.replace(/\n/g, '<br>').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`
-    }, (error, info) => {
-      if (error) {
-        crawlerLogger.error(`邮件发送失败: ${error.message}`);
-        resolve(false);
-      } else {
-        resolve(true);
-      }
-    });
-  });
-}
-
 function formatAlert(level, message, details = {}) {
   const emoji = { error: '🚨', warn: '⚠️', info: 'ℹ️' };
   const ts = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
@@ -269,52 +146,23 @@ async function alert(level, message, details = {}) {
 
   crawlerLogger.info(`[ALERT:${level}] ${message}`);
 
-  const text = formatAlert(level, message, details);
-  const htmlText = text.replace(/\n/g, '<br>');
-
-  let sentCount = 0;
-
-  if (CONFIG.wechatWebhookUrl) {
-    const sent = await sendWechat(text);
-    if (sent) {
-      sentCount++;
-      crawlerLogger.info(`企业微信告警已发送`);
-    }
-  }
-
-  if (CONFIG.serverChanKey) {
-    const title = `${level.toUpperCase()} - ${message.substring(0, 30)}${message.length > 30 ? '...' : ''}`;
-    const sent = await sendServerChan(title, text);
-    if (sent) {
-      sentCount++;
-      crawlerLogger.info(`Server酱告警已发送`);
-    }
-  }
-
-  if (CONFIG.emailHost && CONFIG.emailUser && CONFIG.emailPass && CONFIG.emailTo) {
-    const subject = `[${level.toUpperCase()}] 电量监控告警 - ${message}`;
-    const sent = await sendEmail(subject, text);
-    if (sent) {
-      sentCount++;
-      crawlerLogger.info(`邮件告警已发送`);
-    }
-  }
-
-  if (CONFIG.telegramBotToken && CONFIG.telegramChatId) {
-    const sent = await sendTelegram(htmlText);
-    if (sent) {
-      sentCount++;
-      crawlerLogger.info(`Telegram告警已发送`);
-    }
-  }
-
-  if (sentCount === 0) {
-    crawlerLogger.warn(`告警发送失败 (${level}), 未配置任何通知渠道: ${message}`);
+  if (!CONFIG.serverChanKey) {
+    crawlerLogger.warn(`告警发送失败 (${level}), 未配置SERVER_CHAN_KEY: ${message}`);
     return false;
   }
 
-  crawlerLogger.info(`告警已通过 ${sentCount} 个渠道发送`);
-  return true;
+  const text = formatAlert(level, message, details);
+  const title = `${level.toUpperCase()} - ${message.substring(0, 30)}${message.length > 30 ? '...' : ''}`;
+  
+  const sent = await sendServerChan(title, text);
+  
+  if (sent) {
+    crawlerLogger.info(`Server酱告警已发送`);
+  } else {
+    crawlerLogger.warn(`Server酱告警发送失败`);
+  }
+
+  return sent;
 }
 
 async function alertCrawlSuccess(stats) {
@@ -348,15 +196,9 @@ async function alertMongoDisconnected() {
 }
 
 function getConfig() {
-  const channels = [];
-  if (CONFIG.wechatWebhookUrl) channels.push('wechat');
-  if (CONFIG.serverChanKey) channels.push('serverchan');
-  if (CONFIG.emailHost && CONFIG.emailUser && CONFIG.emailPass && CONFIG.emailTo) channels.push('email');
-  if (CONFIG.telegramBotToken && CONFIG.telegramChatId) channels.push('telegram');
-  
   return {
-    configured: channels.length > 0,
-    channels: channels,
+    configured: !!CONFIG.serverChanKey,
+    channels: CONFIG.serverChanKey ? ['serverchan'] : [],
     alertLevel: CONFIG.alertLevel,
     hostname: CONFIG.hostname
   };
