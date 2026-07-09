@@ -168,6 +168,12 @@ def fetch_html():
 
 # ============ 解析策略（与JS端 _smartParse 完全一致）============
 
+def _extract_text(html):
+    text = re.sub(r'<[^>]+>', ' ', html)
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
+
+
 def _parse_by_regex(text):
     patterns = [
         r'剩余电量[:：]\s*([\d.]+)\s*kWh?',
@@ -184,24 +190,18 @@ def _parse_by_regex(text):
 
 
 def _parse_by_dom(text):
-    el_pattern = r'<[^>]*>([^<]*剩余电量[^<]*)<[^>]*>'
-    matches = re.findall(el_pattern, text, re.IGNORECASE)
-    for match in matches:
-        m = re.search(r'剩余电量[:：]\s*([\d.]+)', match)
-        if m:
-            val = float(m.group(1))
-            if 0 < val < 100:
-                return val
-        m2 = re.search(r'剩余[:：]\s*([\d.]+)', match)
-        if m2:
-            val = float(m2.group(1))
-            if 0 < val < 100:
-                return val
+    clean_text = _extract_text(text)
+    m = re.search(r'剩余电量[:：]\s*([\d.]+)\s*kWh', clean_text, re.IGNORECASE)
+    if m:
+        val = float(m.group(1))
+        if 0 < val < 100:
+            return val
     return None
 
 
 def _parse_by_keyword(text):
-    m = re.search(r'(剩余电量|剩余).*?([\d.]+)\s*kWh?', text, re.IGNORECASE | re.DOTALL)
+    clean_text = _extract_text(text)
+    m = re.search(r'(剩余电量|剩余).*?([\d.]+)\s*kWh?', clean_text, re.IGNORECASE)
     if m:
         val = float(m.group(2))
         if val > 0 and val < 100:
@@ -210,7 +210,8 @@ def _parse_by_keyword(text):
 
 
 def _parse_by_number_heuristic(text):
-    nums = re.findall(r'\d+\.?\d*', text)
+    clean_text = _extract_text(text)
+    nums = re.findall(r'\d+\.?\d*', clean_text)
     valid = [float(n) for n in nums if 0.5 < float(n) < 100 and '.' in n]
     if not valid:
         return None
@@ -223,14 +224,14 @@ def smart_parse(html):
         return None
 
     strategies = [
-        ("正则匹配", _parse_by_regex),
-        ("DOM解析", _parse_by_dom),
-        ("关键词匹配", _parse_by_keyword),
-        ("数字启发式", _parse_by_number_heuristic)
+        ("正则匹配", lambda: _parse_by_regex(_extract_text(html))),
+        ("DOM解析", lambda: _parse_by_dom(html)),
+        ("关键词匹配", lambda: _parse_by_keyword(html)),
+        ("数字启发式", lambda: _parse_by_number_heuristic(html))
     ]
 
     for name, fn in strategies:
-        result = fn(html)
+        result = fn()
         if result is not None:
             log(f"策略 [{name}] 解析成功: {result} kWh")
             return result
