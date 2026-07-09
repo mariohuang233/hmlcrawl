@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-iPad/手机端轻量爬虫 v4.0 - 完全参考电脑端逻辑
+iPad/手机端轻量爬虫 v5.1 - 强化后台运行能力
 ==============================================
-与本地JS爬虫共享统一数据格式，通过API上报数据
+支持iOS后台运行，包含本地缓存补发、心跳检测、自动恢复机制
 
 使用方法:
     python3 mobile_crawler.py [--daemon]
@@ -29,9 +29,10 @@ import os
 import sys
 import hashlib
 import argparse
+import threading
+import signal
 from datetime import datetime, timezone
 
-# ============ 配置 ============
 BACKEND_URL = "https://thoryierbubu.up.railway.app/api/report"
 API_TOKEN = ""
 
@@ -46,14 +47,14 @@ DIRECT_IPS = [
     "47.99.209.106", "47.97.48.100"
 ]
 FETCH_INTERVAL = 15 * 60
+HEARTBEAT_INTERVAL = 60
 MAX_RETRIES = 3
 INITIAL_RETRY_DELAY = 5
 FORMAT_VERSION = 1
 
 current_ip_index = 0
-
-
-# ============ 工具函数 ============
+last_active_time = time.time()
+is_running = True
 
 def log(msg):
     line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}"
@@ -64,16 +65,13 @@ def log(msg):
     except:
         pass
 
-
 def normalize_kwh(value):
     return round(float(value), 2)
-
 
 def generate_crawl_id(source="ipad"):
     t = int(time.time() * 1000)
     r = random.randint(0, 2**32)
     return f"{source}_{t:x}_{r:x}"
-
 
 def compute_checksum(record):
     sorted_data = {
@@ -87,7 +85,6 @@ def compute_checksum(record):
     }
     raw = json.dumps(sorted_data, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
-
 
 def create_standard_record(meter_id, meter_name, remaining_kwh, collected_at, source="ipad"):
     collected_iso = collected_at
@@ -105,9 +102,6 @@ def create_standard_record(meter_id, meter_name, remaining_kwh, collected_at, so
     record["checksum"] = compute_checksum(record)
     return record
 
-
-# ============ 网络请求 ============
-
 def _is_blocked(html):
     block_keywords = ['blocked', '安全威胁', '被阻断', 'Tunnel website ahead!', '405', '访问被拒绝']
     title_match = re.search(r'<title>([^<]*)</title>', html, re.IGNORECASE)
@@ -120,7 +114,6 @@ def _is_blocked(html):
         log(f"检测到拦截页面，包含关键词")
         return True
     return False
-
 
 def fetch_html():
     global current_ip_index
@@ -165,9 +158,6 @@ def fetch_html():
         log(f"切换到 IP: {DIRECT_IPS[current_ip_index]}")
         return None
 
-
-# ============ 解析策略（简化版）============
-
 def smart_parse(html):
     if not html:
         return None
@@ -186,9 +176,6 @@ def smart_parse(html):
     log(f"页面文本预览: {text[:200]}")
     return None
 
-
-# ============ 本地存储 ============
-
 def save_local(record):
     filename = f"data_{datetime.now().strftime('%Y%m%d')}.jsonl"
     filepath = os.path.join(DATA_DIR, filename)
@@ -200,9 +187,6 @@ def save_local(record):
     except Exception as e:
         log(f"本地保存失败: {e}")
         return False
-
-
-# ============ 上传机制 ============
 
 def upload_to_api(record):
     if not BACKEND_URL:
@@ -222,7 +206,7 @@ def upload_to_api(record):
         
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hmlcrawl-mobile/4.0"
+            "User-Agent": "hmlcrawl-mobile/5.1"
         }
         if API_TOKEN:
             headers["X-API-Token"] = API_TOKEN
@@ -242,7 +226,6 @@ def upload_to_api(record):
         log(f"API上传失败: {str(e)[:60]}")
         return False
 
-
 def upload_record(record):
     if upload_to_api(record):
         return True
@@ -250,10 +233,50 @@ def upload_record(record):
     save_local(record)
     return False
 
-
-# ============ 爬取主流程 ============
+def replay_cached_data():
+    log("开始补发本地缓存数据...")
+    cached_files = [f for f in os.listdir(DATA_DIR) if f.startswith("data_") and f.endswith(".jsonl")]
+    total_replayed = 0
+    total_failed = 0
+    
+    for filename in sorted(cached_files):
+        filepath = os.path.join(DATA_DIR, filename)
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            
+            records = []
+            for line in lines:
+                line = line.strip()
+                if line:
+                    try:
+                        records.append(json.loads(line))
+                    except:
+                        continue
+            
+            if not records:
+                os.remove(filepath)
+                continue
+            
+            log(f"处理缓存文件: {filename} ({len(records)}条记录)")
+            
+            for record in records:
+                if upload_to_api(record):
+                    total_replayed += 1
+                else:
+                    total_failed += 1
+                    save_local(record)
+            
+            os.remove(filepath)
+            log(f"缓存文件 {filename} 已处理并删除")
+        except Exception as e:
+            log(f"处理缓存文件 {filename} 失败: {e}")
+    
+    log(f"补发完成: 成功 {total_replayed} 条，失败 {total_failed} 条")
 
 def crawl_and_report():
+    global last_active_time
+    last_active_time = time.time()
     log("开始爬取...")
 
     for attempt in range(MAX_RETRIES):
@@ -270,6 +293,7 @@ def crawl_and_report():
                 )
 
                 upload_record(record)
+                last_active_time = time.time()
                 return True
             else:
                 log("解析剩余电量失败，保存页面内容用于调试...")
@@ -291,26 +315,63 @@ def crawl_and_report():
     log("所有重试均失败")
     return False
 
+def heartbeat_monitor():
+    global last_active_time, is_running
+    log("心跳监控线程已启动")
+    while is_running:
+        try:
+            elapsed = time.time() - last_active_time
+            if elapsed > FETCH_INTERVAL + 300:
+                log(f"警告: 长时间未活动 ({int(elapsed/60)}分钟)，可能被系统挂起")
+            
+            time.sleep(HEARTBEAT_INTERVAL)
+        except Exception as e:
+            log(f"心跳监控异常: {e}")
+            time.sleep(HEARTBEAT_INTERVAL)
 
-# ============ 入口 ============
+def signal_handler(signum, frame):
+    global is_running
+    log(f"收到信号 {signum}，准备退出...")
+    is_running = False
+    sys.exit(0)
 
 def main_loop(daemon=False):
+    global is_running
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
     log("=" * 40)
-    log("iPad/手机端爬虫 v4.0")
+    log("iPad/手机端爬虫 v5.1 - 强化后台运行")
     log(f"电表: {METER_ID} ({METER_NAME})")
     log(f"间隔: {FETCH_INTERVAL // 60}分钟")
+    log(f"心跳: {HEARTBEAT_INTERVAL}秒")
     log(f"来源: ipad")
     log(f"后端: {BACKEND_URL if BACKEND_URL else '未配置'}")
     log(f"数据目录: {DATA_DIR}")
+    log(f"守护模式: {'开启' if daemon else '关闭'}")
     log("=" * 40)
+
+    replay_cached_data()
+
+    heartbeat_thread = threading.Thread(target=heartbeat_monitor, daemon=True)
+    heartbeat_thread.start()
 
     crawl_and_report()
 
     interval = FETCH_INTERVAL
 
-    while True:
+    while is_running:
         log(f"等待 {interval // 60} 分钟后下一次爬取...")
-        time.sleep(interval)
+        
+        for _ in range(interval // 10):
+            if not is_running:
+                break
+            time.sleep(10)
+        
+        if not is_running:
+            break
+        
         try:
             crawl_and_report()
         except Exception as e:
@@ -325,18 +386,26 @@ def main_loop(daemon=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="iPad/手机端爬虫")
     parser.add_argument("--daemon", action="store_true", help="守护模式（异常后自动重启）")
+    parser.add_argument("--once", action="store_true", help="单次运行模式（执行一次后退出，适合快捷指令）")
     args = parser.parse_args()
 
-    try:
-        main_loop(daemon=args.daemon)
-    except KeyboardInterrupt:
-        log("爬虫已手动停止")
+    if args.once:
+        log("单次运行模式")
+        replay_cached_data()
+        crawl_and_report()
         sys.exit(0)
-    except Exception as e:
-        log(f"未捕获异常: {e}")
-        if args.daemon:
-            log("守护模式，10秒后重启...")
-            time.sleep(10)
-            main_loop(daemon=True)
-        else:
-            raise
+
+    while True:
+        try:
+            main_loop(daemon=args.daemon)
+            break
+        except KeyboardInterrupt:
+            log("爬虫已手动停止")
+            sys.exit(0)
+        except Exception as e:
+            log(f"未捕获异常: {e}")
+            if args.daemon:
+                log("守护模式，10秒后重启...")
+                time.sleep(10)
+            else:
+                raise
