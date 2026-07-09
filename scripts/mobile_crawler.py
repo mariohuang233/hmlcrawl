@@ -166,78 +166,24 @@ def fetch_html():
         return None
 
 
-# ============ 解析策略（与JS端 _smartParse 完全一致）============
-
-def _extract_text(html):
-    text = re.sub(r'<[^>]+>', ' ', html)
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
-
-
-def _parse_by_regex(text):
-    patterns = [
-        r'剩余电量[:：]\s*([\d.]+)\s*kWh?',
-        r'剩余[:：]\s*([\d.]+)\s*kWh?',
-        r'剩余\s*([\d.]+)\s*kWh?'
-    ]
-    for p in patterns:
-        m = re.search(p, text, re.IGNORECASE)
-        if m:
-            val = float(m.group(1))
-            if 0 < val < 1000:
-                return val
-    return None
-
-
-def _parse_by_dom(text):
-    clean_text = _extract_text(text)
-    m = re.search(r'剩余电量[:：]\s*([\d.]+)\s*kWh', clean_text, re.IGNORECASE)
-    if m:
-        val = float(m.group(1))
-        if 0 < val < 100:
-            return val
-    return None
-
-
-def _parse_by_keyword(text):
-    clean_text = _extract_text(text)
-    m = re.search(r'(剩余电量|剩余).*?([\d.]+)\s*kWh?', clean_text, re.IGNORECASE)
-    if m:
-        val = float(m.group(2))
-        if val > 0 and val < 100:
-            return val
-    return None
-
-
-def _parse_by_number_heuristic(text):
-    clean_text = _extract_text(text)
-    nums = re.findall(r'\d+\.?\d*', clean_text)
-    valid = [float(n) for n in nums if 0.5 < float(n) < 100 and '.' in n]
-    if not valid:
-        return None
-    valid.sort()
-    return valid[len(valid) // 2]
-
+# ============ 解析策略（简化版）============
 
 def smart_parse(html):
     if not html:
         return None
-
-    strategies = [
-        ("正则匹配", lambda: _parse_by_regex(_extract_text(html))),
-        ("DOM解析", lambda: _parse_by_dom(html)),
-        ("关键词匹配", lambda: _parse_by_keyword(html)),
-        ("数字启发式", lambda: _parse_by_number_heuristic(html))
-    ]
-
-    for name, fn in strategies:
-        result = fn()
-        if result is not None:
-            log(f"策略 [{name}] 解析成功: {result} kWh")
-            return result
-
-    log("所有解析策略均失败")
-    log(f"页面内容预览: {html[:500]}")
+    
+    text = re.sub(r'<[^>]+>', ' ', html)
+    text = re.sub(r'\s+', ' ', text)
+    
+    m = re.search(r'剩余电量[:：]\s*([\d.]+)', text)
+    if m:
+        val = float(m.group(1))
+        if 0 < val < 1000:
+            log(f"解析成功: {val} kWh")
+            return val
+    
+    log("解析失败")
+    log(f"页面文本预览: {text[:200]}")
     return None
 
 
