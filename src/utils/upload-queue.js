@@ -109,7 +109,6 @@ class UploadQueue {
         .sort()
         .reverse();
 
-      // 保留最近3天的文件
       const keepFiles = files.slice(0, 3);
       for (const file of files) {
         if (!keepFiles.includes(file)) {

@@ -64,6 +64,7 @@ FORMAT_VERSION = 1
 
 # ============ 工具函数 ============
 
+
 def log(msg):
     line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}"
     print(line)
@@ -150,6 +151,7 @@ def fetch_html():
     }
 
     req = urllib.request.Request(url, headers=headers)
+
     time.sleep(random.uniform(0.5, 1.5))
 
     try:
@@ -404,6 +406,7 @@ def main_loop(daemon=False):
     flush_pending_uploads()
 
     interval = FETCH_INTERVAL
+
     while True:
         log(f"等待 {interval // 60} 分钟后下一次爬取...")
         time.sleep(interval)

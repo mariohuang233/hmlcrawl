@@ -1,3 +1,20 @@
+/**
+ * 监控告警系统 - 支持多渠道通知
+ *
+ * 环境变量配置:
+ *   SERVER_CHAN_KEY       - Server酱SendKey（微信推送）
+ *   WECHAT_WEBHOOK_URL    - 企业微信机器人Webhook
+ *   EMAIL_HOST/USER/PASS  - 邮件SMTP配置
+ *   TELEGRAM_BOT_TOKEN    - Telegram Bot Token
+ *   TELEGRAM_CHAT_ID      - 接收告警的 Chat ID
+ *   ALERT_LEVEL           - 告警级别: error | warn | info (默认: warn)
+ *
+ * 使用:
+ *   const alerter = require('./utils/alerter');
+ *   await alerter.alert('error', '爬虫连续5次失败');
+ *   await alerter.alertLowBattery(0.95, 1);
+ */
+
 const https = require('https');
 const http = require('http');
 const { URL } = require('url');
