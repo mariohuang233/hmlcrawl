@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-iPad/手机端轻量爬虫 v2.0 - 优化版
+iPad/手机端轻量爬虫 v3.0 - 简化版
 ==================================
-与本地JS爬虫共享统一数据格式，支持多策略解析、可靠上传链路。
+与本地JS爬虫共享统一数据格式，直接连接MongoDB，零配置运行！
 
 使用方法:
     python3 mobile_crawler.py [--daemon]
@@ -37,10 +37,16 @@ import hashlib
 import argparse
 from datetime import datetime, timezone
 
+try:
+    from pymongo import MongoClient
+    HAS_MONGODB = True
+except ImportError:
+    HAS_MONGODB = False
+
 # ============ 配置 ============
-BACKEND_URLS = [
-    "https://your-railway-project.up.railway.app/api/report",
-]
+MONGO_URI = "mongodb+srv://mariohuang:Huangjw1014@yierbubu.aha67vc.mongodb.net/electricity?retryWrites=true&w=majority&appName=yierbubu"
+
+BACKEND_URLS = []
 
 API_TOKEN = ""
 
@@ -60,6 +66,44 @@ INITIAL_RETRY_DELAY = 5
 UPLOAD_RETRIES = 3
 UPLOAD_RETRY_DELAY = 10
 FORMAT_VERSION = 1
+
+mongo_client = None
+
+
+def get_mongo_client():
+    global mongo_client
+    if mongo_client is None and HAS_MONGODB and MONGO_URI:
+        try:
+            mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
+            mongo_client.admin.command('ping')
+            log("MongoDB 连接成功")
+        except Exception as e:
+            log(f"MongoDB 连接失败: {e}")
+            mongo_client = None
+    return mongo_client
+
+
+def save_to_mongo(record):
+    if not HAS_MONGODB:
+        log("未安装 pymongo，请运行: pip install pymongo")
+        return False
+    client = get_mongo_client()
+    if not client:
+        return False
+    try:
+        db = client['electricity']
+        usage_data = {
+            "meter_id": record["meter_id"],
+            "meter_name": record["meter_name"],
+            "remaining_kwh": record["remaining_kwh"],
+            "collected_at": datetime.fromisoformat(record["collected_at"].replace('Z', '+00:00'))
+        }
+        result = db['usages'].insert_one(usage_data)
+        log(f"MongoDB 写入成功: {result.inserted_id}")
+        return True
+    except Exception as e:
+        log(f"MongoDB 写入失败: {e}")
+        return False
 
 
 # ============ 工具函数 ============
@@ -313,7 +357,12 @@ def try_upload(url, record):
 
 
 def upload_record(record):
-    """尝试所有后端地址，全部失败则存本地"""
+    """优先直接写入MongoDB，失败则尝试后端API，最后保存本地"""
+    if MONGO_URI and HAS_MONGODB:
+        if save_to_mongo(record):
+            return True
+        log("MongoDB写入失败，尝试后端API")
+    
     uploaded = False
     if BACKEND_URLS:
         for url in BACKEND_URLS:
@@ -327,13 +376,17 @@ def upload_record(record):
 
 
 def flush_pending_uploads():
-    """尝试批量上传本地积压的数据"""
+    """尝试批量上传本地积压的数据（优先MongoDB）"""
     pending = get_pending_uploads(50)
     if not pending:
         return
     log(f"发现 {len(pending)} 条本地积压数据，尝试批量上传...")
     success_count = 0
     for record in pending:
+        if MONGO_URI and HAS_MONGODB:
+            if save_to_mongo(record):
+                success_count += 1
+                continue
         if BACKEND_URLS:
             for url in BACKEND_URLS:
                 if try_upload(url, record):
@@ -365,11 +418,7 @@ def crawl_and_report():
                     log(f"记录校验失败: {errors}")
                     return False
 
-                if BACKEND_URLS:
-                    upload_record(record)
-                else:
-                    save_local(record)
-
+                upload_record(record)
                 flush_pending_uploads()
                 return True
             else:
@@ -390,11 +439,13 @@ def crawl_and_report():
 
 def main_loop(daemon=False):
     log("=" * 40)
-    log("iPad/手机端爬虫 v2.0")
+    log("iPad/手机端爬虫 v3.0")
     log(f"电表: {METER_ID} ({METER_NAME})")
     log(f"间隔: {FETCH_INTERVAL // 60}分钟")
     log(f"来源: ipad")
-    if BACKEND_URLS:
+    if MONGO_URI and HAS_MONGODB:
+        log("MongoDB: 已配置（优先直接写入）")
+    elif BACKEND_URLS:
         log(f"后端: {len(BACKEND_URLS)} 个地址")
     else:
         log("后端: 未配置，数据仅保存本地")
