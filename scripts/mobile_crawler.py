@@ -32,7 +32,7 @@ import argparse
 from datetime import datetime, timezone
 
 # ============ 配置 ============
-BACKEND_URL = "https://hmlcrawl-production.up.railway.app/api/report"
+BACKEND_URL = "https://thoryierbubu.up.railway.app/api/report"
 API_TOKEN = ""
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mobile_data")
