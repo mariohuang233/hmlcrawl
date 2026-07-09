@@ -231,11 +231,22 @@ def fetch_html():
 
     try:
         import ssl
+        import gzip
+        from io import BytesIO
         context = ssl.create_default_context()
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         with urllib.request.urlopen(req, timeout=30, context=context) as resp:
-            html = resp.read().decode('utf-8', errors='ignore')
+            raw_data = resp.read()
+            content_encoding = resp.headers.get('Content-Encoding', '')
+            
+            if 'gzip' in content_encoding.lower():
+                try:
+                    html = gzip.GzipFile(fileobj=BytesIO(raw_data)).read().decode('utf-8', errors='ignore')
+                except:
+                    html = raw_data.decode('utf-8', errors='ignore')
+            else:
+                html = raw_data.decode('utf-8', errors='ignore')
             
             if len(html) < 100:
                 log(f"页面内容过短 ({len(html)} 字符)，可能是错误页")
