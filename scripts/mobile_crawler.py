@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 
 # ============ 配置 ============
 BACKEND_URL = "https://hmlcrawl-production.up.railway.app/api/report"
-API_TOKEN = "your_api_token_here"
+API_TOKEN = ""
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mobile_data")
 os.makedirs(DATA_DIR, exist_ok=True)
