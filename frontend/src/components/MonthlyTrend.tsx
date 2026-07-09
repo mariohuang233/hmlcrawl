@@ -54,27 +54,27 @@ const MonthlyTrend: React.FC = () => {
       textStyle: {
         fontSize: 18,
         fontWeight: 600,
-        color: '#3D3229',
-        fontFamily: 'Noto Sans SC, sans-serif'
+        color: '#2d2620',
+        fontFamily: 'Outfit, Nunito, sans-serif'
       },
       top: 16
     },
     animation: hasTriggered,
-    animationDuration: 2000,
+    animationDuration: 1800,
     animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(255, 255, 255, 0.98)',
-      borderColor: '#E8E0D8',
+      borderColor: 'rgba(184, 134, 90, 0.12)',
       borderWidth: 1,
       borderRadius: 12,
       padding: 12,
       textStyle: {
-        color: '#3D3229',
-        fontFamily: 'Noto Sans SC, sans-serif',
+        color: '#2d2620',
+        fontFamily: 'Outfit, Nunito, sans-serif',
         fontSize: 13
       },
-      extraCssText: 'box-shadow: 0 4px 20px rgba(61, 50, 41, 0.15);',
+      extraCssText: 'box-shadow: 0 4px 16px rgba(45, 38, 32, 0.08);',
       formatter: (params: any) => {
         const point = params[0];
         const dataItem = data[point.dataIndex];
@@ -84,11 +84,11 @@ const MonthlyTrend: React.FC = () => {
         if (vsPrevMonth !== null) {
           const vsPrevMonthText = vsPrevMonth === 0 ? '持平' : 
             (vsPrevMonth > 0 ? `+${vsPrevMonth}%` : `${vsPrevMonth}%`);
-          const vsPrevMonthColor = vsPrevMonth === 0 ? '#9A8B7E' :
-            (vsPrevMonth > 0 ? '#E88B8B' : '#7CB87C');
+          const vsPrevMonthColor = vsPrevMonth === 0 ? '#8a8078' :
+            (vsPrevMonth > 0 ? '#f43f5e' : '#10b981');
           
           comparisonHtml = `
-            <div style="color: #9A8B7E; font-size: 12px; margin-bottom: 2px;">上月: ${dataItem.prev_month_used_kwh} kWh</div>
+            <div style="color: #8a8078; font-size: 12px; margin-bottom: 2px;">上月: ${dataItem.prev_month_used_kwh} kWh</div>
             <div style="color: ${vsPrevMonthColor}; font-size: 12px;">
               较上月 ${vsPrevMonthText}
             </div>
@@ -97,8 +97,8 @@ const MonthlyTrend: React.FC = () => {
         
         return `
           <div style="padding: 4px;">
-            <div style="margin-bottom: 8px; font-weight: 600; color: #8B6F5C; font-size: 14px;">${point.axisValue}</div>
-            <div style="margin-bottom: 4px;">用电量: <span style="color: #8B6F5C; font-weight: 600;">${point.value}</span> kWh</div>
+            <div style="margin-bottom: 8px; font-weight: 600; color: #0ea5e9; font-size: 14px;">${point.axisValue}</div>
+            <div style="margin-bottom: 4px;">用电量: <span style="color: #0ea5e9; font-weight: 600;">${point.value}</span> kWh</div>
             ${comparisonHtml}
           </div>
         `;
@@ -109,18 +109,18 @@ const MonthlyTrend: React.FC = () => {
       data: data.map(item => item.month),
       axisLabel: {
         rotate: 45,
-        color: '#9A8B7E',
-        fontFamily: 'Noto Sans SC, sans-serif',
+        color: '#8a8078',
+        fontFamily: 'Outfit, Nunito, sans-serif',
         fontSize: 10
       },
       axisLine: {
         lineStyle: {
-          color: '#E8E0D8'
+          color: 'rgba(184, 134, 90, 0.12)'
         }
       },
       axisTick: {
         lineStyle: {
-          color: '#E8E0D8'
+          color: 'rgba(184, 134, 90, 0.12)'
         }
       }
     },
@@ -128,28 +128,28 @@ const MonthlyTrend: React.FC = () => {
       type: 'value',
       name: '用电量 (kWh)',
       nameTextStyle: {
-        color: '#9A8B7E',
-        fontFamily: 'Noto Sans SC, sans-serif',
+        color: '#8a8078',
+        fontFamily: 'Outfit, Nunito, sans-serif',
         fontSize: 11
       },
       axisLabel: {
-        color: '#9A8B7E',
-        fontFamily: 'Noto Sans SC, sans-serif',
+        color: '#8a8078',
+        fontFamily: 'Outfit, Nunito, sans-serif',
         fontSize: 11
       },
       axisLine: {
         lineStyle: {
-          color: '#E8E0D8'
+          color: 'rgba(184, 134, 90, 0.12)'
         }
       },
       axisTick: {
         lineStyle: {
-          color: '#E8E0D8'
+          color: 'rgba(184, 134, 90, 0.12)'
         }
       },
       splitLine: {
         lineStyle: {
-          color: '#F5F0EC',
+          color: '#f5f3f1',
           type: 'dashed'
         }
       }
@@ -167,20 +167,20 @@ const MonthlyTrend: React.FC = () => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: '#7BA3C0' },
-              { offset: 0.5, color: '#A3C4D9' },
-              { offset: 1, color: '#D4E4F0' }
+              { offset: 0, color: '#0ea5e9' },
+              { offset: 0.5, color: '#38bdf8' },
+              { offset: 1, color: '#7dd3fc' }
             ]
           },
-          borderRadius: [6, 6, 0, 0]
+          borderRadius: [8, 8, 0, 0]
         },
         emphasis: {
           itemStyle: {
-            color: '#7BA3C0'
+            color: '#0ea5e9'
           }
         },
         animationDelay: 0,
-        animationDuration: 2000,
+        animationDuration: 1800,
         animationEasing: 'cubicOut'
       }
     ],
@@ -208,7 +208,7 @@ const MonthlyTrend: React.FC = () => {
     <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
       <ReactECharts 
         option={chartOption} 
-        style={{ height: '400px' }}
+        style={{ height: '380px' }}
         className="chart-container"
         notMerge={true}
         lazyUpdate={false}

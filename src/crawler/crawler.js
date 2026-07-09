@@ -1,23 +1,19 @@
-// 使用Node.js内置http模块，完全避免undici问题
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
+const zlib = require('zlib');
 const { JSDOM } = require('jsdom');
 const cron = require('node-cron');
 const Usage = require('../models/Usage');
 const CrawlerLog = require('../models/CrawlerLog');
 const { crawlerLogger } = require('../utils/logger');
+const Format = require('../utils/crawler-format');
+const alerter = require('../utils/alerter');
 
-// 爬虫配置常量
 const CONFIG = {
-  // 代理配置
   PROXY_URL: process.env.PROXY_URL || process.env.VERCEL_PROXY_URL,
   USE_PROXY: !!process.env.PROXY_URL || !!process.env.VERCEL_PROXY_URL,
-  
-  // HTTP代理
   HTTP_PROXY: process.env.HTTP_PROXY || process.env.HTTPS_PROXY,
-  
-  // 直连IP配置
   USE_DIRECT_IP: process.env.USE_DIRECT_IP === 'true',
   DIRECT_IPS: [
     '121.41.227.153',
@@ -26,75 +22,133 @@ const CONFIG = {
     '47.99.209.106',
     '47.97.48.100'
   ],
-  
-  // 目标配置
   TARGET_URL: `https://www.wap.cnyiot.com/nat/pay.aspx?mid=${process.env.METER_ID || '18100071580'}`,
   METER_ID: process.env.METER_ID || '18100071580',
   METER_NAME: process.env.METER_NAME || '2759弄18号402阳台',
-  
-  // 重试配置
   MAX_RETRIES: 3,
-  INITIAL_RETRY_DELAY: 5000, // 5秒
-  
-  // 日志配置
+  INITIAL_RETRY_DELAY: 5000,
   MAX_LOG_ENTRIES: 200,
-  
-  // 代理主机列表
-  PROXY_HOSTS: ['loca.lt', 'localhost', '127.0.0.1', 'vercel.app', 'ngrok-free.app'],
-  
-  // 跳过TLS验证的主机
-  SKIP_TLS_HOSTS: ['loca.lt', 'localhost', '127.0.0.1'],
-  
-  // 目标主机
   TARGET_HOST: 'www.wap.cnyiot.com',
-  
-  // Agent配置
-  AGENT_OPTIONS: {
-    keepAlive: true,
-    maxSockets: 5,
-    keepAliveMsecs: 10000
-  },
-  
-  // 随机延迟配置
-  MIN_DELAY: 500, // 0.5秒
-  MAX_DELAY: 1500, // 1.5秒
-  
-  // 请求超时
-  REQUEST_TIMEOUT: 30000 // 30秒
+  REQUEST_TIMEOUT: 30000,
+  KEEP_ALIVE_MS: 15000,
+  MAX_SOCKETS: 10,
+  CRAWL_INTERVAL_MINUTES: 15,
+  RANDOM_DELAY_MAX_SECONDS: 300,
+  BATTERY_ALERT_THRESHOLD: parseFloat(process.env.BATTERY_ALERT_THRESHOLD) || 1,
+  BATTERY_ALERT_COOLDOWN_HOURS: parseInt(process.env.BATTERY_ALERT_COOLDOWN_HOURS) || 4,
+  CIRCUIT_BREAKER: {
+    FAILURE_THRESHOLD: 5,
+    RESET_TIMEOUT: 60000,
+    HALF_OPEN_MAX: 2
+  }
 };
+
+class CircuitBreaker {
+  constructor(options = {}) {
+    this.failureThreshold = options.failureThreshold || CONFIG.CIRCUIT_BREAKER.FAILURE_THRESHOLD;
+    this.resetTimeout = options.resetTimeout || CONFIG.CIRCUIT_BREAKER.RESET_TIMEOUT;
+    this.halfOpenMax = options.halfOpenMax || CONFIG.CIRCUIT_BREAKER.HALF_OPEN_MAX;
+    this.state = 'CLOSED';
+    this.failureCount = 0;
+    this.lastFailureTime = null;
+    this.halfOpenSuccessCount = 0;
+  }
+
+  get isOpen() {
+    if (this.state === 'OPEN') {
+      if (Date.now() - this.lastFailureTime >= this.resetTimeout) {
+        this.state = 'HALF_OPEN';
+        this.halfOpenSuccessCount = 0;
+        crawlerLogger.info('断路器进入半开状态，允许试探请求');
+      }
+    }
+    return this.state === 'OPEN';
+  }
+
+  onSuccess() {
+    if (this.state === 'HALF_OPEN') {
+      this.halfOpenSuccessCount++;
+      if (this.halfOpenSuccessCount >= this.halfOpenMax) {
+        this.state = 'CLOSED';
+        this.failureCount = 0;
+        crawlerLogger.info('断路器闭合，恢复正常');
+      }
+    } else {
+      this.failureCount = Math.max(0, this.failureCount - 1);
+    }
+  }
+
+  onFailure() {
+    this.failureCount++;
+    this.lastFailureTime = Date.now();
+    if (this.failureCount >= this.failureThreshold) {
+      this.state = 'OPEN';
+      crawlerLogger.warn(`断路器断开（${this.failureCount}次失败），暂停爬取 ${this.resetTimeout / 1000}秒`);
+    }
+  }
+
+  getState() {
+    return {
+      state: this.state,
+      failureCount: this.failureCount,
+      lastFailureTime: this.lastFailureTime
+    };
+  }
+}
+
+class HttpAgentPool {
+  constructor() {
+    this.agents = new Map();
+  }
+
+  getAgent(hostname, isHttps, skipVerify = false) {
+    const key = `${isHttps ? 'https' : 'http'}://${hostname}${skipVerify ? ':skip' : ''}`;
+    if (this.agents.has(key)) {
+      return this.agents.get(key);
+    }
+    const module = isHttps ? https : http;
+    const agent = new module.Agent({
+      keepAlive: true,
+      maxSockets: CONFIG.MAX_SOCKETS,
+      keepAliveMsecs: CONFIG.KEEP_ALIVE_MS,
+      scheduling: 'lifo',
+      ...(skipVerify && isHttps ? { rejectUnauthorized: false, checkServerIdentity: () => undefined } : {})
+    });
+    this.agents.set(key, agent);
+    return agent;
+  }
+
+  destroyAll() {
+    for (const agent of this.agents.values()) {
+      agent.destroy();
+    }
+    this.agents.clear();
+  }
+}
 
 class ElectricityCrawler {
   constructor() {
-    // 通用代理配置
     this.proxyUrl = CONFIG.PROXY_URL;
     this.useProxy = CONFIG.USE_PROXY;
-    
-    // 代理配置
     this.proxy = CONFIG.HTTP_PROXY;
-    
-    // 直连IP配置
     this.useDirectIP = CONFIG.USE_DIRECT_IP;
     this.directIPs = CONFIG.DIRECT_IPS;
     this.currentIPIndex = 0;
-    
-    // 计算当前使用的URL
-    this.targetUrl = CONFIG.TARGET_URL;
-    this.url = this.useProxy 
-      ? this.proxyUrl
-      : this.useDirectIP 
-        ? `https://${this.directIPs[this.currentIPIndex]}/nat/pay.aspx?mid=${CONFIG.METER_ID}`
-        : this.targetUrl;
-    
     this.meterId = CONFIG.METER_ID;
     this.meterName = CONFIG.METER_NAME;
     this.maxRetries = CONFIG.MAX_RETRIES;
     this.initialRetryDelay = CONFIG.INITIAL_RETRY_DELAY;
-    
-    // 存储最近的日志
+    this.batteryAlertThreshold = CONFIG.BATTERY_ALERT_THRESHOLD;
+    this.batteryAlertCooldownHours = CONFIG.BATTERY_ALERT_COOLDOWN_HOURS;
+    this.lastBatteryAlertTime = null;
+
+    this.circuitBreaker = new CircuitBreaker();
+    this.agentPool = new HttpAgentPool();
+    this.crawlSemaphore = 0;
+    this.lastCrawlResult = null;
+
     this.logEntries = [];
     this.maxLogEntries = CONFIG.MAX_LOG_ENTRIES;
-    
-    // 统计信息
     this.stats = {
       totalCrawls: 0,
       successfulCrawls: 0,
@@ -103,31 +157,34 @@ class ElectricityCrawler {
       proxySwitches: 0,
       ipSwitches: 0,
       lastCrawlTime: null,
-      lastSuccessfulCrawl: null
+      lastSuccessfulCrawl: null,
+      batteryAlerts: 0
     };
-    
-    crawlerLogger.info(`爬虫配置: 使用代理=${this.useProxy}, 直连IP=${this.useDirectIP}`);
+
+    this._updateUrl();
+    crawlerLogger.info(`爬虫配置: 使用代理=${this.useProxy}, 直连IP=${this.useDirectIP}, 电量告警阈值=${this.batteryAlertThreshold}kWh`);
   }
-  
-  // 添加日志条目
+
+  _updateUrl() {
+    if (this.useProxy) {
+      this.url = this.proxyUrl;
+    } else if (this.useDirectIP) {
+      this.url = `https://${this.directIPs[this.currentIPIndex]}/nat/pay.aspx?mid=${this.meterId}`;
+    } else {
+      this.url = CONFIG.TARGET_URL;
+    }
+  }
+
   async addLogEntry(entry) {
-    // 确保条目包含时间戳
     const logEntry = {
       timestamp: new Date().toISOString(),
       ...entry
     };
-    
     this.logEntries.unshift(logEntry);
-    
-    // 限制日志条目数量
     if (this.logEntries.length > this.maxLogEntries) {
       this.logEntries.pop();
     }
-    
-    // 同时记录到日志文件
     crawlerLogger.info(JSON.stringify(logEntry));
-    
-    // 同时写入MongoDB（异步，不阻塞）
     try {
       await CrawlerLog.addLog({
         timestamp: logEntry.timestamp,
@@ -138,20 +195,11 @@ class ElectricityCrawler {
         source: 'local'
       });
     } catch (e) {
-      // MongoDB写入失败不影响主流程
-      crawlerLogger.error(`日志写入MongoDB失败: ${e.message}`);
+      /* ignore */
     }
   }
-  
-  // 获取日志
+
   async getLogs(limit = 100) {
-    const fs = require('fs');
-    const path = require('path');
-    const logsDir = path.join(__dirname, '../../../logs');
-    
-    const logs = [];
-    
-    // 1. 首先尝试从MongoDB读取日志（包含本地爬虫的日志）
     try {
       const dbLogs = await CrawlerLog.getRecentLogs(limit);
       if (dbLogs && dbLogs.length > 0) {
@@ -166,61 +214,11 @@ class ElectricityCrawler {
         }));
       }
     } catch (e) {
-      crawlerLogger.error(`从MongoDB读取日志失败: ${e.message}`);
+      /* ignore */
     }
-    
-    // 2. 如果MongoDB没有日志，回退到文件日志
-    try {
-      // 获取所有日志文件并按日期排序（最新的在前）
-      const files = fs.readdirSync(logsDir)
-        .filter(f => f.startsWith('fetch-') && f.endsWith('.log'))
-        .sort((a, b) => b.localeCompare(a));
-      
-      // 读取最新的日志文件（最多读取2个文件以获取更多记录）
-      for (let i = 0; i < Math.min(files.length, 2); i++) {
-        const logFile = path.join(logsDir, files[i]);
-        try {
-          const content = fs.readFileSync(logFile, 'utf8');
-          const lines = content.split('\n').filter(line => line.trim());
-          
-          for (const line of lines) {
-            try {
-              const jsonMatch = line.match(/\{[^}]+\}/);
-              if (jsonMatch) {
-                const logEntry = JSON.parse(jsonMatch[0]);
-                if (logEntry.action && logEntry.timestamp) {
-                  logs.push({
-                    timestamp: logEntry.timestamp,
-                    level: logEntry.action === 'error' || logEntry.action === 'failed' ? 'error' : 'info',
-                    message: logEntry.action === 'error' ? logEntry.error : logEntry.info,
-                    data: logEntry.data || logEntry
-                  });
-                }
-              }
-            } catch (e) {
-              // 忽略解析失败的行
-            }
-          }
-        } catch (e) {
-          crawlerLogger.error(`读取日志文件 ${files[i]} 失败: ${e.message}`);
-        }
-      }
-      
-      // 按时间戳排序（最新的在前）并返回
-      logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      
-      if (logs.length > 0) {
-        return logs.slice(0, limit);
-      }
-    } catch (error) {
-      crawlerLogger.error(`读取日志文件失败: ${error.message}`);
-    }
-    
-    // 3. 如果没有文件日志，返回内存中的日志
     return this.logEntries.slice(0, limit);
   }
-  
-  // 获取爬虫统计信息
+
   getStats() {
     return {
       ...this.stats,
@@ -229,11 +227,11 @@ class ElectricityCrawler {
       useDirectIP: this.useDirectIP,
       currentIP: this.useDirectIP ? this.directIPs[this.currentIPIndex] : null,
       directIPCount: this.directIPs.length,
-      logCount: this.logEntries.length
+      logCount: this.logEntries.length,
+      circuitBreaker: this.circuitBreaker.getState()
     };
   }
-  
-  // 更新统计信息
+
   updateStats(statName, value = 1) {
     if (statName === 'lastCrawlTime' || statName === 'lastSuccessfulCrawl') {
       this.stats[statName] = new Date().toISOString();
@@ -242,293 +240,273 @@ class ElectricityCrawler {
     }
   }
 
-  // 启动定时任务
   start() {
     crawlerLogger.info('开始启动爬虫定时任务...');
-    
-    // 立即执行一次爬取（不等待定时任务）
     this.crawlData().catch(error => {
       crawlerLogger.error(`初始爬取失败: ${error.message}`);
     });
-
-    // 每15分钟执行一次，并添加随机延迟
     try {
-      cron.schedule('0,15,30,45 * * * *', () => {
-        crawlerLogger.info('定时任务触发，开始执行爬取...');
-        // 添加随机延迟 0-300秒（0-5分钟）
-        const randomDelay = Math.floor(Math.random() * 300) * 1000;
-        setTimeout(() => {
-          this.crawlData();
-        }, randomDelay);
-      }, {
-        timezone: 'Asia/Shanghai'
-      });
-
-      crawlerLogger.info('爬虫定时任务已启动，每15分钟执行一次（带随机延迟）');
+      const minutes = CONFIG.CRAWL_INTERVAL_MINUTES;
+      const pattern = Array.from({ length: 60 / minutes }, (_, i) => i * minutes).join(',');
+      cron.schedule(`${pattern} * * * *`, () => {
+        const delay = Math.floor(Math.random() * CONFIG.RANDOM_DELAY_MAX_SECONDS) * 1000;
+        crawlerLogger.info(`定时任务触发，随机延迟 ${Math.round(delay / 1000)}秒后执行`);
+        setTimeout(() => this.crawlData(), delay);
+      }, { timezone: 'Asia/Shanghai' });
+      crawlerLogger.info(`爬虫定时任务已启动，每${minutes}分钟执行一次（带随机延迟）`);
     } catch (error) {
       crawlerLogger.error(`定时任务启动失败: ${error.message}`);
     }
   }
 
-  // 爬取数据
   async crawlData() {
+    if (this.crawlSemaphore > 0) {
+      crawlerLogger.warn('爬取正在进行中，跳过本次触发');
+      return;
+    }
+    if (this.circuitBreaker.isOpen) {
+      crawlerLogger.warn('断路器断开，跳过本次爬取');
+      return;
+    }
+
+    this.crawlSemaphore++;
     let retryCount = 0;
-    const startTime = new Date();
-    
-    while (retryCount < this.maxRetries) {
-      try {
-        crawlerLogger.info(`开始爬取数据，第${retryCount + 1}次尝试`);
-        
-        const logEntry = {
-          timestamp: new Date(),
-          action: 'crawl_start',
-          retryCount: retryCount + 1,
-          url: this.url
-        };
-        await this.addLogEntry(logEntry);
-        
-        const data = await this.fetchElectricityData();
-        if (data) {
-          await this.saveData(data);
-          const duration = Date.now() - startTime.getTime();
-          crawlerLogger.info('数据爬取并保存成功');
-          
-          const successLog = {
+    const startTime = Date.now();
+
+    try {
+      while (retryCount < this.maxRetries) {
+        try {
+          this.updateStats('totalCrawls');
+          await this.addLogEntry({
             timestamp: new Date(),
-            action: 'success',
-            duration: `${duration}ms`,
-            data: data,
-            retryCount: retryCount + 1
-          };
-          await this.addLogEntry(successLog);
-          
-          return;
-        }
-      } catch (error) {
-        retryCount++;
-        crawlerLogger.error(`第${retryCount}次尝试失败: ${error.message}`);
-        
-        const errorLog = {
-          timestamp: new Date(),
-          action: 'error',
-          error: error.message,
-          retryCount: retryCount
-        };
-        await this.addLogEntry(errorLog);
-        
-        if (retryCount < this.maxRetries) {
-          crawlerLogger.info(`${this.retryDelay/1000}秒后重试...`);
-          await this.delay(this.retryDelay);
-        } else {
-          crawlerLogger.error(`爬取失败，已重试${this.maxRetries}次: ${error.message}`);
-          
-          const failLog = {
+            action: 'crawl_start',
+            retryCount: retryCount + 1,
+            url: this.url
+          });
+
+          const data = await this.fetchElectricityData();
+          if (data) {
+            await this.saveData(data);
+            const duration = Date.now() - startTime;
+            this.circuitBreaker.onSuccess();
+            this.updateStats('successfulCrawls');
+            this.updateStats('lastSuccessfulCrawl');
+            this.lastCrawlResult = { success: true, data, duration };
+
+            await this._checkBatteryAlert(data.remaining_kwh);
+
+            await this.addLogEntry({
+              timestamp: new Date(),
+              action: 'success',
+              duration: `${duration}ms`,
+              data,
+              retryCount: retryCount + 1
+            });
+            return;
+          }
+        } catch (error) {
+          retryCount++;
+          this.updateStats('retryCount');
+          crawlerLogger.error(`第${retryCount}次尝试失败: ${error.message}`);
+
+          await this.addLogEntry({
             timestamp: new Date(),
-            action: 'failed',
+            action: 'error',
             error: error.message,
-            retryCount: retryCount
-          };
-          await this.addLogEntry(failLog);
+            retryCount
+          });
+
+          if (retryCount < this.maxRetries) {
+            const delay = this.initialRetryDelay * Math.pow(1.5, retryCount - 1);
+            crawlerLogger.info(`${Math.round(delay / 1000)}秒后重试...`);
+            await this.delay(delay);
+          }
         }
       }
+
+      this.circuitBreaker.onFailure();
+      this.updateStats('failedCrawls');
+      crawlerLogger.error(`爬取失败，已重试${this.maxRetries}次`);
+      await this.addLogEntry({
+        timestamp: new Date(),
+        action: 'failed',
+        error: `已重试${this.maxRetries}次均失败`,
+        retryCount: this.maxRetries
+      });
+    } finally {
+      this.crawlSemaphore--;
     }
   }
 
-  // 获取电力数据
   async fetchElectricityData() {
     try {
       const html = await this.makeHttpRequest(this.url);
       crawlerLogger.info(`获取HTML成功，长度: ${html.length} 字符`);
-      
-      // 检查是否被拦截
-      if (html.includes('blocked') || html.includes('<title>405</title>') || html.includes('安全威胁') || html.includes('被阻断') || html.includes('Tunnel website ahead!')) {
-        await this.addLogEntry({
-          timestamp: new Date(),
-          action: 'blocked',
-          info: '请求被安全防护拦截',
-          htmlPreview: html.substring(0, 300)
-        });
-        
-        // 如果当前使用代理且是localtunnel，优先切换到VERCEL代理
-        const vercelUrl = process.env.VERCEL_PROXY_URL;
-        if (this.useProxy && typeof this.proxyUrl === 'string' && this.proxyUrl.includes('loca.lt') && vercelUrl) {
-          this.url = vercelUrl;
-          this.proxyUrl = vercelUrl;
-          crawlerLogger.warn(`代理被拦截，切换到Vercel代理: ${vercelUrl}`);
-          throw new Error('请求被安全防护拦截，切换Vercel代理重试');
-        }
 
-        // 如果使用直连IP且还有备用IP，尝试切换到下一个
-        if (this.useDirectIP && this.currentIPIndex < this.directIPs.length - 1) {
-          this.currentIPIndex++;
-          this.url = `https://${this.directIPs[this.currentIPIndex]}/nat/pay.aspx?mid=18100071580`;
-          crawlerLogger.warn(`切换到备用IP: ${this.directIPs[this.currentIPIndex]}`);
-          throw new Error('请求被安全防护拦截，已切换到下一个IP');
-        }
-
-        // 如果当前使用代理但没有Vercel代理，尝试回退到直连IP
-        if (this.useProxy && !vercelUrl) {
-          this.useDirectIP = true;
-          this.currentIPIndex = 0;
-          this.url = `https://${this.directIPs[this.currentIPIndex]}/nat/pay.aspx?mid=18100071580`;
-          crawlerLogger.warn(`代理被拦截，回退到直连IP: ${this.directIPs[this.currentIPIndex]}`);
-          throw new Error('请求被安全防护拦截，回退直连IP重试');
-        }
-        
-        throw new Error('请求被安全防护拦截，返回405错误页面');
+      if (this._isBlocked(html)) {
+        this._handleBlocked();
+        throw new Error('请求被安全防护拦截');
       }
-      
-      // 添加调试日志到日志记录
+
       await this.addLogEntry({
         timestamp: new Date(),
         action: 'debug',
         info: `HTML长度: ${html.length}字符`,
-        htmlPreview: html.substring(0, 300)
+        htmlPreview: html.substring(0, 200)
       });
-      
-      const dom = new JSDOM(html);
-      const document = dom.window.document;
-      
-      // 解析剩余电量数据
-      let remainingKwh = null;
-      
-      // 获取所有文本
-      const allText = document.body ? document.body.textContent : '';
-      crawlerLogger.info(`提取的文本长度: ${allText.length}`);
-      
-      await this.addLogEntry({
-        timestamp: new Date(),
-        action: 'debug',
-        info: `文本长度: ${allText.length}字符`,
-        textPreview: allText.substring(0, 300)
-      });
-      
-      // 1. 优先使用更灵活的正则匹配（处理不同格式）
-      const remainingMatch = allText.match(/剩余电量[:：]\s*([\d.]+)\s*kWh?/i);
-      if (remainingMatch) {
-        remainingKwh = parseFloat(remainingMatch[1]);
-        crawlerLogger.info(`通过正则找到剩余电量: ${remainingKwh} kWh`);
-      } else {
-        // 2. 备用：通过DOM选择器精确查找包含"剩余电量"的元素
-        crawlerLogger.info('尝试通过DOM选择器查找剩余电量...');
-        const elements = document.querySelectorAll('*');
-        for (const element of elements) {
-          const text = element.textContent.trim();
-          if (text.includes('剩余电量')) {
-            // 查找包含"剩余电量"的父元素或相邻元素
-            const parentElement = element.parentElement;
-            if (parentElement) {
-              const parentText = parentElement.textContent;
-              const match = parentText.match(/剩余电量[:：]\s*([\d.]+)/);
-              if (match) {
-                remainingKwh = parseFloat(match[1]);
-                crawlerLogger.info(`通过父元素找到剩余电量: ${remainingKwh} kWh`);
-                break;
-              }
-            }
-          }
-        }
-      }
-      
-      // 3. 备用：查找所有包含"剩余"和"电量"的元素
-      if (remainingKwh === null) {
-        crawlerLogger.info('尝试通过关键词组合查找剩余电量...');
-        const elements = document.querySelectorAll('*');
-        for (const element of elements) {
-          const text = element.textContent.trim();
-          if (text.includes('剩余') && text.includes('电量')) {
-            const match = text.match(/([\d.]+)/);
-            if (match) {
-              remainingKwh = parseFloat(match[1]);
-              crawlerLogger.info(`通过关键词组合找到剩余电量: ${remainingKwh} kWh`);
-              break;
-            }
-          }
-        }
-      }
-      
-      // 4. 最后才考虑数字规则（兜底），但改进规则使其更智能
-      if (remainingKwh === null) {
-        const numberMatches = allText.match(/\d+\.?\d*/g);
-        crawlerLogger.info(`找到数字匹配: ${numberMatches ? numberMatches.length : 0} 个`);
-        
-        await this.addLogEntry({
-          timestamp: new Date(),
-          action: 'debug',
-          info: `找到数字: ${numberMatches ? numberMatches.length : 0} 个`,
-          numbers: numberMatches ? numberMatches.slice(0, 20) : []
-        });
-        
-        if (numberMatches) {
-          // 筛选出合理的电量值（缩小范围到0-100kWh）
-          const validNumbers = numberMatches
-            .map(num => parseFloat(num))
-            .filter(num => num > 0 && num <= 100 && num.toString().includes('.')) // 缩小范围到0-100
-            .sort((a, b) => a - b); // 按升序排序，更可能找到实际电量
-          
-          crawlerLogger.info(`有效数字: ${validNumbers.length} 个`);
-          
-          // 尝试找到最接近上一次记录或最合理的电量值
-          if (validNumbers.length > 0) {
-            remainingKwh = validNumbers[0];
-            crawlerLogger.info(`从网页中找到电量数字: ${validNumbers.join(', ')}`);
-          }
-        }
-      }
 
+      const remainingKwh = this._smartParse(html);
       if (remainingKwh === null) {
-        // 记录解析失败的详细信息
         await this.addLogEntry({
           timestamp: new Date(),
           action: 'parse_failed',
           info: '无法解析剩余电量',
-          allTextPreview: allText.substring(0, 1000)
+          htmlPreview: html.substring(0, 1000)
         });
         throw new Error('无法从网页中解析出剩余电量数据');
       }
 
       crawlerLogger.info(`解析到剩余电量: ${remainingKwh} kWh`);
-
       return {
         meter_id: this.meterId,
         meter_name: this.meterName,
         remaining_kwh: remainingKwh,
         collected_at: new Date()
       };
-
     } catch (error) {
-      throw new Error(`HTTP请求失败: ${error.message}`);
+      throw new Error(error.message);
     }
   }
 
-  // 保存数据到数据库
+  _isBlocked(html) {
+    const blockKeywords = ['blocked', '安全威胁', '被阻断', 'Tunnel website ahead!', '405'];
+    const titleMatch = html.match(/<title>([^<]*)<\/title>/i);
+    if (titleMatch) {
+      const title = titleMatch[1];
+      if (blockKeywords.some(k => title.includes(k))) return true;
+    }
+    return false;
+  }
+
+  _handleBlocked() {
+    this.useDirectIP = true;
+    this.currentIPIndex = (this.currentIPIndex + 1) % this.directIPs.length;
+    this._updateUrl();
+    this.updateStats('ipSwitches');
+    crawlerLogger.warn(`被拦截，切换到下一个IP: ${this.directIPs[this.currentIPIndex]}`);
+  }
+
+  _smartParse(html) {
+    const dom = new JSDOM(html);
+    const doc = dom.window.document;
+    const allText = doc.body ? doc.body.textContent : '';
+    crawlerLogger.info(`提取文本长度: ${allText.length}`);
+
+    const strategies = [
+      () => this._parseByRegex(allText),
+      () => this._parseByDom(doc),
+      () => this._parseByKeyword(doc),
+      () => this._parseByNumberHeuristic(allText)
+    ];
+
+    for (const strategy of strategies) {
+      const result = strategy();
+      if (result !== null) {
+        crawlerLogger.info(`解析成功: ${result} kWh`);
+        return result;
+      }
+    }
+    return null;
+  }
+
+  _parseByRegex(text) {
+    const patterns = [
+      /剩余电量[:：]\s*([\d.]+)\s*kWh?/i,
+      /剩余[:：]\s*([\d.]+)\s*kWh?/i,
+      /剩余\s*([\d.]+)\s*kWh?/i
+    ];
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const val = parseFloat(match[1]);
+        if (val > 0 && val < 1000) return val;
+      }
+    }
+    return null;
+  }
+
+  _parseByDom(doc) {
+    const el = Array.from(doc.querySelectorAll('*')).find(el =>
+      el.textContent.includes('剩余电量')
+    );
+    if (el) {
+      const parentText = (el.parentElement ? el.parentElement.textContent : el.textContent);
+      const match = parentText.match(/剩余电量[:：]\s*([\d.]+)/);
+      if (match) {
+        const val = parseFloat(match[1]);
+        if (val > 0 && val < 100) return val;
+      }
+    }
+    return null;
+  }
+
+  _parseByKeyword(doc) {
+    const el = Array.from(doc.querySelectorAll('*')).find(el => {
+      const t = el.textContent.trim();
+      return t.includes('剩余') && t.includes('电量');
+    });
+    if (el) {
+      const match = el.textContent.trim().match(/([\d.]+)/);
+      if (match) {
+        const val = parseFloat(match[1]);
+        if (val > 0 && val < 100) return val;
+      }
+    }
+    return null;
+  }
+
+  _parseByNumberHeuristic(text) {
+    const numbers = text.match(/\d+\.?\d*/g);
+    if (!numbers) return null;
+    const valid = numbers
+      .map(n => parseFloat(n))
+      .filter(n => n > 0.5 && n < 100 && n.toString().includes('.'))
+      .sort((a, b) => a - b);
+    if (valid.length === 0) return null;
+    return valid[Math.floor(valid.length / 2)];
+  }
+
   async saveData(data) {
+    const record = Format.createRecord({
+      meter_id: data.meter_id,
+      meter_name: data.meter_name,
+      remaining_kwh: data.remaining_kwh,
+      collected_at: data.collected_at,
+      source: Format.SOURCES.LOCAL
+    });
+    const usageData = Format.toUsageModel(record);
     try {
-      const usage = new Usage(data);
+      const usage = new Usage(usageData);
       await usage.save();
-      crawlerLogger.info(`数据已保存: ${JSON.stringify(data)}`);
+      crawlerLogger.info(`数据已保存: ${JSON.stringify(usageData)} (crawl_id: ${record.crawl_id})`);
     } catch (error) {
+      if (error.code === 11000) {
+        crawlerLogger.warn('数据已存在（重复），跳过保存');
+        return;
+      }
       throw new Error(`数据库保存失败: ${error.message}`);
     }
   }
 
-  // 使用Node.js内置http模块发送请求
   makeHttpRequest(url) {
     return new Promise((resolve, reject) => {
       const urlObj = new URL(url);
       const isHttps = urlObj.protocol === 'https:';
       const httpModule = isHttps ? https : http;
-      
-      const targetHost = 'www.wap.cnyiot.com';
+      const targetHost = CONFIG.TARGET_HOST;
       const proxyHosts = ['loca.lt', 'localhost', '127.0.0.1', 'vercel.app', 'ngrok-free.app'];
       const isProxyHost = proxyHosts.some(h => urlObj.hostname.endsWith(h));
-
-      // 重用Agent以提高性能
-      const agentOptions = {
-        keepAlive: true,
-        maxSockets: 5,
-        keepAliveMsecs: 10000
-      };
+      const skipVerify = isHttps && ['loca.lt', 'localhost', '127.0.0.1'].some(h => urlObj.hostname.endsWith(h));
 
       const options = {
         hostname: urlObj.hostname,
@@ -536,232 +514,146 @@ class ElectricityCrawler {
         path: urlObj.pathname + urlObj.search,
         method: 'GET',
         headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', // 简化Accept头
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
           'Accept-Encoding': 'gzip, deflate, br',
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive',
           'Upgrade-Insecure-Requests': '1',
-          'Referer': isProxyHost ? `${urlObj.protocol}//${urlObj.hostname}/` : `https://${targetHost}/`,
+          'Referer': `https://${targetHost}/`,
           'Host': isProxyHost ? urlObj.hostname : targetHost
         },
-        timeout: 30000, // 调整超时时间为30秒
-        agent: isHttps ? 
-          new https.Agent(agentOptions) : 
-          new http.Agent(agentOptions)
+        timeout: CONFIG.REQUEST_TIMEOUT,
+        agent: this.agentPool.getAgent(urlObj.hostname, isHttps, skipVerify)
       };
 
-      // 在通过 localtunnel/本地代理时跳过自签名证书校验
-      try {
-        if (isHttps) {
-          const skipHosts = ['loca.lt', 'localhost', '127.0.0.1'];
-          const shouldSkipTlsVerify = skipHosts.some(h => options.hostname.endsWith(h));
-          if (shouldSkipTlsVerify) {
-            options.agent = new https.Agent({ 
-              ...agentOptions, 
-              rejectUnauthorized: false,
-              checkServerIdentity: () => undefined
-            });
-          }
-        }
-      } catch (_) {
-        // 兜底：忽略设置失败，保持默认行为
-      }
-
-      // 减少随机延迟，平衡性能和反爬策略
-      const delay = Math.floor(Math.random() * 1000) + 500; // 0.5-1.5秒随机延迟
-      
+      const delay = Math.floor(Math.random() * 1000) + 500;
       setTimeout(() => {
         const req = httpModule.request(options, (res) => {
-          let chunks = [];
-          
-          // 处理gzip/deflate/br压缩
+          const chunks = [];
           const encoding = (res.headers['content-encoding'] || '').toLowerCase();
-          
-          // 优先收集Buffer，最后再转换为字符串以提高性能
-          res.on('data', (chunk) => {
-            chunks.push(chunk);
-          });
-          
+
+          res.on('data', (chunk) => chunks.push(chunk));
           res.on('end', () => {
             const buffer = Buffer.concat(chunks);
-            
             if (encoding === 'gzip') {
-              const zlib = require('zlib');
-              zlib.gunzip(buffer, (err, result) => {
-                if (err) reject(err);
-                else resolve(result.toString());
-              });
+              zlib.gunzip(buffer, (err, result) => err ? reject(err) : resolve(result.toString()));
             } else if (encoding === 'deflate') {
-              const zlib = require('zlib');
-              zlib.inflate(buffer, (err, result) => {
-                if (err) reject(err);
-                else resolve(result.toString());
-              });
+              zlib.inflate(buffer, (err, result) => err ? reject(err) : resolve(result.toString()));
             } else if (encoding === 'br') {
-              const zlib = require('zlib');
-              zlib.brotliDecompress(buffer, (err, result) => {
-                if (err) reject(err);
-                else resolve(result.toString());
-              });
+              zlib.brotliDecompress(buffer, (err, result) => err ? reject(err) : resolve(result.toString()));
             } else {
               resolve(buffer.toString());
             }
           });
         });
 
-        req.on('error', (error) => {
-          crawlerLogger.error('HTTP请求错误:', error.message);
-          reject(error);
-        });
-
-        req.on('timeout', () => {
-          req.destroy();
-          crawlerLogger.error('HTTP请求超时');
-          reject(new Error('Request timeout'));
-        });
-
+        req.on('error', (error) => reject(error));
+        req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
         req.end();
       }, delay);
-
     });
   }
 
-  // 延迟函数
+  async _checkBatteryAlert(remainingKwh) {
+    if (remainingKwh <= this.batteryAlertThreshold) {
+      const now = Date.now();
+      const cooldownMs = this.batteryAlertCooldownHours * 60 * 60 * 1000;
+      
+      if (!this.lastBatteryAlertTime || now - this.lastBatteryAlertTime >= cooldownMs) {
+        crawlerLogger.warn(`电量低于阈值！当前 ${remainingKwh} kWh，阈值 ${this.batteryAlertThreshold} kWh，发送告警`);
+        const sent = await alerter.alertLowBattery(remainingKwh, this.batteryAlertThreshold);
+        if (sent) {
+          this.lastBatteryAlertTime = now;
+          this.updateStats('batteryAlerts');
+          await this.addLogEntry({
+            timestamp: new Date(),
+            action: 'battery_alert',
+            info: `电量告警已发送: ${remainingKwh} kWh`,
+            data: { remaining_kwh: remainingKwh, threshold: this.batteryAlertThreshold }
+          });
+        }
+      } else {
+        const remainingCooldown = Math.round((cooldownMs - (now - this.lastBatteryAlertTime)) / 3600000);
+        crawlerLogger.info(`电量低于阈值但处于冷却期，${remainingCooldown}小时后可再次发送告警`);
+      }
+    }
+  }
+
   delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  // 手动触发爬取（用于测试）
   async manualCrawl() {
     crawlerLogger.info('手动触发数据爬取');
     await this.crawlData();
   }
 
-  // 云端保障爬虫 - 用于 Railway/Zeabur 部署作为本地爬虫的备份
-  // 相比本地爬虫，云端爬虫具有以下特点：
-  // 1. 启动时随机延迟 0-30 分钟，避免所有实例同时爬取
-  // 2. 每30分钟执行一次（而非15分钟），降低目标服务器压力
-  // 3. 与本地爬虫共享同一 MongoDB，自动去重
-  // 4. 如果本地爬虫正常运行，云端爬虫采集的数据是冗余的，但无害
   startCloudBackup() {
-    const randomStartupDelay = Math.floor(Math.random() * 30) * 60 * 1000;
-    crawlerLogger.info(`云端保障爬虫准备就绪，将在 ${Math.round(randomStartupDelay / 60000)} 分钟后开始首次采集（每隔30分钟一次）`);
-
+    const randomDelay = Math.floor(Math.random() * 30) * 60 * 1000;
+    crawlerLogger.info(`云端保障爬虫将在 ${Math.round(randomDelay / 60000)} 分钟后开始首次采集`);
     setTimeout(() => {
-      this.crawlData().catch(error => {
-        crawlerLogger.error(`云端爬虫首次采集失败: ${error.message}`);
-      });
-
+      this.crawlData().catch(e => crawlerLogger.error(`云端首次采集失败: ${e.message}`));
       cron.schedule('0,30 * * * *', () => {
-        const randomDelay = Math.floor(Math.random() * 120) * 1000;
-        crawlerLogger.info('云端爬虫定时任务触发');
-        setTimeout(() => {
-          this.crawlData();
-        }, randomDelay);
-      }, {
-        timezone: 'Asia/Shanghai'
-      });
-
+        setTimeout(() => this.crawlData(), Math.floor(Math.random() * 120) * 1000);
+      }, { timezone: 'Asia/Shanghai' });
       crawlerLogger.info('云端保障爬虫已启动，每30分钟执行一次');
-    }, randomStartupDelay);
+    }, randomDelay);
+  }
+
+  async gracefulShutdown() {
+    crawlerLogger.info('正在优雅关闭爬虫...');
+    this.agentPool.destroyAll();
+    crawlerLogger.info('HTTP连接池已关闭');
   }
 }
 
-// 新增: 仅解析HTML用于前端用户上报逻辑，不关心url，只处理html文本
 async function parseHtml(html) {
-  const { JSDOM } = require('jsdom');
-  const meterId = '18100071580';    // 如需动态传，可扩展参数
-  const meterName = '2759弄18号402阳台';
-
+  const meterId = CONFIG.METER_ID;
+  const meterName = CONFIG.METER_NAME;
   const dom = new JSDOM(html);
-  const document = dom.window.document;
-  let remainingKwh = null;
-  const allText = document.body ? document.body.textContent : '';
+  const doc = dom.window.document;
+  const allText = doc.body ? doc.body.textContent : '';
 
-  // 1. 优先使用更精确的正则匹配，确保只匹配主要的剩余电量（排除其他干扰项）
-  // 改进正则：匹配"剩余电量"后紧跟的数字，并且确保前面没有其他电量相关词汇
-  const remainingMatch = allText.match(/^(?:(?!(?:今日|本月|上月|历史|累计)电量).)*剩余电量[:：]\s*([\d.]+)\s*kWh?/i);
-  if (remainingMatch) {
-    remainingKwh = parseFloat(remainingMatch[1]);
-    console.log('✨ 通过精确正则匹配找到剩余电量:', remainingKwh);
-  } else {
-    // 2. 备用：通过DOM选择器查找特定的电量显示区域
-    // 通常剩余电量会在特定的容器或标签中，如div, span等
-    console.log('🔍 尝试通过DOM结构查找剩余电量...');
-    
-    // 先尝试查找所有包含"剩余电量"的元素
-    const remainingElements = Array.from(document.querySelectorAll('*'))
-      .filter(el => el.textContent && el.textContent.includes('剩余电量'));
-    
-    for (const element of remainingElements) {
-      // 获取包含剩余电量的完整文本
-      const fullText = element.parentElement ? element.parentElement.textContent : element.textContent;
-      
-      // 从完整文本中提取数字，并且确保这个数字是紧跟在"剩余电量"后面的
-      const match = fullText.match(/剩余电量[:：]\s*([\d.]+)/i);
-      if (match) {
-        const num = parseFloat(match[1]);
-        // 验证数字的合理性（通常剩余电量不会太大或太小）
-        if (num > 0 && num < 100) {
-          remainingKwh = num;
-          console.log('✨ 通过DOM结构找到剩余电量:', remainingKwh);
-          break;
-        }
+  let remainingKwh = null;
+
+  const reMatch = allText.match(/剩余电量[:：]\s*([\d.]+)\s*kWh?/i);
+  if (reMatch) {
+    remainingKwh = parseFloat(reMatch[1]);
+  }
+
+  if (remainingKwh === null) {
+    const el = Array.from(doc.querySelectorAll('*')).find(el => el.textContent.includes('剩余电量'));
+    if (el) {
+      const text = el.parentElement ? el.parentElement.textContent : el.textContent;
+      const m = text.match(/剩余电量[:：]\s*([\d.]+)/i);
+      if (m) {
+        const v = parseFloat(m[1]);
+        if (v > 0 && v < 100) remainingKwh = v;
       }
     }
   }
-  
-  // 3. 备用：查找所有包含"剩余"和"电量"的元素，但增加合理性检查
+
   if (remainingKwh === null) {
-    console.log('🔍 尝试通过关键词组合查找剩余电量...');
-    const elements = Array.from(document.querySelectorAll('*'))
-      .filter(el => el.textContent && el.textContent.includes('剩余') && el.textContent.includes('电量'));
-    
-    for (const element of elements) {
-      const text = element.textContent.trim();
-      const match = text.match(/([\d.]+)/);
-      if (match) {
-        const num = parseFloat(match[1]);
-        // 增加合理性检查：剩余电量通常在0-100kWh之间
-        if (num > 0 && num < 100) {
-          remainingKwh = num;
-          console.log('✨ 通过关键词组合找到剩余电量:', remainingKwh);
-          break;
-        }
+    const el = Array.from(doc.querySelectorAll('*')).find(el => {
+      const t = el.textContent.trim();
+      return t.includes('剩余') && t.includes('电量');
+    });
+    if (el) {
+      const m = el.textContent.trim().match(/([\d.]+)/);
+      if (m) {
+        const v = parseFloat(m[1]);
+        if (v > 0 && v < 100) remainingKwh = v;
       }
     }
   }
-  
-  // 4. 最后才考虑数字规则（兜底），但大幅提高筛选条件
+
   if (remainingKwh === null) {
-    console.log('🔍 尝试通过数字规则查找剩余电量...');
-    const numberMatches = allText.match(/\d+\.?\d*/g);
-    if (numberMatches) {
-      const validNumbers = numberMatches
-        .map(num => parseFloat(num))
-        .filter(num => {
-          // 更严格的筛选条件：
-          // 1. 电量在0.5-50kWh之间（根据实际使用情况调整）
-          // 2. 必须包含小数点（剩余电量通常有小数）
-          // 3. 小数位数不超过3位
-          const numStr = num.toString();
-          return num > 0.5 && num < 50 && 
-                 numStr.includes('.') && 
-                 numStr.split('.')[1]?.length <= 3;
-        })
-        .sort((a, b) => a - b); // 按升序排序
-      
-      console.log('筛选后的有效数字:', validNumbers);
-      
-      // 如果有多个有效数字，优先选择中间范围的（通常剩余电量不会是最大或最小值）
-      if (validNumbers.length > 0) {
-        // 选择中间位置的数字
-        const midIndex = Math.floor(validNumbers.length / 2);
-        remainingKwh = validNumbers[midIndex];
-        console.log('✨ 通过兜底规则找到剩余电量:', remainingKwh);
-      }
+    const nums = allText.match(/\d+\.?\d*/g);
+    if (nums) {
+      const valid = nums.map(n => parseFloat(n)).filter(n => n > 0.5 && n < 50 && n.toString().includes('.')).sort((a, b) => a - b);
+      if (valid.length > 0) remainingKwh = valid[Math.floor(valid.length / 2)];
     }
   }
 
@@ -775,4 +667,3 @@ async function parseHtml(html) {
 }
 
 module.exports = Object.assign(new ElectricityCrawler(), { parseHtml });
-

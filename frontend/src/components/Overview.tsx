@@ -67,26 +67,6 @@ interface OverviewProps {
   data: OverviewData;
 }
 
-interface StatItem {
-  value: number | string;
-  label: string;
-  unit: string;
-  icon: string;
-  precision: number;
-  delay: number;
-  prefix?: string;
-  suffix?: string;
-  subtitle?: string;
-  warning?: boolean;
-  isStatic?: boolean;
-  comparison?: {
-    text: string;
-    color: string;
-    secondaryText?: string;
-    secondaryColor?: string;
-  };
-}
-
 const Overview: React.FC<OverviewProps> = ({ data }) => {
   const { elementRef, hasTriggered } = useIntersectionObserver({
     threshold: 0.01,
@@ -110,9 +90,9 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
   };
 
   const getComparisonColor = (percentage: number) => {
-    if (percentage === 0) return '#9A8B7E';
-    if (percentage > 0) return '#E88B8B';
-    return '#7CB87C';
+    if (percentage === 0) return '#8a8078';
+    if (percentage > 0) return '#f43f5e';
+    return '#10b981';
   };
 
   const formatPredictedTime = (prediction: PredictionData) => {
@@ -121,7 +101,8 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
         value: '--',
         label: '预计用完时间',
         subtitle: prediction.message,
-        icon: '🔋'
+        icon: '🔋',
+        status: 'neutral' as const
       };
     }
 
@@ -155,26 +136,32 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       analysisDetail += ` (${primaryMethod}分析)`;
     }
 
+    let status: 'safe' | 'warning' | 'danger' | 'neutral' = 'safe';
+    if (diffDays <= 1) status = 'danger';
+    else if (diffDays <= 3) status = 'warning';
+
     return {
       value: timeStr,
       label: '预计用完时间',
       subtitle: analysisDetail,
       icon: diffDays > 7 ? '🔋' : diffDays > 3 ? '⚡' : '🔔',
-      analysis: prediction.analysis
+      analysis: prediction.analysis,
+      status
     };
   };
 
   const predictionInfo = data.predicted_depletion ? formatPredictedTime(data.predicted_depletion) : null;
   
-  const stats = [
-    {
-      value: data.current_remaining,
-      label: '当前剩余电量',
-      unit: 'kWh',
-      icon: '🔋',
-      precision: 2,
-      delay: 0
-    },
+  const getBatteryLevel = (remaining: number) => {
+    if (remaining <= 10) return { level: 'critical', color: '#f43f5e', bgColor: '#fff1f2' };
+    if (remaining <= 30) return { level: 'low', color: '#f59e0b', bgColor: '#fffbeb' };
+    if (remaining <= 60) return { level: 'medium', color: '#0ea5e9', bgColor: '#f0f9ff' };
+    return { level: 'high', color: '#10b981', bgColor: '#ecfdf5' };
+  };
+
+  const batteryLevel = getBatteryLevel(data.current_remaining);
+
+  const secondaryStats = [
     {
       value: data.today_usage,
       label: '今日用电',
@@ -231,17 +218,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
         text: `较上月 ${formatComparison(data.comparisons.cost_vs_last_month)}`,
         color: getComparisonColor(data.comparisons.cost_vs_last_month)
       } : undefined
-    },
-    ...(predictionInfo ? [{
-      value: predictionInfo.value,
-      label: predictionInfo.label,
-      unit: '',
-      icon: predictionInfo.icon,
-      subtitle: predictionInfo.subtitle,
-      precision: 0,
-      delay: 500,
-      isStatic: true
-    }] : [])
+    }
   ];
 
   return (
@@ -253,72 +230,117 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
           <span>数据不完整：数据库中只有从 {data.data_coverage?.earliest_data ? formatDate(data.data_coverage.earliest_data) : '最近'} 开始的记录，因此本周和本月用电量可能相同。</span>
         </div>
       )}
-      <div className="stats-grid">
-        {stats.map((stat, index) => (
+      
+      <div className="hero-section">
+        <div 
+          className={`hero-card ${hasTriggered ? 'animate-in' : ''}`}
+          style={{ 
+            animationDelay: '0ms',
+            borderLeft: `4px solid ${batteryLevel.color}`
+          }}
+        >
+          <div className="hero-content">
+            <div className="hero-icon-wrapper" style={{ background: batteryLevel.bgColor }}>
+              <span className="hero-icon">🔋</span>
+              <span className="hero-status-dot" style={{ backgroundColor: batteryLevel.color }}></span>
+            </div>
+            <div className="hero-info">
+              <div className="hero-label">当前剩余电量</div>
+              <div className="hero-value-row">
+                <span className="hero-value" style={{ color: batteryLevel.color }}>
+                  <AnimatedNumber
+                    value={data.current_remaining}
+                    unit=""
+                    precision={2}
+                    delay={0}
+                    easing="easeOutBounce"
+                    autoStart={hasTriggered}
+                  />
+                </span>
+                <span className="hero-unit" style={{ color: batteryLevel.color }}>kWh</span>
+              </div>
+              <div className="battery-bar-container">
+                <div className="battery-bar-bg">
+                  <div 
+                    className="battery-bar-fill" 
+                    style={{ 
+                      width: `${Math.min(data.current_remaining, 100)}%`,
+                      background: `linear-gradient(90deg, ${batteryLevel.color} 0%, ${batteryLevel.color}dd 100%)`
+                    }}
+                  ></div>
+                </div>
+                <span className="battery-bar-text" style={{ color: batteryLevel.color }}>
+                  {data.current_remaining.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {predictionInfo && (
+          <div 
+            className={`hero-card hero-card-prediction ${predictionInfo.status} ${hasTriggered ? 'animate-in' : ''}`}
+            style={{ animationDelay: '150ms' }}
+          >
+            <div className="hero-content">
+              <div className="hero-icon-wrapper" style={{ 
+                background: predictionInfo.status === 'danger' ? '#fff1f2' : 
+                           predictionInfo.status === 'warning' ? '#fffbeb' : '#f0f9ff' 
+              }}>
+                <span className="hero-icon">{predictionInfo.icon}</span>
+              </div>
+              <div className="hero-info">
+                <div className="hero-label">{predictionInfo.label}</div>
+                <div className="hero-value-row">
+                  <span className="hero-value" style={{ 
+                    color: predictionInfo.status === 'danger' ? '#f43f5e' : 
+                           predictionInfo.status === 'warning' ? '#f59e0b' : '#2d2620' 
+                  }}>
+                    {predictionInfo.value}
+                  </span>
+                </div>
+                <div className="hero-subtitle">{predictionInfo.subtitle}</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="secondary-stats-grid">
+        {secondaryStats.map((stat, index) => (
           <div 
             key={index} 
-            className={`stat-card ${hasTriggered ? 'animate-in' : ''}`}
+            className={`secondary-stat-card ${hasTriggered ? 'animate-in' : ''}`}
             style={{
               animationDelay: `${(stat as any).delay || 0}ms`,
-              border: (stat as any).warning ? '1px solid #FFE082' : undefined
+              border: (stat as any).warning ? '1px solid var(--accent-amber-200)' : undefined
             }}
           >
-            <div className="stat-icon">
-              {stat.icon}
-              {(stat as any).warning && <span style={{ fontSize: '12px', marginLeft: '4px' }}>⚠️</span>}
-            </div>
-            <div className="stat-value">
-              {(stat as any).isStatic ? (
-                stat.value
-              ) : (
+            <div className="secondary-stat-icon">{stat.icon}</div>
+            <div className="secondary-stat-content">
+              <div className="secondary-stat-value">
+                {(stat as any).prefix || ''}
                 <AnimatedNumber
                   value={typeof stat.value === 'number' ? stat.value : 0}
                   unit={stat.unit}
-                  prefix={(stat as any).prefix || ''}
-                  suffix={(stat as any).suffix || ''}
                   precision={(stat as any).precision || 2}
                   delay={hasTriggered ? ((stat as any).delay || 0) : 0}
                   easing="easeOutBounce"
                   autoStart={hasTriggered}
                 />
-              )}
-            </div>
-            <div className="stat-label">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                <span>{stat.label}</span>
-                {stat.unit && stat.unit !== '元' && <span className="unit-badge">{stat.unit}</span>}
               </div>
-              {(stat as any).subtitle && (
-                <div style={{ 
-                  fontSize: '12px', 
-                  color: '#9A8B7E',
-                  marginTop: '4px',
-                  lineHeight: '1.4'
-                }}>
-                  {(stat as any).subtitle}
-                </div>
-              )}
+              <div className="secondary-stat-label">{stat.label}</div>
               {(stat as any).comparison && (
-                <>
-                  <div style={{ 
-                    fontSize: '11px',
-                    marginTop: '6px',
-                    color: (stat as any).comparison.color,
-                    fontWeight: 600
-                  }}>
+                <div className="secondary-stat-comparison">
+                  <span className="comparison-badge" style={{ color: (stat as any).comparison.color }}>
                     {(stat as any).comparison.text}
-                  </div>
+                  </span>
                   {(stat as any).comparison.secondaryText && (
-                    <div style={{ 
-                      fontSize: '11px',
-                      marginTop: '2px',
-                      color: (stat as any).comparison.secondaryColor,
-                      fontWeight: 600
-                    }}>
+                    <span className="comparison-badge comparison-badge-secondary" style={{ color: (stat as any).comparison.secondaryColor }}>
                       {(stat as any).comparison.secondaryText}
-                    </div>
+                    </span>
                   )}
-                </>
+                </div>
               )}
             </div>
           </div>

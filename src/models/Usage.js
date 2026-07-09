@@ -25,8 +25,8 @@ const usageSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// 复合索引优化查询性能
-usageSchema.index({ meter_id: 1, collected_at: -1 });
+// 复合唯一索引：用于去重（同电表同一时刻只能有一条记录）
+usageSchema.index({ meter_id: 1, collected_at: -1 }, { unique: true });
 usageSchema.index({ collected_at: -1 });
 
 // 静态方法：获取指定时间范围的用电数据

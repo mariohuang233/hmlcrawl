@@ -86,6 +86,7 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [headerScrolled, setHeaderScrolled] = useState(false);
 
   const fetchOverview = useCallback(async (silent = false) => {
     try {
@@ -163,6 +164,14 @@ function App() {
     return () => clearInterval(interval);
   }, [fetchOverview]);
 
+  useEffect(() => {
+    const handleScroll = () => {
+      setHeaderScrolled(window.scrollY > 20);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   if (loading) {
     return (
       <div className="app-container">
@@ -218,7 +227,7 @@ function App() {
 
   return (
     <div className="app-container">
-      <header className="app-header">
+      <header className={`app-header ${headerScrolled ? 'scrolled' : ''}`}>
         <div className="header-content">
           <div className="header-inner">
             <div className="app-title-section">
@@ -262,13 +271,15 @@ function App() {
         <div className="fade-in">
           {overview && <Overview key={`overview-${refreshKey}`} data={overview} />}
           
-          <Trend24h key={`trend24h-${refreshKey}`} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-xl)', marginBottom: 'var(--space-xl)' }}>
+            <Trend24h key={`trend24h-${refreshKey}`} />
+            <TodayUsage key={`today-${refreshKey}`} />
+          </div>
           
-          <TodayUsage key={`today-${refreshKey}`} />
-          
-          <DailyTrend key={`daily-${refreshKey}`} />
-          
-          <MonthlyTrend key={`monthly-${refreshKey}`} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-xl)' }}>
+            <DailyTrend key={`daily-${refreshKey}`} />
+            <MonthlyTrend key={`monthly-${refreshKey}`} />
+          </div>
           
           {showLogs && (
             <div className="logs-section">

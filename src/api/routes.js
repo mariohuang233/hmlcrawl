@@ -4,6 +4,7 @@ const router = express.Router();
 const Usage = require('../models/Usage');
 const logger = require('../utils/logger');
 const crawler = require('../crawler/crawler');
+const Format = require('../utils/crawler-format');
 const { 
   getBeijingHour, 
   getBeijingTodayStart, 
@@ -1039,36 +1040,76 @@ router.post('/reportData', async (req, res) => {
   }
 });
 
-// 新增：手机端轻量数据上报接口（手机只发送解析好的数据）
-router.post('/report', async (req, res) => {
-  try {
-    const { meter_id, meter_name, remaining_kwh, collected_at } = req.body;
+// API认证中间件
+function apiAuth(req, res, next) {
+  const token = process.env.API_TOKEN;
+  if (token) {
+    const provided = req.headers['x-api-token'] || req.query.token;
+    if (provided !== token) {
+      return res.status(401).json({ error: '未授权，请提供有效的 API Token' });
+    }
+  }
+  next();
+}
 
-    if (!meter_id || remaining_kwh === undefined) {
-      return res.status(400).json({ error: '缺少必要参数: meter_id, remaining_kwh' });
+// 数据格式验证中间件
+function validateReportBody(req, res, next) {
+  const { meter_id, remaining_kwh, crawl_id } = req.body;
+  if (!meter_id || remaining_kwh === undefined) {
+    return res.status(400).json({ error: '缺少必要参数: meter_id, remaining_kwh' });
+  }
+  const kwh = parseFloat(remaining_kwh);
+  if (isNaN(kwh) || kwh <= 0 || kwh >= 1000) {
+    return res.status(400).json({ error: `remaining_kwh 超出有效范围: ${kwh}` });
+  }
+  if (crawl_id && typeof crawl_id !== 'string') {
+    return res.status(400).json({ error: 'crawl_id 必须是字符串' });
+  }
+  req.validatedKwh = kwh;
+  next();
+}
+
+// 手机端/iPad端数据上报（单条）
+router.post('/report', apiAuth, validateReportBody, async (req, res) => {
+  try {
+    const { meter_id, meter_name, remaining_kwh, collected_at, crawl_id, source, format_version } = req.body;
+
+    const collectedDate = collected_at ? new Date(collected_at) : new Date();
+
+    if (crawl_id) {
+      const existing = await Usage.findOne({
+        meter_id: meter_id,
+        collected_at: collectedDate
+      });
+      if (existing) {
+        logger.info(`重复数据（crawl_id=${crawl_id}），返回409`);
+        return res.status(409).json({ success: true, message: '数据已存在（重复）', duplicate: true });
+      }
     }
 
     const usageData = {
       meter_id: meter_id || process.env.METER_ID || '18100071580',
       meter_name: meter_name || process.env.METER_NAME || '2759弄18号402阳台',
-      remaining_kwh: parseFloat(remaining_kwh),
-      collected_at: collected_at ? new Date(collected_at) : new Date()
+      remaining_kwh: req.validatedKwh,
+      collected_at: collectedDate
     };
 
     const usage = new Usage(usageData);
     await usage.save();
 
-    logger.info(`手机上报数据成功: ${remaining_kwh} kWh`);
+    logger.info(`数据上报成功: ${usageData.remaining_kwh} kWh (source=${source || 'unknown'})`);
     res.json({ success: true, message: '数据已接收' });
   } catch (err) {
-    logger.error('手机上报数据失败:', err.message);
+    if (err.code === 11000) {
+      return res.status(409).json({ success: true, message: '数据已存在（重复）', duplicate: true });
+    }
+    logger.error('数据上报失败:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// 批量数据上报 - 用于本地爬虫向云端同步历史数据
-// 当本地爬虫采集到数据但无法写入 MongoDB 时，可批量上报到云端 API
-router.post('/report/batch', async (req, res) => {
+// 批量数据上报 - 本地爬虫/iPad爬虫批量同步历史数据
+router.post('/report/batch', apiAuth, async (req, res) => {
   try {
     const { records } = req.body;
 
@@ -1087,21 +1128,21 @@ router.post('/report/batch', async (req, res) => {
     for (let i = 0; i < records.length; i++) {
       const record = records[i];
       try {
-        if (!record.remaining_kwh) {
+        const kwh = parseFloat(record.remaining_kwh);
+        if (isNaN(kwh) || kwh <= 0 || kwh >= 1000) {
           skipped++;
           continue;
         }
 
-        const usageData = {
-          meter_id: record.meter_id || process.env.METER_ID || '18100071580',
-          meter_name: record.meter_name || process.env.METER_NAME || '2759弄18号402阳台',
-          remaining_kwh: parseFloat(record.remaining_kwh),
-          collected_at: record.collected_at ? new Date(record.collected_at) : new Date()
-        };
+        const collectedDate = record.collected_at ? new Date(record.collected_at) : new Date();
+        if (isNaN(collectedDate.getTime())) {
+          errors.push({ index: i, error: '无效的 collected_at' });
+          continue;
+        }
 
         const existing = await Usage.findOne({
-          meter_id: usageData.meter_id,
-          collected_at: usageData.collected_at
+          meter_id: record.meter_id || process.env.METER_ID || '18100071580',
+          collected_at: collectedDate
         });
 
         if (existing) {
@@ -1109,11 +1150,22 @@ router.post('/report/batch', async (req, res) => {
           continue;
         }
 
+        const usageData = {
+          meter_id: record.meter_id || process.env.METER_ID || '18100071580',
+          meter_name: record.meter_name || process.env.METER_NAME || '2759弄18号402阳台',
+          remaining_kwh: kwh,
+          collected_at: collectedDate
+        };
+
         const usage = new Usage(usageData);
         await usage.save();
         saved++;
       } catch (e) {
-        errors.push({ index: i, error: e.message });
+        if (e.code === 11000) {
+          skipped++;
+        } else {
+          errors.push({ index: i, error: e.message });
+        }
       }
     }
 
