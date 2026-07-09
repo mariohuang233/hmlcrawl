@@ -1,10 +1,10 @@
 [phases.setup]
-nixPkgs = ["nodejs-18_17_0", "npm-9_x"]
+nixPkgs = ["nodejs-20_x", "npm-10_x"]
 
 [phases.install]
 cmds = [
-  "npm install",
-  "cd frontend && npm install"
+  "npm ci --prefer-offline --no-audit",
+  "cd frontend && npm ci --prefer-offline --no-audit"
 ]
 
 [phases.build]

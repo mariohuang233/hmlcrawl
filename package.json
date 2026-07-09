@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "build": "cd frontend && npm ci --prefer-offline --no-audit && npm run build",
+    "build": "npm ci --prefer-offline --no-audit && cd frontend && npm ci --prefer-offline --no-audit && npm run build",
     "prebuild": "echo 'Building frontend...'",
     "postbuild": "echo 'Build completed!'",
     "diagnose": "node diagnose.js",

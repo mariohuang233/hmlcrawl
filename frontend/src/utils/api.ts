@@ -1,5 +1,4 @@
-// 使用REACT_APP_API_BASE环境变量，如果没有则使用默认值
-export const API_BASE = process.env.REACT_APP_API_BASE || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000');
+export const API_BASE = process.env.REACT_APP_API_BASE || (process.env.NODE_ENV === 'production' ? '' : '/');
 
 export interface ApiResponse<T> {
   data?: T;
