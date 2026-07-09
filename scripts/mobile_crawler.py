@@ -194,9 +194,25 @@ def validate_record(record):
 
 # ============ 网络请求 ============
 
+current_ip_index = 0
+
+def _is_blocked(html):
+    block_keywords = ['blocked', '安全威胁', '被阻断', 'Tunnel website ahead!', '405', '访问被拒绝']
+    title_match = re.search(r'<title>([^<]*)</title>', html, re.IGNORECASE)
+    if title_match:
+        title = title_match.group(1)
+        if any(k.lower() in title.lower() for k in block_keywords):
+            log(f"检测到拦截页面，标题: {title}")
+            return True
+    if any(k.lower() in html.lower() for k in block_keywords):
+        log(f"检测到拦截页面，包含关键词")
+        return True
+    return False
+
+
 def fetch_html():
-    ip = random.choice(DIRECT_IPS)
-    url = f"https://{ip}/nat/pay.aspx?mid={METER_ID}"
+    global current_ip_index
+    url = f"https://{DIRECT_IPS[current_ip_index]}/nat/pay.aspx?mid={METER_ID}"
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1',
@@ -220,9 +236,22 @@ def fetch_html():
         context.verify_mode = ssl.CERT_NONE
         with urllib.request.urlopen(req, timeout=30, context=context) as resp:
             html = resp.read().decode('utf-8', errors='ignore')
+            
+            if len(html) < 100:
+                log(f"页面内容过短 ({len(html)} 字符)，可能是错误页")
+                log(f"页面内容: {html}")
+            
+            if _is_blocked(html):
+                log(f"当前 IP ({DIRECT_IPS[current_ip_index]}) 被拦截，切换到下一个 IP")
+                current_ip_index = (current_ip_index + 1) % len(DIRECT_IPS)
+                log(f"切换到 IP: {DIRECT_IPS[current_ip_index]}")
+                return None
+            
             return html
     except Exception as e:
         log(f"请求失败: {e}")
+        current_ip_index = (current_ip_index + 1) % len(DIRECT_IPS)
+        log(f"切换到 IP: {DIRECT_IPS[current_ip_index]}")
         return None
 
 
@@ -459,7 +488,14 @@ def crawl_and_report():
                 flush_pending_uploads()
                 return True
             else:
-                log("解析剩余电量失败")
+                log("解析剩余电量失败，保存页面内容用于调试...")
+                debug_file = os.path.join(DATA_DIR, f"debug_html_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+                try:
+                    with open(debug_file, "w", encoding="utf-8") as f:
+                        f.write(html[:3000])
+                    log(f"页面内容已保存到: {debug_file}")
+                except:
+                    log(f"保存调试文件失败")
         else:
             log(f"获取网页失败 (尝试 {attempt + 1}/{MAX_RETRIES})")
 
