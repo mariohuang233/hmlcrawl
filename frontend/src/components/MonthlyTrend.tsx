@@ -11,7 +11,11 @@ interface MonthlyData {
   vs_prev_month: number | null;
 }
 
-const MonthlyTrend: React.FC = () => {
+interface MonthlyTrendProps {
+  isMobile?: boolean;
+}
+
+const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false }) => {
   const [data, setData] = useState<MonthlyData[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -52,12 +56,12 @@ const MonthlyTrend: React.FC = () => {
       text: '12个月用电趋势',
       left: 'center',
       textStyle: {
-        fontSize: 18,
+        fontSize: isMobile ? 15 : 18,
         fontWeight: 600,
         color: '#2d2620',
         fontFamily: 'Outfit, Nunito, sans-serif'
       },
-      top: 16
+      top: isMobile ? 10 : 16
     },
     animation: hasTriggered,
     animationDuration: 1800,
@@ -68,11 +72,11 @@ const MonthlyTrend: React.FC = () => {
       borderColor: 'rgba(184, 134, 90, 0.12)',
       borderWidth: 1,
       borderRadius: 12,
-      padding: 12,
+      padding: isMobile ? 16 : 12,
       textStyle: {
         color: '#2d2620',
         fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: 13
+        fontSize: isMobile ? 14 : 13
       },
       extraCssText: 'box-shadow: 0 4px 16px rgba(45, 38, 32, 0.08);',
       formatter: (params: any) => {
@@ -88,8 +92,8 @@ const MonthlyTrend: React.FC = () => {
             (vsPrevMonth > 0 ? '#f43f5e' : '#10b981');
           
           comparisonHtml = `
-            <div style="color: #8a8078; font-size: 12px; margin-bottom: 2px;">上月: ${dataItem.prev_month_used_kwh} kWh</div>
-            <div style="color: ${vsPrevMonthColor}; font-size: 12px;">
+            <div style="color: #8a8078; font-size: ${isMobile ? 13 : 12}px; margin-bottom: 2px;">上月: ${dataItem.prev_month_used_kwh} kWh</div>
+            <div style="color: ${vsPrevMonthColor}; font-size: ${isMobile ? 13 : 12}px;">
               较上月 ${vsPrevMonthText}
             </div>
           `;
@@ -97,7 +101,7 @@ const MonthlyTrend: React.FC = () => {
         
         return `
           <div style="padding: 4px;">
-            <div style="margin-bottom: 8px; font-weight: 600; color: #0ea5e9; font-size: 14px;">${point.axisValue}</div>
+            <div style="margin-bottom: 8px; font-weight: 600; color: #0ea5e9; font-size: ${isMobile ? 15 : 14}px;">${point.axisValue}</div>
             <div style="margin-bottom: 4px;">用电量: <span style="color: #0ea5e9; font-weight: 600;">${point.value}</span> kWh</div>
             ${comparisonHtml}
           </div>
@@ -108,10 +112,21 @@ const MonthlyTrend: React.FC = () => {
       type: 'category',
       data: data.map(item => item.month),
       axisLabel: {
-        rotate: 45,
+        rotate: isMobile ? 45 : 45,
+        interval: isMobile ? (index: number) => index % 2 === 0 : 0,
         color: '#8a8078',
         fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: 10
+        fontSize: isMobile ? 8 : 10,
+        formatter: (value: string) => {
+          if (!isMobile) return value;
+          try {
+            const date = new Date(value);
+            if (isNaN(date.getTime())) return value;
+            return `${date.getFullYear().toString().slice(-2)}/${date.getMonth() + 1}`;
+          } catch {
+            return value;
+          }
+        }
       },
       axisLine: {
         lineStyle: {
@@ -130,12 +145,12 @@ const MonthlyTrend: React.FC = () => {
       nameTextStyle: {
         color: '#8a8078',
         fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: 11
+        fontSize: isMobile ? 9 : 11
       },
       axisLabel: {
         color: '#8a8078',
         fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: 11
+        fontSize: isMobile ? 9 : 11
       },
       axisLine: {
         lineStyle: {
@@ -172,7 +187,7 @@ const MonthlyTrend: React.FC = () => {
               { offset: 1, color: '#7dd3fc' }
             ]
           },
-          borderRadius: [8, 8, 0, 0]
+          borderRadius: [isMobile ? 6 : 8, isMobile ? 6 : 8, 0, 0]
         },
         emphasis: {
           itemStyle: {
@@ -185,10 +200,10 @@ const MonthlyTrend: React.FC = () => {
       }
     ],
     grid: {
-      left: '5%',
-      right: '5%',
-      bottom: '15%',
-      top: '18%',
+      left: isMobile ? '14%' : '5%',
+      right: isMobile ? '6%' : '5%',
+      bottom: isMobile ? '28%' : '15%',
+      top: isMobile ? '14%' : '18%',
       containLabel: true
     }
   };
@@ -208,7 +223,7 @@ const MonthlyTrend: React.FC = () => {
     <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
       <ReactECharts 
         option={chartOption} 
-        style={{ height: '380px' }}
+        style={{ height: isMobile ? '380px' : '380px' }}
         className="chart-container"
         notMerge={true}
         lazyUpdate={false}

@@ -109,6 +109,14 @@ body {
   background: var(--bg-page);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 768px) {
+  body {
+    font-size: 16px;
+    line-height: 1.6;
+  }
 }
 
 #root {
@@ -739,6 +747,8 @@ body {
   align-items: center;
   justify-content: center;
   gap: var(--space-xs);
+  min-height: 44px;
+  min-width: 44px;
 }
 
 .btn:hover {
@@ -766,8 +776,8 @@ body {
 }
 
 .btn-icon {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border-radius: var(--radius-md);
   background: var(--bg-surface);
@@ -778,6 +788,23 @@ body {
 .btn-icon:hover {
   background: var(--primary-50);
   color: var(--primary-700);
+}
+
+@media (max-width: 768px) {
+  .btn {
+    font-size: 16px;
+    padding: var(--space-md) var(--space-xl);
+    min-height: 48px;
+    min-width: 48px;
+    border-radius: var(--radius-lg);
+  }
+  
+  .btn-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 20px;
+    border-radius: var(--radius-lg);
+  }
 }
 
 .card {
@@ -960,6 +987,35 @@ body {
   height: 380px;
   border-radius: var(--radius-md);
   overflow: hidden;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-xl);
+}
+
+@media (max-width: 1024px) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+  }
+}
+
+@media (max-width: 768px) {
+  .chart-container {
+    height: 320px;
+  }
+  
+  .card {
+    padding: var(--space-lg);
+    border-radius: var(--radius-xl);
+    margin-bottom: var(--space-lg);
+  }
+  
+  .card-title {
+    font-size: 16px;
+  }
 }
 
 .logs-section {
@@ -1185,7 +1241,7 @@ body {
   }
   
   .chart-container {
-    height: 280px;
+    height: 320px;
   }
   
   .log-entry {

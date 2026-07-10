@@ -9,7 +9,11 @@ interface TrendData {
   remaining_kwh: number;
 }
 
-const Trend24h: React.FC = () => {
+interface Trend24hProps {
+  isMobile?: boolean;
+}
+
+const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false }) => {
   const [data, setData] = useState<TrendData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,24 +103,24 @@ const Trend24h: React.FC = () => {
     fetchData();
   }, [fetchData]);
   
-  const mobileState = false;
+  const mobileState = isMobile;
   
   const chartOption = {
     title: {
       text: '24小时用电趋势',
       left: 'center',
       textStyle: {
-        fontSize: mobileState ? 16 : 18,
+        fontSize: mobileState ? 15 : 18,
         fontWeight: 600,
         color: '#2d2620',
         fontFamily: 'Outfit, Nunito, sans-serif'
       },
-      top: 16,
+      top: mobileState ? 12 : 16,
       subtext: mobileState 
         ? '每15分钟更新'
         : '每15分钟更新 · 拖拽下方滑块缩放',
       subtextStyle: {
-        fontSize: mobileState ? 11 : 12,
+        fontSize: mobileState ? 10 : 12,
         color: '#8a8078',
         fontFamily: 'Outfit, Nunito, sans-serif'
       }
@@ -183,15 +187,21 @@ const Trend24h: React.FC = () => {
       axisLabel: {
         color: '#8a8078',
         fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: mobileState ? 10 : 11,
+        fontSize: mobileState ? 9 : 11,
         interval: (index: number) => {
           const totalPoints = data.length;
+          if (mobileState) {
+            if (totalPoints <= 12) return index % 2 === 0;
+            else if (totalPoints <= 24) return index % 3 === 0;
+            else if (totalPoints <= 48) return index % 6 === 0;
+            else return index % 8 === 0;
+          }
           if (totalPoints <= 12) return true;
           else if (totalPoints <= 24) return index % 2 === 0;
           else if (totalPoints <= 48) return index % 4 === 0;
           else return index % 6 === 0;
         },
-        rotate: 0,
+        rotate: mobileState ? 45 : 0,
         formatter: (value: string) => {
           try {
             const utcDate = new Date(value);
@@ -200,6 +210,9 @@ const Trend24h: React.FC = () => {
             const beijingDate = new Date(beijingTimestamp);
             const hour = beijingDate.getUTCHours();
             const minute = beijingDate.getUTCMinutes();
+            if (mobileState) {
+              return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+            }
             return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
           } catch (error) {
             return '';
@@ -223,12 +236,12 @@ const Trend24h: React.FC = () => {
       nameTextStyle: {
         color: '#8a8078',
         fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: 11
+        fontSize: mobileState ? 9 : 11
       },
       axisLabel: {
         color: '#8a8078',
         fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: 10,
+        fontSize: mobileState ? 9 : 10,
         formatter: (value: number) => {
           if (typeof value !== 'number' || isNaN(value)) return '0.0';
           return value.toFixed(1);
@@ -289,10 +302,10 @@ const Trend24h: React.FC = () => {
       }
     ],
     grid: {
-      left: mobileState ? '12%' : '8%',
+      left: mobileState ? '14%' : '8%',
       right: mobileState ? '6%' : '4%',
-      bottom: mobileState ? '22%' : '18%',
-      top: mobileState ? '18%' : '20%',
+      bottom: mobileState ? '28%' : '18%',
+      top: mobileState ? '16%' : '20%',
       containLabel: true
     },
     dataZoom: data.length > 0 ? [
@@ -383,7 +396,7 @@ const Trend24h: React.FC = () => {
     <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
       <ReactECharts 
         option={chartOption} 
-        style={{ height: mobileState ? '350px' : '380px' }}
+        style={{ height: mobileState ? '380px' : '380px' }}
         className="chart-container"
         notMerge={false}
         lazyUpdate={true}

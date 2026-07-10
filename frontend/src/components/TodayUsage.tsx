@@ -13,7 +13,11 @@ interface TodayData {
   vs_avg: number;
 }
 
-const TodayUsage: React.FC = React.memo(() => {
+interface TodayUsageProps {
+  isMobile?: boolean;
+}
+
+const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false }) => {
   const [data, setData] = useState<TodayData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,12 +56,12 @@ const TodayUsage: React.FC = React.memo(() => {
       text: '今日用电分布',
       left: 'center',
       textStyle: {
-        fontSize: 18,
+        fontSize: isMobile ? 15 : 18,
         fontWeight: 600,
         color: '#2d2620',
         fontFamily: 'Outfit, Nunito, sans-serif'
       },
-      top: 16
+      top: isMobile ? 10 : 16
     },
     animation: hasTriggered,
     animationDuration: 1500,
@@ -68,11 +72,11 @@ const TodayUsage: React.FC = React.memo(() => {
       borderColor: 'rgba(184, 134, 90, 0.12)',
       borderWidth: 1,
       borderRadius: 12,
-      padding: 12,
+      padding: isMobile ? 16 : 12,
       textStyle: {
         color: '#2d2620',
         fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: 13
+        fontSize: isMobile ? 14 : 13
       },
       extraCssText: 'box-shadow: 0 4px 16px rgba(45, 38, 32, 0.08);',
       formatter: (params: any) => {
@@ -93,14 +97,14 @@ const TodayUsage: React.FC = React.memo(() => {
         
         return `
           <div style="padding: 4px;">
-            <div style="margin-bottom: 8px; font-weight: 600; color: #664733; font-size: 14px;">${point.axisValue}</div>
+            <div style="margin-bottom: 8px; font-weight: 600; color: #664733; font-size: ${isMobile ? 15 : 14}px;">${point.axisValue}</div>
             <div style="margin-bottom: 4px;">今日: <span style="color: #664733; font-weight: 600;">${point.value}</span> kWh</div>
-            <div style="color: #8a8078; font-size: 12px; margin-bottom: 2px;">昨日: ${dataItem.yesterday_used_kwh} kWh</div>
-            <div style="color: #8a8078; font-size: 12px; margin-bottom: 4px;">平均: ${dataItem.avg_used_kwh} kWh</div>
-            <div style="color: ${vsYesterdayColor}; font-size: 12px;">
+            <div style="color: #8a8078; font-size: ${isMobile ? 13 : 12}px; margin-bottom: 2px;">昨日: ${dataItem.yesterday_used_kwh} kWh</div>
+            <div style="color: #8a8078; font-size: ${isMobile ? 13 : 12}px; margin-bottom: 4px;">平均: ${dataItem.avg_used_kwh} kWh</div>
+            <div style="color: ${vsYesterdayColor}; font-size: ${isMobile ? 13 : 12}px;">
               较昨日 ${vsYesterdayText}
             </div>
-            <div style="color: ${vsAvgColor}; font-size: 12px;">
+            <div style="color: ${vsAvgColor}; font-size: ${isMobile ? 13 : 12}px;">
               较平均 ${vsAvgText}
             </div>
           </div>
@@ -111,10 +115,11 @@ const TodayUsage: React.FC = React.memo(() => {
       type: 'category',
       data: data.map(item => `${item.hour}时`),
       axisLabel: {
-        interval: 1,
+        interval: isMobile ? (index: number) => index % 4 === 0 : 1,
         color: '#8a8078',
         fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: 11
+        fontSize: isMobile ? 9 : 11,
+        rotate: isMobile ? 45 : 0
       },
       axisLine: {
         lineStyle: {
@@ -133,12 +138,12 @@ const TodayUsage: React.FC = React.memo(() => {
       nameTextStyle: {
         color: '#8a8078',
         fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: 11
+        fontSize: isMobile ? 9 : 11
       },
       axisLabel: {
         color: '#8a8078',
         fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: 11
+        fontSize: isMobile ? 9 : 11
       },
       axisLine: {
         lineStyle: {
@@ -175,7 +180,7 @@ const TodayUsage: React.FC = React.memo(() => {
               { offset: 1, color: '#d4b896' }
             ]
           },
-          borderRadius: [8, 8, 0, 0]
+          borderRadius: [isMobile ? 6 : 8, isMobile ? 6 : 8, 0, 0]
         },
         emphasis: {
           itemStyle: {
@@ -188,13 +193,13 @@ const TodayUsage: React.FC = React.memo(() => {
       }
     ],
     grid: {
-      left: '5%',
-      right: '5%',
-      bottom: '10%',
-      top: '18%',
+      left: isMobile ? '14%' : '5%',
+      right: isMobile ? '6%' : '5%',
+      bottom: isMobile ? '25%' : '10%',
+      top: isMobile ? '14%' : '18%',
       containLabel: true
     }
-  }), [data, hasTriggered]);
+  }), [data, hasTriggered, isMobile]);
 
   if (loading) {
     return (
@@ -222,7 +227,7 @@ const TodayUsage: React.FC = React.memo(() => {
     <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
       <ReactECharts 
         option={chartOption} 
-        style={{ height: '380px' }}
+        style={{ height: isMobile ? '380px' : '380px' }}
         className="chart-container"
         notMerge={true}
         lazyUpdate={false}
