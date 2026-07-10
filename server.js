@@ -10,6 +10,7 @@ require('dotenv').config({ path: process.env.LOCAL_ENV_PATH || '.env.local' });
 const logger = require('./src/utils/logger');
 const crawler = require('./src/crawler/crawler');
 const apiRoutes = require('./src/api/routes');
+const dailyReport = require('./src/services/dailyReport');
 // 云端环境检测
 const IS_RAILWAY = !!process.env.RAILWAY_SERVICE_NAME || !!process.env.RAILWAY_STATIC_URL;
 const IS_ZEABUR = !!process.env.ZEABUR_SERVICE_NAME || !!process.env.ZEABUR_DOMAIN;
@@ -147,6 +148,9 @@ mongoose.connect(MONGO_URI, mongooseOptions)
 .then(() => {
   logger.info('MongoDB连接成功');
   logger.info(`连接地址: ${MONGO_URI.replace(/\/\/.*@/, '//***@')}`);
+  
+  dailyReport.start();
+  logger.info('每日用电报告服务已启动');
   
   if (IS_CLOUD) {
     const cloudName = IS_RENDER ? 'Render' : IS_RAILWAY ? 'Railway' : IS_ZEABUR ? 'Zeabur' : 'Vercel';

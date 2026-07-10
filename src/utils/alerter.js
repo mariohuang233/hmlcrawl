@@ -212,5 +212,6 @@ module.exports = {
   alertLowBattery,
   alertCrawlerRestarted,
   alertMongoDisconnected,
-  getConfig
+  getConfig,
+  sendServerChan
 };
