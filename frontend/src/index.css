@@ -995,6 +995,12 @@ body {
   gap: var(--space-xl);
 }
 
+.charts-grid-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
 @media (max-width: 1024px) {
   .charts-grid {
     grid-template-columns: 1fr;
@@ -1007,11 +1013,6 @@ body {
 }
 
 @media (max-width: 768px) {
-  .charts-grid {
-    grid-template-columns: 1fr;
-    gap: var(--space-md);
-  }
-  
   .chart-container {
     height: 340px;
   }
@@ -1019,7 +1020,7 @@ body {
   .card {
     padding: var(--space-md);
     border-radius: var(--radius-lg);
-    margin-bottom: var(--space-md);
+    margin-bottom: 0;
   }
   
   .card-title {

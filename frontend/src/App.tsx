@@ -8,6 +8,23 @@ import './App.css';
 import { fetchAPI, retryRequest, formatErrorMessage } from './utils/api';
 import bubuIcon from './assets/bubu.png';
 
+const useMediaQuery = (query: string) => {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    if (media.matches !== matches) {
+      setMatches(media.matches);
+    }
+
+    const listener = () => setMatches(media.matches);
+    media.addEventListener('change', listener);
+    return () => media.removeEventListener('change', listener);
+  }, [matches, query]);
+
+  return matches;
+};
+
 interface WindowAnalysis {
   rate: number;
   dataPoints: number;
@@ -87,6 +104,7 @@ function App() {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [headerScrolled, setHeaderScrolled] = useState(false);
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   const fetchOverview = useCallback(async (silent = false) => {
     try {
@@ -271,14 +289,11 @@ function App() {
         <div className="fade-in">
           {overview && <Overview key={`overview-${refreshKey}`} data={overview} />}
           
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-xl)', marginBottom: 'var(--space-xl)' }}>
-            <Trend24h key={`trend24h-${refreshKey}`} />
-            <TodayUsage key={`today-${refreshKey}`} />
-          </div>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-xl)' }}>
-            <DailyTrend key={`daily-${refreshKey}`} />
-            <MonthlyTrend key={`monthly-${refreshKey}`} />
+          <div className={isMobile ? 'charts-grid-mobile' : 'charts-grid'}>
+            <Trend24h key={`trend24h-${refreshKey}`} isMobile={isMobile} />
+            <TodayUsage key={`today-${refreshKey}`} isMobile={isMobile} />
+            <DailyTrend key={`daily-${refreshKey}`} isMobile={isMobile} />
+            <MonthlyTrend key={`monthly-${refreshKey}`} isMobile={isMobile} />
           </div>
           
           {showLogs && (
