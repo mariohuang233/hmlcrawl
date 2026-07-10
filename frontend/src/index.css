@@ -1000,21 +1000,31 @@ body {
     grid-template-columns: 1fr;
     gap: var(--space-lg);
   }
-}
-
-@media (max-width: 768px) {
+  
   .chart-container {
     height: 320px;
   }
+}
+
+@media (max-width: 768px) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-md);
+  }
+  
+  .chart-container {
+    height: 340px;
+  }
   
   .card {
-    padding: var(--space-lg);
-    border-radius: var(--radius-xl);
-    margin-bottom: var(--space-lg);
+    padding: var(--space-md);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-md);
   }
   
   .card-title {
-    font-size: 16px;
+    font-size: 15px;
+    margin-bottom: var(--space-md);
   }
 }
 
