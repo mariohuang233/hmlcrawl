@@ -1,32 +1,64 @@
-/**
- * 每日用电报告服务
- * 
- * 功能：每天北京时间23:59自动推送用电报告
- * 包含：今日用电量、当前剩余电量、预计剩余电量可用时长
- * 
- * 使用：
- *   const dailyReport = require('./services/dailyReport');
- *   dailyReport.start();
- */
-
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
 const Usage = require('../models/Usage');
 const { crawlerLogger } = require('../utils/logger');
 const { 
   getBeijingTodayStart, 
   getBeijingTodayEnd,
-  formatBeijingTime 
+  formatBeijingTime,
+  getBeijingHour,
+  getBeijingMinute
 } = require('../utils/timezone');
 const { sendServerChan } = require('../utils/alerter');
 
 const CONFIG = {
   reportHour: 23,
   reportMinute: 59,
-  cooldownHours: 23
+  cooldownHours: 23,
+  stateFilePath: path.join(__dirname, '../../.daily_report_state.json')
 };
 
 let lastReportDate = null;
 let timer = null;
+
+function ensureStateFile() {
+  try {
+    if (!fs.existsSync(path.dirname(CONFIG.stateFilePath))) {
+      fs.mkdirSync(path.dirname(CONFIG.stateFilePath), { recursive: true });
+    }
+    if (!fs.existsSync(CONFIG.stateFilePath)) {
+      fs.writeFileSync(CONFIG.stateFilePath, JSON.stringify({ lastReportDate: null }, null, 2));
+    }
+  } catch (err) {
+    crawlerLogger.warn(`无法创建状态文件: ${err.message}`);
+  }
+}
+
+function loadLastReportDate() {
+  try {
+    ensureStateFile();
+    const content = fs.readFileSync(CONFIG.stateFilePath, 'utf8');
+    const state = JSON.parse(content);
+    lastReportDate = state.lastReportDate;
+    if (lastReportDate) {
+      crawlerLogger.info(`加载上次报告日期: ${lastReportDate}`);
+    }
+  } catch (err) {
+    crawlerLogger.warn(`加载状态文件失败: ${err.message}`);
+    lastReportDate = null;
+  }
+}
+
+function saveLastReportDate(dateStr) {
+  try {
+    ensureStateFile();
+    fs.writeFileSync(CONFIG.stateFilePath, JSON.stringify({ lastReportDate: dateStr }, null, 2));
+    crawlerLogger.info(`保存报告日期: ${dateStr}`);
+  } catch (err) {
+    crawlerLogger.warn(`保存状态文件失败: ${err.message}`);
+  }
+}
 
 function isSameDay(date1, date2) {
   return date1.toDateString() === date2.toDateString();
@@ -132,6 +164,7 @@ async function sendDailyReport() {
   if (sent) {
     crawlerLogger.info(`每日用电报告发送成功`);
     lastReportDate = beijingDateStr;
+    saveLastReportDate(lastReportDate);
     return true;
   } else {
     crawlerLogger.error(`每日用电报告发送失败`);
@@ -139,24 +172,41 @@ async function sendDailyReport() {
   }
 }
 
+function calculateNextReportDelay() {
+  const now = new Date();
+  const beijingHour = getBeijingHour(now);
+  const beijingMinute = getBeijingMinute(now);
+  const beijingSecond = new Date(now.getTime() + 8 * 60 * 60 * 1000).getUTCSeconds();
+  
+  let targetTime = new Date(now.getTime());
+  targetTime.setHours(beijingHour);
+  targetTime.setMinutes(CONFIG.reportMinute);
+  targetTime.setSeconds(0);
+  targetTime.setMilliseconds(0);
+  
+  if (beijingHour > CONFIG.reportHour || 
+      (beijingHour === CONFIG.reportHour && beijingMinute >= CONFIG.reportMinute)) {
+    targetTime = new Date(targetTime.getTime() + 24 * 60 * 60 * 1000);
+  }
+  
+  const delay = targetTime.getTime() - now.getTime();
+  return Math.max(1000, delay);
+}
+
 function scheduleReport() {
-  clearInterval(timer);
+  clearTimeout(timer);
   
-  timer = setInterval(async () => {
-    const now = new Date();
-    const beijingHour = new Date(now.getTime() + 8 * 60 * 60 * 1000).getUTCHours();
-    const beijingMinute = new Date(now.getTime() + 8 * 60 * 60 * 1000).getUTCMinutes();
-    const beijingDateStr = formatBeijingTime(now, 'date');
-    
-    if (beijingHour === CONFIG.reportHour && beijingMinute === CONFIG.reportMinute) {
-      if (lastReportDate !== beijingDateStr) {
-        crawlerLogger.info(`检测到北京时间 ${CONFIG.reportHour}:${CONFIG.reportMinute}，触发每日报告`);
-        await sendDailyReport();
-      }
-    }
-  }, 60000);
+  const delay = calculateNextReportDelay();
+  const delayMinutes = Math.round(delay / 60000);
   
-  crawlerLogger.info(`每日报告定时器已启动，每天北京时间 ${CONFIG.reportHour}:${CONFIG.reportMinute} 自动推送`);
+  crawlerLogger.info(`距离下次报告还有 ${delayMinutes} 分钟，将在 ${formatBeijingTime(new Date(Date.now() + delay), 'datetime')} 触发`);
+  
+  timer = setTimeout(() => {
+    sendDailyReport().catch(err => {
+      crawlerLogger.error(`发送报告时发生未捕获错误: ${err.message}`);
+    });
+    scheduleReport();
+  }, delay);
 }
 
 function start() {
@@ -165,12 +215,25 @@ function start() {
     return;
   }
   
+  loadLastReportDate();
+  
+  const hasServerChanKey = !!process.env.SERVER_CHAN_KEY;
+  if (!hasServerChanKey) {
+    crawlerLogger.warn(`⚠️ 未配置SERVER_CHAN_KEY环境变量，每日报告将无法推送！`);
+  }
+  
+  const beijingTime = formatBeijingTime(new Date(), 'datetime');
+  crawlerLogger.info(`每日报告服务启动`);
+  crawlerLogger.info(`当前北京时间: ${beijingTime}`);
+  crawlerLogger.info(`报告时间: 每天 ${CONFIG.reportHour}:${CONFIG.reportMinute} (北京时间)`);
+  crawlerLogger.info(`Server酱推送: ${hasServerChanKey ? '已配置' : '未配置'}`);
+  
   scheduleReport();
 }
 
 function stop() {
   if (timer) {
-    clearInterval(timer);
+    clearTimeout(timer);
     timer = null;
     crawlerLogger.info(`每日报告定时器已停止`);
   }
@@ -216,7 +279,8 @@ function getStatus() {
     running: !!timer,
     lastReportDate: lastReportDate,
     reportTime: `${CONFIG.reportHour}:${CONFIG.reportMinute} (北京时间)`,
-    nextReportDate: lastReportDate ? new Date(new Date(lastReportDate).getTime() + 24 * 60 * 60 * 1000).toLocaleDateString('zh-CN') : '尚未发送'
+    nextReportDate: lastReportDate ? new Date(new Date(lastReportDate).getTime() + 24 * 60 * 60 * 1000).toLocaleDateString('zh-CN') : '尚未发送',
+    serverChanConfigured: !!process.env.SERVER_CHAN_KEY
   };
 }
 

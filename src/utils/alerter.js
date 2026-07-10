@@ -40,62 +40,82 @@ function isThrottled(key) {
   return false;
 }
 
-async function sendServerChan(title, message) {
+async function sendServerChan(title, message, retryCount = 2) {
   if (!CONFIG.serverChanKey) {
+    crawlerLogger.warn(`Server酱推送被跳过，未配置SERVER_CHAN_KEY`);
     return false;
   }
 
-  return new Promise((resolve) => {
-    const urlObj = new URL(`https://sctapi.ftqq.com/${CONFIG.serverChanKey}.send`);
-    
-    const desp = formatServerChanDesp(message);
-    const short = message.substring(0, 64).replace(/\n/g, ' ');
+  const urlObj = new URL(`https://sctapi.ftqq.com/${CONFIG.serverChanKey}.send`);
+  const desp = formatServerChanDesp(message);
+  const short = message.substring(0, 64).replace(/\n/g, ' ');
 
-    const body = JSON.stringify({
-      title: title.substring(0, 32),
-      desp: desp,
-      short: short,
-      noip: 1
-    });
-
-    const options = {
-      hostname: urlObj.hostname,
-      port: 443,
-      path: urlObj.pathname + urlObj.search,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json;charset=utf-8',
-        'Content-Length': Buffer.byteLength(body)
-      },
-      timeout: 10000
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const result = JSON.parse(data);
-          if (result.code === 0 || result.errno === 0) {
-            crawlerLogger.info(`Server酱推送成功: pushid=${result.data?.pushid}`);
-            resolve(true);
-          } else {
-            crawlerLogger.error(`Server酱推送失败: ${result.message || result.error}`);
-            resolve(false);
-          }
-        } catch {
-          resolve(res.statusCode === 200);
-        }
-      });
-    });
-    req.on('error', (err) => {
-      crawlerLogger.error(`Server酱请求失败: ${err.message}`);
-      resolve(false);
-    });
-    req.on('timeout', () => { req.destroy(); resolve(false); });
-    req.write(body);
-    req.end();
+  const body = JSON.stringify({
+    title: title.substring(0, 32),
+    desp: desp,
+    short: short,
+    noip: 1
   });
+
+  const options = {
+    hostname: urlObj.hostname,
+    port: 443,
+    path: urlObj.pathname + urlObj.search,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json;charset=utf-8',
+      'Content-Length': Buffer.byteLength(body)
+    },
+    timeout: 10000
+  };
+
+  for (let attempt = 1; attempt <= retryCount; attempt++) {
+    const result = await new Promise((resolve) => {
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const result = JSON.parse(data);
+            if (result.code === 0 || result.errno === 0) {
+              crawlerLogger.info(`Server酱推送成功: pushid=${result.data?.pushid}`);
+              resolve({ success: true, pushid: result.data?.pushid });
+            } else {
+              crawlerLogger.error(`Server酱推送失败 (HTTP ${res.statusCode}): code=${result.code}, message=${result.message || result.error}`);
+              resolve({ success: false, error: `HTTP ${res.statusCode}: ${result.message || result.error}` });
+            }
+          } catch (parseErr) {
+            crawlerLogger.error(`Server酱响应解析失败 (HTTP ${res.statusCode}): ${parseErr.message}, response=${data.substring(0, 200)}`);
+            resolve({ success: res.statusCode === 200, error: `解析失败: ${parseErr.message}` });
+          }
+        });
+      });
+      req.on('error', (err) => {
+        crawlerLogger.error(`Server酱请求失败: ${err.message}`);
+        resolve({ success: false, error: err.message });
+      });
+      req.on('timeout', () => {
+        crawlerLogger.error(`Server酱请求超时`);
+        req.destroy();
+        resolve({ success: false, error: 'timeout' });
+      });
+      req.write(body);
+      req.end();
+    });
+
+    if (result.success) {
+      return true;
+    }
+
+    if (attempt < retryCount) {
+      const delay = 2000 * attempt;
+      crawlerLogger.info(`Server酱推送重试 ${attempt}/${retryCount}，等待 ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  crawlerLogger.error(`Server酱推送失败，已达最大重试次数 ${retryCount}`);
+  return false;
 }
 
 function formatServerChanDesp(message) {

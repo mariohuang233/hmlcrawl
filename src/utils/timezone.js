@@ -76,6 +76,15 @@ function getBeijingHour(date) {
 }
 
 /**
+ * 获取北京时间的分钟
+ * @param {Date} date 日期对象
+ * @returns {number} 分钟 (0-59)
+ */
+function getBeijingMinute(date) {
+  return toBeijingTime(date).getUTCMinutes();
+}
+
+/**
  * 获取北京时间的今天开始时间（北京时间0点）
  * @param {Date} date 日期对象，默认为当前时间
  * @returns {Date} 北京时间今天0点的UTC时间
@@ -167,6 +176,7 @@ module.exports = {
   getBeijingMonth,
   getBeijingDate,
   getBeijingHour,
+  getBeijingMinute,
   getBeijingTodayStart,
   getBeijingTodayEnd,
   getBeijingWeekStart,
