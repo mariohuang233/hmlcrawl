@@ -11,21 +11,24 @@ function toBeijingTime(utcDate) {
 
 /**
  * 获取北京时间的格式化字符串
+ * 关键：使用 timeZone: 'Asia/Shanghai' 让格式化器按北京时间解释 UTC 时刻，
+ * 这样无论服务器本地时区是 UTC 还是 Asia/Shanghai 都能得到正确的北京时间。
+ * 旧实现先 toBeijingTime(+8h) 再用本地时区格式化，在非 UTC 服务器上会双重偏移。
  * @param {Date} date 日期对象
  * @param {string} format 格式类型
  * @returns {string} 格式化后的时间字符串
  */
 function formatBeijingTime(date, format = 'time') {
-  const beijingTime = toBeijingTime(date);
-  
   switch (format) {
     case 'time':
-      return beijingTime.toLocaleTimeString('zh-CN', { 
-        hour: '2-digit', 
+      return date.toLocaleTimeString('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        hour: '2-digit',
         minute: '2-digit'
       });
     case 'datetime':
-      return beijingTime.toLocaleString('zh-CN', {
+      return date.toLocaleString('zh-CN', {
+        timeZone: 'Asia/Shanghai',
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -33,9 +36,9 @@ function formatBeijingTime(date, format = 'time') {
         minute: '2-digit'
       });
     case 'date':
-      return beijingTime.toLocaleDateString('zh-CN');
+      return date.toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' });
     default:
-      return beijingTime.toLocaleString('zh-CN');
+      return date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
   }
 }
 

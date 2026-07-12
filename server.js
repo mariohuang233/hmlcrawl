@@ -133,7 +133,11 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`服务器已启动在端口 ${PORT}`);
   logger.info(`健康检查端点: http://localhost:${PORT}/health`);
   logger.info(`环境: ${process.env.NODE_ENV || 'development'}`);
-  
+
+  // 通知服务立即启动，不依赖 MongoDB 连接
+  // 这样即使 MongoDB 异常，报告仍会尝试发送（失败时会推送错误提示）
+  dailyReport.start();
+
   if (IS_CLOUD) {
     const cloudName = IS_RENDER ? 'Render' : IS_RAILWAY ? 'Railway' : IS_ZEABUR ? 'Zeabur' : 'Vercel';
     logger.info(`==============================`);
@@ -148,10 +152,9 @@ mongoose.connect(MONGO_URI, mongooseOptions)
 .then(() => {
   logger.info('MongoDB连接成功');
   logger.info(`连接地址: ${MONGO_URI.replace(/\/\/.*@/, '//***@')}`);
-  
-  dailyReport.start();
-  logger.info('每日用电报告服务已启动');
-  
+
+  logger.info('每日用电报告服务已在服务器启动时启动');
+
   if (IS_CLOUD) {
     const cloudName = IS_RENDER ? 'Render' : IS_RAILWAY ? 'Railway' : IS_ZEABUR ? 'Zeabur' : 'Vercel';
     logger.info(`${cloudName} 云端实例: 自动启动保障爬虫`);

@@ -5,9 +5,10 @@ const Usage = require('../models/Usage');
 const logger = require('../utils/logger');
 const crawler = require('../crawler/crawler');
 const Format = require('../utils/crawler-format');
-const { 
-  getBeijingHour, 
-  getBeijingTodayStart, 
+const dailyReport = require('../services/dailyReport');
+const {
+  getBeijingHour,
+  getBeijingTodayStart,
   getBeijingTodayEnd,
   getBeijingWeekStart,
   getBeijingWeekEnd,
@@ -1179,6 +1180,50 @@ router.post('/report/batch', apiAuth, async (req, res) => {
   } catch (err) {
     logger.error('批量上报失败:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ 每日报告调试端点 ============
+
+// 获取通知服务状态
+router.get('/daily-report/status', (req, res) => {
+  try {
+    const status = dailyReport.getStatus();
+    res.json({ success: true, ...status });
+  } catch (err) {
+    logger.error('获取报告状态失败:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 手动触发测试推送（默认模拟数据，?real=true 使用真实数据）
+router.post('/daily-report/test', async (req, res) => {
+  try {
+    const useMock = req.query.real !== 'true';
+    const result = await dailyReport.testReport(useMock);
+    res.json({
+      success: result.sent,
+      message: result.sent ? '测试推送已发送，请查看微信' : '测试推送失败，请检查 SERVER_CHAN_KEY 配置',
+      serverChanConfigured: !!process.env.SERVER_CHAN_KEY,
+      reportTitle: result.report.title
+    });
+  } catch (err) {
+    logger.error('测试报告推送失败:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 手动立即发送今日报告（忽略时间限制）
+router.post('/daily-report/send-now', async (req, res) => {
+  try {
+    const sent = await dailyReport.sendDailyReport();
+    res.json({
+      success: sent,
+      message: sent ? '今日报告已发送' : '发送失败或今日已发送过'
+    });
+  } catch (err) {
+    logger.error('手动发送报告失败:', err.message);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
