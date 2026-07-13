@@ -175,4 +175,88 @@ usageSchema.statics.calculateUsageStats = async function(meterId, startDate, end
   }
 };
 
+usageSchema.statics.getDailyUsageStats = async function(meterId, daysCount = 7) {
+  try {
+    const now = new Date();
+    const todayStart = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    todayStart.setHours(0, 0, 0, 0);
+    todayStart.setTime(todayStart.getTime() - 8 * 60 * 60 * 1000);
+
+    const startDate = new Date(todayStart.getTime() - daysCount * 24 * 60 * 60 * 1000);
+
+    const data = await this.getUsageInRange(meterId, startDate, now);
+
+    const dailyUsage = {};
+    for (let i = 1; i < data.length; i++) {
+      const prev = data[i - 1];
+      const curr = data[i];
+      const diff = prev.remaining_kwh - curr.remaining_kwh;
+      if (diff < 0) continue;
+
+      const beijingTime = new Date(curr.collected_at.getTime() + 8 * 60 * 60 * 1000);
+      const dateStr = beijingTime.toISOString().split('T')[0];
+
+      if (!dailyUsage[dateStr]) {
+        dailyUsage[dateStr] = 0;
+      }
+      dailyUsage[dateStr] += diff;
+    }
+
+    const result = [];
+    for (let i = daysCount - 1; i >= 0; i--) {
+      const date = new Date(todayStart.getTime() - i * 24 * 60 * 60 * 1000);
+      const beijingDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+      const dateStr = beijingDate.toISOString().split('T')[0];
+
+      result.push({
+        date: dateStr,
+        usageKwh: Math.round((dailyUsage[dateStr] || 0) * 100) / 100,
+        dayOfWeek: beijingDate.getDay()
+      });
+    }
+
+    return result;
+  } catch (error) {
+    console.error('获取每日用电量统计失败:', error.message);
+    return [];
+  }
+};
+
+usageSchema.statics.getHourlyUsagePattern = async function(meterId, daysCount = 7) {
+  try {
+    const now = new Date();
+    const todayStart = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    todayStart.setHours(0, 0, 0, 0);
+    todayStart.setTime(todayStart.getTime() - 8 * 60 * 60 * 1000);
+
+    const startDate = new Date(todayStart.getTime() - daysCount * 24 * 60 * 60 * 1000);
+
+    const data = await this.getUsageInRange(meterId, startDate, now);
+
+    const hourlyPattern = Array.from({ length: 24 }, () => ({ total: 0, count: 0 }));
+
+    for (let i = 1; i < data.length; i++) {
+      const prev = data[i - 1];
+      const curr = data[i];
+      const diff = prev.remaining_kwh - curr.remaining_kwh;
+      if (diff < 0) continue;
+
+      const beijingHour = Math.floor((curr.collected_at.getTime() + 8 * 60 * 60 * 1000) / (1000 * 60 * 60)) % 24;
+      if (beijingHour >= 0 && beijingHour < 24) {
+        hourlyPattern[beijingHour].total += diff;
+        hourlyPattern[beijingHour].count++;
+      }
+    }
+
+    return hourlyPattern.map(h => ({
+      hour: h.hour !== undefined ? h.hour : hourlyPattern.indexOf(h),
+      avgKwh: h.count > 0 ? Math.round((h.total / h.count) * 100) / 100 : 0,
+      count: h.count
+    }));
+  } catch (error) {
+    console.error('获取用电时段模式失败:', error.message);
+    return Array.from({ length: 24 }, (_, i) => ({ hour: i, avgKwh: 0, count: 0 }));
+  }
+};
+
 module.exports = mongoose.model('Usage', usageSchema);

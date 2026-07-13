@@ -67,20 +67,112 @@ function saveLastReportDate(dateStr) {
   }
 }
 
-function calculateRemainingDuration(remainingKwh, dailyUsage) {
-  if (dailyUsage <= 0) {
-    return { hours: null, days: null, text: '数据不足' };
+function calculateSmartRemainingDuration(remainingKwh, dailyStats, hourlyPattern) {
+  if (!remainingKwh || remainingKwh <= 0) {
+    return { hours: null, days: null, text: '电量已耗尽', method: 'none', confidence: 0 };
   }
-  const hours = remainingKwh / (dailyUsage / 24);
-  const days = hours / 24;
-  let text = '';
-  if (days >= 1) {
-    const remainingHours = Math.round((days - Math.floor(days)) * 24);
-    text = remainingHours > 0 ? `${Math.floor(days)}天${remainingHours}小时` : `${Math.floor(days)}天`;
+
+  const now = new Date();
+  const currentHour = getBeijingHour(now);
+  const currentMinute = getBeijingMinute(now);
+
+  const validDailyStats = dailyStats.filter(d => d.usageKwh > 0);
+  const hasDailyData = validDailyStats.length > 0;
+  const hasHourlyData = hourlyPattern.some(h => h.avgKwh > 0);
+
+  if (!hasDailyData && !hasHourlyData) {
+    return { hours: null, days: null, text: '数据不足', method: 'none', confidence: 0 };
+  }
+
+  let baseDailyUsage = 0;
+  let confidence = 0;
+
+  if (hasDailyData) {
+    const weights = validDailyStats.map((_, i) => i + 1);
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    const weightedSum = validDailyStats.reduce((sum, stat, i) => sum + stat.usageKwh * weights[i], 0);
+    baseDailyUsage = weightedSum / totalWeight;
+
+    const stdDev = Math.sqrt(validDailyStats.reduce((sum, stat) => sum + Math.pow(stat.usageKwh - baseDailyUsage, 2), 0) / validDailyStats.length);
+    const cv = stdDev / baseDailyUsage;
+
+    confidence = Math.min(100, Math.round((1 - cv) * 100));
   } else {
-    text = `${Math.round(hours)}小时`;
+    baseDailyUsage = hourlyPattern.reduce((sum, h) => sum + h.avgKwh, 0);
+    confidence = hourlyPattern.filter(h => h.count > 0).length * 4;
   }
-  return { hours: Math.round(hours * 10) / 10, days: Math.round(days * 100) / 100, text };
+
+  confidence = Math.max(20, Math.min(95, confidence));
+
+  let predictedUsage = 0;
+  let hoursRemaining = 0;
+  let currentDayUsage = 0;
+
+  if (hasHourlyData) {
+    for (let h = currentHour; h < 24; h++) {
+      const hourFactor = h === currentHour ? (60 - currentMinute) / 60 : 1;
+      predictedUsage += hourlyPattern[h].avgKwh * hourFactor;
+      hoursRemaining += hourFactor;
+    }
+
+    currentDayUsage = predictedUsage;
+  }
+
+  if (currentDayUsage > remainingKwh) {
+    const hoursLeftToday = (remainingKwh / (currentDayUsage / hoursRemaining));
+    const hours = Math.round(hoursLeftToday * 10) / 10;
+    return {
+      hours: hours,
+      days: 0,
+      text: `${hours.toFixed(1)}小时`,
+      method: 'hourly',
+      confidence: confidence,
+      details: {
+        baseDaily: baseDailyUsage.toFixed(2),
+        todayPredicted: currentDayUsage.toFixed(2),
+        hoursRemainingToday: hoursRemaining.toFixed(1)
+      }
+    };
+  }
+
+  const remainingAfterToday = remainingKwh - currentDayUsage;
+  const fullDays = Math.floor(remainingAfterToday / baseDailyUsage);
+  const remainderKwh = remainingAfterToday % baseDailyUsage;
+
+  let extraHours = 0;
+  if (fullDays >= 0 && remainderKwh > 0) {
+    const avgHourlyRate = baseDailyUsage / 24;
+    extraHours = remainderKwh / avgHourlyRate;
+  }
+
+  const totalHours = hoursRemaining + fullDays * 24 + extraHours;
+
+  let text = '';
+  if (fullDays >= 1) {
+    const remainingHoursInt = Math.round(extraHours);
+    if (remainingHoursInt > 0) {
+      text = `${fullDays}天${remainingHoursInt}小时`;
+    } else {
+      text = `${fullDays}天`;
+    }
+  } else {
+    text = `${Math.round(totalHours)}小时`;
+  }
+
+  return {
+    hours: Math.round(totalHours * 10) / 10,
+    days: Math.round((totalHours / 24) * 100) / 100,
+    text: text,
+    method: 'smart',
+    confidence: confidence,
+    details: {
+      baseDaily: baseDailyUsage.toFixed(2),
+      todayPredicted: currentDayUsage.toFixed(2),
+      days: fullDays,
+      extraHours: Math.round(extraHours),
+      remainingAfterToday: remainingAfterToday.toFixed(2)
+    }
+  };
 }
 
 async function fetchDailyData(meterId) {
@@ -88,21 +180,30 @@ async function fetchDailyData(meterId) {
     const now = new Date();
     const todayStart = getBeijingTodayStart(now);
 
-    const [todayStats, latestUsage] = await Promise.all([
+    const [todayStats, latestUsage, dailyStats, hourlyPattern] = await Promise.all([
       Usage.calculateUsageStats(meterId, todayStart, now),
-      Usage.getLatestUsage(meterId)
+      Usage.getLatestUsage(meterId),
+      Usage.getDailyUsageStats(meterId, 7),
+      Usage.getHourlyUsagePattern(meterId, 7)
     ]);
 
     const remainingKwh = latestUsage ? latestUsage.remaining_kwh : null;
     const todayUsage = todayStats.totalUsage;
 
-    const remaining = calculateRemainingDuration(remainingKwh, todayUsage);
+    const remaining = calculateSmartRemainingDuration(remainingKwh, dailyStats, hourlyPattern);
+
+    const avgDailyUsage = dailyStats.filter(d => d.usageKwh > 0).length > 0
+      ? dailyStats.filter(d => d.usageKwh > 0).reduce((sum, d) => sum + d.usageKwh, 0) / dailyStats.filter(d => d.usageKwh > 0).length
+      : 0;
 
     return {
       success: true,
       todayUsage,
       remainingKwh,
       remainingDuration: remaining,
+      avgDailyUsage: Math.round(avgDailyUsage * 100) / 100,
+      dailyStats,
+      hourlyPattern,
       timestamp: now
     };
   } catch (error) {
@@ -124,21 +225,49 @@ function generateReportMessage(data) {
   }
 
   const beijingDate = formatBeijingTime(data.timestamp, 'date');
+  const duration = data.remainingDuration;
 
   let message = `📊 用电日报 - ${beijingDate}\n\n`;
   message += `┌──────────────────────────┐\n`;
   message += `│ 今日用电量: ${data.todayUsage.toFixed(2)} kWh\n`;
+  message += `│ 日均用电: ${data.avgDailyUsage.toFixed(2)} kWh\n`;
   message += `│ 当前剩余: ${data.remainingKwh.toFixed(2)} kWh\n`;
-  message += `│ 预计可用: ${data.remainingDuration.text}\n`;
   message += `└──────────────────────────┘\n\n`;
 
-  if (data.remainingKwh <= 5) {
-    message += `⚠️ 警告：电量不足，请及时充值！\n`;
-  } else if (data.remainingKwh <= 10) {
-    message += `ℹ️ 提示：电量偏低，建议充值。\n`;
+  message += `⏰ 预计可用: ${duration.text}`;
+  if (duration.confidence > 0) {
+    message += ` (置信度 ${duration.confidence}%)`;
+  }
+  message += `\n\n`;
+
+  if (duration.details) {
+    message += `📈 预测详情:\n`;
+    message += `  • 基准日均: ${duration.details.baseDaily} kWh\n`;
+    if (duration.details.todayPredicted) {
+      message += `  • 今日剩余预测: ${duration.details.todayPredicted} kWh\n`;
+    }
+    if (duration.details.days !== undefined && duration.details.days > 0) {
+      message += `  • 完整天数: ${duration.details.days} 天\n`;
+    }
+    message += `\n`;
   }
 
-  message += `\n📅 数据更新时间: ${formatBeijingTime(data.timestamp, 'datetime')}`;
+  if (data.remainingKwh <= 5) {
+    message += `⚠️⚠️⚠️ 警告：电量严重不足！预计不到1天耗尽，请立即充值！\n`;
+  } else if (data.remainingKwh <= 10) {
+    message += `⚠️ 提示：电量偏低，建议尽快充值。\n`;
+  } else if (data.remainingKwh <= 20) {
+    message += `ℹ️ 提醒：剩余电量约${Math.round(data.remainingKwh / data.avgDailyUsage)}天，请留意。\n`;
+  }
+
+  const maxUsageDay = data.dailyStats && data.dailyStats.length > 0
+    ? data.dailyStats.reduce((max, d) => d.usageKwh > max.usageKwh ? d : max, data.dailyStats[0])
+    : null;
+  if (maxUsageDay && maxUsageDay.usageKwh > 0) {
+    message += `\n📊 近7天最高单日用电: ${maxUsageDay.usageKwh.toFixed(2)} kWh`;
+  }
+
+  message += `\n\n📅 数据更新时间: ${formatBeijingTime(data.timestamp, 'datetime')}`;
 
   return {
     title: `📊 用电日报 ${beijingDate}`,
@@ -328,11 +457,32 @@ async function testReport(useMockData = true) {
 
   let data;
   if (useMockData) {
+    const mockDailyStats = [
+      { date: '2026-07-06', usageKwh: 3.2, dayOfWeek: 0 },
+      { date: '2026-07-07', usageKwh: 4.1, dayOfWeek: 1 },
+      { date: '2026-07-08', usageKwh: 3.8, dayOfWeek: 2 },
+      { date: '2026-07-09', usageKwh: 4.5, dayOfWeek: 3 },
+      { date: '2026-07-10', usageKwh: 3.6, dayOfWeek: 4 },
+      { date: '2026-07-11', usageKwh: 4.2, dayOfWeek: 5 },
+      { date: '2026-07-12', usageKwh: 3.7, dayOfWeek: 6 }
+    ];
+
+    const mockHourlyPattern = Array.from({ length: 24 }, (_, i) => ({
+      hour: i,
+      avgKwh: i >= 22 || i <= 6 ? 0.08 : (i >= 8 && i <= 11) || (i >= 18 && i <= 21) ? 0.25 : 0.15,
+      count: 7
+    }));
+
+    const remaining = calculateSmartRemainingDuration(26.03, mockDailyStats, mockHourlyPattern);
+
     data = {
       success: true,
       todayUsage: 3.74,
       remainingKwh: 26.03,
-      remainingDuration: calculateRemainingDuration(26.03, 3.74),
+      remainingDuration: remaining,
+      avgDailyUsage: 3.87,
+      dailyStats: mockDailyStats,
+      hourlyPattern: mockHourlyPattern,
       timestamp: new Date()
     };
   } else {
@@ -343,6 +493,7 @@ async function testReport(useMockData = true) {
   const report = generateReportMessage(data);
 
   crawlerLogger.info(`测试报告标题: ${report.title}`);
+  crawlerLogger.info(`测试报告内容:\n${report.message}`);
 
   const sent = await sendServerChan(report.title, report.message);
 
@@ -378,5 +529,6 @@ module.exports = {
   testReport,
   getStatus,
   sendDailyReport,
-  calculateNextReportDelay
+  calculateNextReportDelay,
+  calculateSmartRemainingDuration
 };
