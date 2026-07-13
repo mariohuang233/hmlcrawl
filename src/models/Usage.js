@@ -259,4 +259,60 @@ usageSchema.statics.getHourlyUsagePattern = async function(meterId, daysCount = 
   }
 };
 
+usageSchema.statics.getRechargeHistory = async function(meterId, limit = 50) {
+  try {
+    const data = await this.find({ meter_id: meterId })
+      .sort({ collected_at: 1 })
+      .select('remaining_kwh collected_at meter_name')
+      .lean();
+
+    if (data.length < 2) {
+      return {
+        total: 0,
+        totalRechargeKwh: 0,
+        records: []
+      };
+    }
+
+    const recharges = [];
+    let totalRechargeKwh = 0;
+
+    for (let i = 1; i < data.length; i++) {
+      const prev = data[i - 1];
+      const curr = data[i];
+      const diff = curr.remaining_kwh - prev.remaining_kwh;
+
+      if (diff > 0.1) {
+        const rechargeAmount = Math.round(diff * 100) / 100;
+        recharges.push({
+          time: curr.collected_at,
+          amountKwh: rechargeAmount,
+          beforeKwh: Math.round(prev.remaining_kwh * 100) / 100,
+          afterKwh: Math.round(curr.remaining_kwh * 100) / 100,
+          meter_name: curr.meter_name || prev.meter_name
+        });
+        totalRechargeKwh += rechargeAmount;
+      }
+    }
+
+    recharges.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+    const limitedRecords = limit > 0 ? recharges.slice(0, limit) : recharges;
+
+    return {
+      total: recharges.length,
+      totalRechargeKwh: Math.round(totalRechargeKwh * 100) / 100,
+      records: limitedRecords
+    };
+  } catch (error) {
+    console.error('获取充值记录失败:', error.message);
+    return {
+      total: 0,
+      totalRechargeKwh: 0,
+      records: [],
+      error: error.message
+    };
+  }
+};
+
 module.exports = mongoose.model('Usage', usageSchema);

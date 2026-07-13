@@ -1,5 +1,19 @@
 export const API_BASE = process.env.REACT_APP_API_BASE || (process.env.NODE_ENV === 'production' ? '' : '/');
 
+export interface RechargeRecord {
+  time: string;
+  amountKwh: number;
+  beforeKwh: number;
+  afterKwh: number;
+  meter_name?: string;
+}
+
+export interface RechargeHistoryData {
+  total: number;
+  totalRechargeKwh: number;
+  records: RechargeRecord[];
+}
+
 export interface ApiResponse<T> {
   data?: T;
   error?: string;

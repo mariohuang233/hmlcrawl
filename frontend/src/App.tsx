@@ -4,6 +4,7 @@ import Trend24h from './components/Trend24h';
 import TodayUsage from './components/TodayUsage';
 import DailyTrend from './components/DailyTrend';
 import MonthlyTrend from './components/MonthlyTrend';
+import RechargeHistory from './components/RechargeHistory';
 import './App.css';
 import { fetchAPI, retryRequest, formatErrorMessage } from './utils/api';
 import bubuIcon from './assets/bubu.png';
@@ -295,6 +296,8 @@ function App() {
             <DailyTrend key={`daily-${refreshKey}`} isMobile={isMobile} />
             <MonthlyTrend key={`monthly-${refreshKey}`} isMobile={isMobile} />
           </div>
+
+          <RechargeHistory key={`recharge-${refreshKey}`} isMobile={isMobile} refreshKey={refreshKey} />
           
           {showLogs && (
             <div className="logs-section">

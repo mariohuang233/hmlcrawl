@@ -1227,5 +1227,30 @@ router.post('/daily-report/send-now', async (req, res) => {
   }
 });
 
+router.get('/recharge-history', async (req, res) => {
+  try {
+    const meterId = req.query.meter_id || '18100071580';
+    const limit = parseInt(req.query.limit) || 50;
+
+    const result = await Usage.getRechargeHistory(meterId, limit);
+
+    res.json({
+      success: true,
+      data: {
+        total: result.total,
+        totalRechargeKwh: result.totalRechargeKwh,
+        records: result.records
+      }
+    });
+  } catch (err) {
+    logger.error('获取充值记录失败:', err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      data: { total: 0, totalRechargeKwh: 0, records: [] }
+    });
+  }
+});
+
 module.exports = router;
 
