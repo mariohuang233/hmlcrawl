@@ -866,7 +866,13 @@ router.get('/trend/monthly', cacheMiddleware('monthly', 600000), asyncHandler(as
       const prev = data[i - 1];
       const curr = data[i];
       
-      // 使用北京时间计算月份
+      const timeDiff = curr.collected_at.getTime() - prev.collected_at.getTime();
+      const maxGap = 24 * 60 * 60 * 1000;
+      
+      if (timeDiff > maxGap) {
+        continue;
+      }
+      
       const beijingDate = getBeijingTodayStart(curr.collected_at);
       const month = beijingDate.toISOString().substring(0, 7); // YYYY-MM
       const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
