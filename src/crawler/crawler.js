@@ -40,6 +40,11 @@ const CONFIG = {
     FAILURE_THRESHOLD: 5,
     RESET_TIMEOUT: 60000,
     HALF_OPEN_MAX: 2
+  },
+  FAILOVER: {
+    ENABLED: process.env.CRAWLER_FAILOVER !== 'false',
+    MAX_CONSECUTIVE_FAILURES: 3,
+    COOLDOWN_MINUTES: 30
   }
 };
 
@@ -147,6 +152,15 @@ class ElectricityCrawler {
     this.crawlSemaphore = 0;
     this.lastCrawlResult = null;
 
+    this.consecutiveFailures = 0;
+    this.failoverEnabled = CONFIG.FAILOVER.ENABLED;
+    this.maxFailoverFailures = CONFIG.FAILOVER.MAX_CONSECUTIVE_FAILURES;
+    this.failoverCooldownMs = CONFIG.FAILOVER.COOLDOWN_MINUTES * 60 * 1000;
+    this.lastFailoverTime = 0;
+    this.failoverCount = 0;
+    this.originalMode = null;
+    this.currentMode = null;
+
     this.logEntries = [];
     this.maxLogEntries = CONFIG.MAX_LOG_ENTRIES;
     this.stats = {
@@ -158,11 +172,77 @@ class ElectricityCrawler {
       ipSwitches: 0,
       lastCrawlTime: null,
       lastSuccessfulCrawl: null,
-      batteryAlerts: 0
+      batteryAlerts: 0,
+      modeSwitches: 0
     };
 
+    this._initMode();
     this._updateUrl();
-    crawlerLogger.info(`爬虫配置: 使用代理=${this.useProxy}, 直连IP=${this.useDirectIP}, 电量告警阈值=${this.batteryAlertThreshold}kWh`);
+    crawlerLogger.info(`爬虫配置: 使用代理=${this.useProxy}, 直连IP=${this.useDirectIP}, 故障转移=${this.failoverEnabled}, 电量告警阈值=${this.batteryAlertThreshold}kWh`);
+  }
+
+  _initMode() {
+    if (this.useProxy) {
+      this.originalMode = 'proxy';
+      this.currentMode = 'proxy';
+    } else if (this.useDirectIP) {
+      this.originalMode = 'direct_ip';
+      this.currentMode = 'direct_ip';
+    } else {
+      this.originalMode = 'direct';
+      this.currentMode = 'direct';
+    }
+  }
+
+  switchMode(mode) {
+    const oldMode = this.currentMode;
+    if (mode === oldMode) return false;
+
+    if (mode === 'proxy' && !this.proxyUrl) {
+      crawlerLogger.warn('切换到代理模式失败: 未配置代理地址');
+      return false;
+    }
+
+    if (mode === 'proxy') {
+      this.useProxy = true;
+      this.useDirectIP = false;
+    } else if (mode === 'direct_ip') {
+      this.useProxy = false;
+      this.useDirectIP = true;
+    } else {
+      this.useProxy = false;
+      this.useDirectIP = false;
+    }
+
+    this.currentMode = mode;
+    this._updateUrl();
+    this.circuitBreaker = new CircuitBreaker();
+    this.consecutiveFailures = 0;
+    this.stats.modeSwitches++;
+    this.lastFailoverTime = Date.now();
+
+    crawlerLogger.info(`爬虫模式切换: ${oldMode} → ${mode}, URL: ${this.url}`);
+    return true;
+  }
+
+  _tryFailover() {
+    if (!this.failoverEnabled) return false;
+    if (this.consecutiveFailures < this.maxFailoverFailures) return false;
+    if (Date.now() - this.lastFailoverTime < this.failoverCooldownMs) return false;
+
+    if (this.currentMode === 'proxy' && CONFIG.DIRECT_IPS.length > 0) {
+      crawlerLogger.warn(`代理模式连续失败${this.consecutiveFailures}次，自动故障转移到直连IP模式`);
+      this.failoverCount++;
+      return this.switchMode('direct_ip');
+    }
+
+    if (this.currentMode === 'direct' && this.proxyUrl) {
+      crawlerLogger.warn(`直连模式连续失败${this.consecutiveFailures}次，自动故障转移到代理模式`);
+      this.failoverCount++;
+      return this.switchMode('proxy');
+    }
+
+    return false;
   }
 
   _updateUrl() {
@@ -228,7 +308,13 @@ class ElectricityCrawler {
       currentIP: this.useDirectIP ? this.directIPs[this.currentIPIndex] : null,
       directIPCount: this.directIPs.length,
       logCount: this.logEntries.length,
-      circuitBreaker: this.circuitBreaker.getState()
+      circuitBreaker: this.circuitBreaker.getState(),
+      currentMode: this.currentMode,
+      originalMode: this.originalMode,
+      consecutiveFailures: this.consecutiveFailures,
+      failoverEnabled: this.failoverEnabled,
+      failoverCount: this.failoverCount,
+      lastFailoverTime: this.lastFailoverTime ? new Date(this.lastFailoverTime).toISOString() : null
     };
   }
 
@@ -265,8 +351,13 @@ class ElectricityCrawler {
       return;
     }
     if (this.circuitBreaker.isOpen) {
-      crawlerLogger.warn('断路器断开，跳过本次爬取');
-      return;
+      crawlerLogger.warn('断路器断开，尝试故障转移...');
+      if (this._tryFailover()) {
+        crawlerLogger.info('故障转移成功，继续执行爬取');
+      } else {
+        crawlerLogger.warn('故障转移不可用或冷却中，跳过本次爬取');
+        return;
+      }
     }
 
     this.crawlSemaphore++;
@@ -281,7 +372,8 @@ class ElectricityCrawler {
             timestamp: new Date(),
             action: 'crawl_start',
             retryCount: retryCount + 1,
-            url: this.url
+            url: this.url,
+            mode: this.currentMode
           });
 
           const data = await this.fetchElectricityData();
@@ -289,6 +381,7 @@ class ElectricityCrawler {
             await this.saveData(data);
             const duration = Date.now() - startTime;
             this.circuitBreaker.onSuccess();
+            this.consecutiveFailures = 0;
             this.updateStats('successfulCrawls');
             this.updateStats('lastSuccessfulCrawl');
             this.lastCrawlResult = { success: true, data, duration };
@@ -300,7 +393,8 @@ class ElectricityCrawler {
               action: 'success',
               duration: `${duration}ms`,
               data,
-              retryCount: retryCount + 1
+              retryCount: retryCount + 1,
+              mode: this.currentMode
             });
             return;
           }
@@ -313,7 +407,8 @@ class ElectricityCrawler {
             timestamp: new Date(),
             action: 'error',
             error: error.message,
-            retryCount
+            retryCount,
+            mode: this.currentMode
           });
 
           if (retryCount < this.maxRetries) {
@@ -325,13 +420,21 @@ class ElectricityCrawler {
       }
 
       this.circuitBreaker.onFailure();
+      this.consecutiveFailures++;
       this.updateStats('failedCrawls');
-      crawlerLogger.error(`爬取失败，已重试${this.maxRetries}次`);
+      crawlerLogger.error(`爬取失败，已重试${this.maxRetries}次 (连续失败${this.consecutiveFailures}次)`);
+
+      if (this._tryFailover()) {
+        crawlerLogger.info('已自动切换模式，将在下一轮重试');
+      }
+
       await this.addLogEntry({
         timestamp: new Date(),
         action: 'failed',
         error: `已重试${this.maxRetries}次均失败`,
-        retryCount: this.maxRetries
+        retryCount: this.maxRetries,
+        consecutiveFailures: this.consecutiveFailures,
+        mode: this.currentMode
       });
     } finally {
       this.crawlSemaphore--;

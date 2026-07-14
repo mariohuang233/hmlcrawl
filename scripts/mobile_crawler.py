@@ -212,7 +212,14 @@ def upload_to_api(record):
             headers["X-API-Token"] = API_TOKEN
         
         req = urllib.request.Request(BACKEND_URL, data=data, headers=headers)
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        
+        import ssl
+        context = ssl.create_default_context()
+        context.set_ciphers('DEFAULT@SECLEVEL=1')
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        
+        with urllib.request.urlopen(req, timeout=30, context=context) as resp:
             result = resp.read().decode("utf-8")
             log(f"API上传成功: {result[:50]}")
             return True

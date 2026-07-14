@@ -997,6 +997,26 @@ router.post('/crawler/trigger', async (req, res) => {
   }
 });
 
+// 切换爬虫模式
+router.post('/crawler/mode', async (req, res) => {
+  try {
+    const { mode } = req.body;
+    if (!mode || !['proxy', 'direct_ip', 'direct'].includes(mode)) {
+      return res.status(400).json({ error: '无效的模式，可选值: proxy, direct_ip, direct' });
+    }
+    const success = crawler.switchMode(mode);
+    if (success) {
+      logger.info(`爬虫模式已手动切换为: ${mode}`);
+      res.json({ success: true, message: `已切换到${mode}模式`, mode, stats: crawler.getStats() });
+    } else {
+      res.status(400).json({ success: false, error: '切换失败，可能未配置对应模式的参数' });
+    }
+  } catch (error) {
+    logger.error('切换爬虫模式失败:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 爬虫状态信息
 router.get('/crawler/status', async (req, res) => {
   try {
