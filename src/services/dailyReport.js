@@ -224,53 +224,87 @@ function generateReportMessage(data) {
     };
   }
 
-  const beijingDate = formatBeijingTime(data.timestamp, 'date');
+  const beijingDate = toBeijingTime(data.timestamp);
+  const year = beijingDate.getUTCFullYear();
+  const month = beijingDate.getUTCMonth() + 1;
+  const day = beijingDate.getUTCDate();
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const weekday = weekdays[beijingDate.getUTCDay()];
+  
+  const dateStr = `${month}月${day}日（${weekday}）`;
   const duration = data.remainingDuration;
 
-  let message = `📊 用电日报 - ${beijingDate}\n\n`;
-  message += `┌──────────────────────────┐\n`;
-  message += `│ 今日用电量: ${data.todayUsage.toFixed(2)} kWh\n`;
-  message += `│ 日均用电: ${data.avgDailyUsage.toFixed(2)} kWh\n`;
-  message += `│ 当前剩余: ${data.remainingKwh.toFixed(2)} kWh\n`;
-  message += `└──────────────────────────┘\n\n`;
+  let message = `📊 用电日报 · ${dateStr}\n\n`;
 
-  message += `⏰ 预计可用: ${duration.text}`;
-  if (duration.confidence > 0) {
-    message += ` (置信度 ${duration.confidence}%)`;
+  message += ` 💡 今日用电 ${data.todayUsage.toFixed(2)} 度 ｜ 日均 ${data.avgDailyUsage.toFixed(2)} 度\n`;
+  
+  const predictedTime = duration.hours !== null ? new Date(data.timestamp.getTime() + duration.hours * 60 * 60 * 1000) : null;
+  let timeText = '';
+  if (predictedTime) {
+    const predBeijing = toBeijingTime(predictedTime);
+    const predHour = predBeijing.getUTCHours();
+    const predMinute = predBeijing.getUTCMinutes();
+    if (predHour >= 0 && predHour < 6) {
+      timeText = `凌晨 ${predHour}:${predMinute.toString().padStart(2, '0')}`;
+    } else if (predHour >= 6 && predHour < 12) {
+      timeText = `上午 ${predHour}:${predMinute.toString().padStart(2, '0')}`;
+    } else if (predHour === 12) {
+      timeText = '中午 12:00';
+    } else if (predHour > 12 && predHour < 18) {
+      timeText = `下午 ${predHour - 12}:${predMinute.toString().padStart(2, '0')}`;
+    } else {
+      timeText = `晚上 ${predHour - 12}:${predMinute.toString().padStart(2, '0')}`;
+    }
+  }
+  
+  if (timeText) {
+    message += ` 🔋 余额 ${data.remainingKwh.toFixed(2)} 度 ⬇️ 预计可用到${timeText}\n\n`;
+  } else {
+    message += ` 🔋 余额 ${data.remainingKwh.toFixed(2)} 度\n\n`;
+  }
+
+  message += ` ━━━━━━━━━━━━━━━━━━━━━━\n`;
+  message += ` 📈 今日用电分布\n\n`;
+
+  const nightUsage = data.hourlyPattern.slice(0, 6).reduce((sum, h) => sum + h.avgKwh, 0);
+  const morningUsage = data.hourlyPattern.slice(6, 12).reduce((sum, h) => sum + h.avgKwh, 0);
+  const noonUsage = data.hourlyPattern.slice(12, 18).reduce((sum, h) => sum + h.avgKwh, 0);
+  const eveningUsage = data.hourlyPattern.slice(18, 24).reduce((sum, h) => sum + h.avgKwh, 0);
+  
+  const totalUsage = nightUsage + morningUsage + noonUsage + eveningUsage;
+  const eveningPercentage = totalUsage > 0 ? Math.round(eveningUsage / totalUsage * 100) : 0;
+  
+  message += ` 🌌 0:00-6:00   深夜  ${nightUsage.toFixed(2)}度\n`;
+  message += ` 🌅 6:00-12:00  早间  ${morningUsage.toFixed(2)}度\n`;
+  message += ` ☀️ 12:00-18:00 午间  ${noonUsage.toFixed(2)}度\n`;
+  message += ` 🌙 18:00-24:00 晚间  ${eveningUsage.toFixed(2)}度`;
+  if (eveningPercentage > 50) {
+    message += ` ⬆️ 占全天${eveningPercentage}%`;
   }
   message += `\n\n`;
 
-  if (duration.details) {
-    message += `📈 预测详情:\n`;
-    message += `  • 基准日均: ${duration.details.baseDaily} kWh\n`;
-    if (duration.details.todayPredicted) {
-      message += `  • 今日剩余预测: ${duration.details.todayPredicted} kWh\n`;
-    }
-    if (duration.details.days !== undefined && duration.details.days > 0) {
-      message += `  • 完整天数: ${duration.details.days} 天\n`;
-    }
+  const hourlyUsageList = data.hourlyPattern.map(h => ({
+    hour: h.hour,
+    usage: h.avgKwh
+  })).sort((a, b) => b.usage - a.usage);
+  
+  const top3 = hourlyUsageList.slice(0, 3);
+  if (top3.length > 0 && top3[0].usage > 0) {
+    message += ` 🔥 用电 TOP3\n`;
+    top3.forEach((item, index) => {
+      const icons = ['1️⃣', '2️⃣', '3️⃣'];
+      const hourStart = item.hour;
+      const hourEnd = (item.hour + 1) % 24;
+      message += ` ${icons[index]} ${hourStart}:00-${hourEnd}:00  ${item.usage.toFixed(1)}度\n`;
+    });
     message += `\n`;
   }
 
-  if (data.remainingKwh <= 5) {
-    message += `⚠️⚠️⚠️ 警告：电量严重不足！预计不到1天耗尽，请立即充值！\n`;
-  } else if (data.remainingKwh <= 10) {
-    message += `⚠️ 提示：电量偏低，建议尽快充值。\n`;
-  } else if (data.remainingKwh <= 20) {
-    message += `ℹ️ 提醒：剩余电量约${Math.round(data.remainingKwh / data.avgDailyUsage)}天，请留意。\n`;
-  }
-
-  const maxUsageDay = data.dailyStats && data.dailyStats.length > 0
-    ? data.dailyStats.reduce((max, d) => d.usageKwh > max.usageKwh ? d : max, data.dailyStats[0])
-    : null;
-  if (maxUsageDay && maxUsageDay.usageKwh > 0) {
-    message += `\n📊 近7天最高单日用电: ${maxUsageDay.usageKwh.toFixed(2)} kWh`;
-  }
-
-  message += `\n\n📅 数据更新时间: ${formatBeijingTime(data.timestamp, 'datetime')}`;
+  message += ` 👉 [点击充值]（跳转到 https://www.wap.cnyiot.com/nat/pay.aspx?mid=${process.env.METER_ID || '18100071580'} ）\n`;
+  message += ` 📅 截至 23:59`;
 
   return {
-    title: `📊 用电日报 ${beijingDate}`,
+    title: `📊 用电日报 · ${dateStr}`,
     message: message
   };
 }
