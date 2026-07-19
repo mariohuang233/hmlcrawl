@@ -242,19 +242,50 @@ function generateReportMessage(data) {
   let timeText = '';
   if (predictedTime) {
     const predBeijing = toBeijingTime(predictedTime);
+    const currBeijing = toBeijingTime(data.timestamp);
+    
+    const predYear = predBeijing.getUTCFullYear();
+    const predMonth = predBeijing.getUTCMonth() + 1;
+    const predDay = predBeijing.getUTCDate();
     const predHour = predBeijing.getUTCHours();
     const predMinute = predBeijing.getUTCMinutes();
-    if (predHour >= 0 && predHour < 6) {
-      timeText = `凌晨 ${predHour}:${predMinute.toString().padStart(2, '0')}`;
-    } else if (predHour >= 6 && predHour < 12) {
-      timeText = `上午 ${predHour}:${predMinute.toString().padStart(2, '0')}`;
-    } else if (predHour === 12) {
-      timeText = '中午 12:00';
-    } else if (predHour > 12 && predHour < 18) {
-      timeText = `下午 ${predHour - 12}:${predMinute.toString().padStart(2, '0')}`;
+    
+    const currYear = currBeijing.getUTCFullYear();
+    const currMonth = currBeijing.getUTCMonth() + 1;
+    const currDay = currBeijing.getUTCDate();
+    
+    let datePrefix = '';
+    if (predYear !== currYear) {
+      datePrefix = `${predYear}.${predMonth}.${predDay}`;
+    } else if (predMonth !== currMonth) {
+      datePrefix = `${predMonth}.${predDay}`;
     } else {
-      timeText = `晚上 ${predHour - 12}:${predMinute.toString().padStart(2, '0')}`;
+      const dayDiff = predDay - currDay;
+      if (dayDiff === 0) {
+        datePrefix = '今天';
+      } else if (dayDiff === 1) {
+        datePrefix = '明天';
+      } else if (dayDiff === 2) {
+        datePrefix = '后天';
+      } else {
+        datePrefix = `${predMonth}.${predDay}`;
+      }
     }
+    
+    let periodText = '';
+    if (predHour >= 0 && predHour < 6) {
+      periodText = `凌晨 ${predHour}:${predMinute.toString().padStart(2, '0')}`;
+    } else if (predHour >= 6 && predHour < 12) {
+      periodText = `上午 ${predHour}:${predMinute.toString().padStart(2, '0')}`;
+    } else if (predHour === 12) {
+      periodText = '中午 12:00';
+    } else if (predHour > 12 && predHour < 18) {
+      periodText = `下午 ${predHour - 12}:${predMinute.toString().padStart(2, '0')}`;
+    } else {
+      periodText = `晚上 ${predHour - 12}:${predMinute.toString().padStart(2, '0')}`;
+    }
+    
+    timeText = `${datePrefix} ${periodText}`;
   }
   
   if (timeText) {
