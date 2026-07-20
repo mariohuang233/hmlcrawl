@@ -21,6 +21,7 @@
   --accent-cyan-300: #7dd3fc;
   --accent-cyan-400: #38bdf8;
   --accent-cyan-500: #0ea5e9;
+  --accent-cyan-600: #0284c7;
   
   --accent-rose-50: #fff1f2;
   --accent-rose-100: #ffe4e6;
@@ -28,6 +29,7 @@
   --accent-rose-300: #fda4af;
   --accent-rose-400: #fb7185;
   --accent-rose-500: #f43f5e;
+  --accent-rose-600: #e11d48;
   
   --accent-amber-50: #fffbeb;
   --accent-amber-100: #fef3c7;
@@ -35,6 +37,9 @@
   --accent-amber-300: #fcd34d;
   --accent-amber-400: #fbbf24;
   --accent-amber-500: #f59e0b;
+  --accent-amber-600: #d97706;
+  --accent-amber-700: #b45309;
+  --accent-amber-800: #92400e;
   
   --accent-emerald-50: #ecfdf5;
   --accent-emerald-100: #d1fae5;
@@ -42,12 +47,14 @@
   --accent-emerald-300: #6ee7b7;
   --accent-emerald-400: #34d399;
   --accent-emerald-500: #10b981;
+  --accent-emerald-600: #059669;
   
   --bg-page: #faf9f7;
   --bg-card: #ffffff;
   --bg-card-hover: #fefefe;
   --bg-surface: #f5f3f1;
   --bg-elevated: #ffffff;
+  --bg-hover: #eeeae6;
   
   --text-primary: #2d2620;
   --text-secondary: #5c5248;
@@ -72,6 +79,7 @@
   --radius-lg: 16px;
   --radius-xl: 20px;
   --radius-2xl: 24px;
+  --radius-full: 9999px;
   
   --space-xs: 4px;
   --space-sm: 8px;
@@ -131,6 +139,38 @@ body {
     var(--bg-page);
   position: relative;
   overflow-x: hidden;
+}
+
+/* A quieter, more legible dashboard surface. */
+.app-main::before {
+  content: '';
+  position: absolute;
+  width: min(36vw, 520px);
+  aspect-ratio: 1;
+  top: 2rem;
+  right: -12rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(184, 134, 90, 0.1), transparent 68%);
+  filter: blur(12px);
+  pointer-events: none;
+}
+
+.card,
+.hero-card,
+.secondary-stat-card,
+.logs-section {
+  isolation: isolate;
+}
+
+.card::after,
+.hero-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  pointer-events: none;
+  z-index: -1;
 }
 
 .app-container::before {
@@ -1694,4 +1734,13 @@ body {
 :focus-visible {
   outline: 2px solid var(--primary-500);
   outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

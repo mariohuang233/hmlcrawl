@@ -1,5 +1,7 @@
 export const API_BASE = process.env.REACT_APP_API_BASE || (process.env.NODE_ENV === 'production' ? '' : '/');
 
+const DEFAULT_TIMEOUT_MS = 12_000;
+
 export interface RechargeRecord {
   time: string;
   amountKwh: number;
@@ -19,112 +21,84 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-/**
- * 通用API请求函数
- * @param endpoint API端点
- * @param options fetch选项
- * @returns Promise<T>
- */
-export async function fetchAPI<T>(
-  endpoint: string, 
-  options?: RequestInit
-): Promise<T> {
-  try {
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options?.headers,
-      },
-      ...options,
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      
-      // 根据状态码提供更具体的错误信息
-      switch (response.status) {
-        case 400:
-          errorMessage = '请求参数错误，请检查输入';
-          break;
-        case 401:
-          errorMessage = '未授权访问，请重新登录';
-          break;
-        case 403:
-          errorMessage = '拒绝访问，没有权限';
-          break;
-        case 404:
-          errorMessage = '请求的资源不存在';
-          break;
-        case 500:
-          errorMessage = '服务器内部错误，请稍后重试';
-          break;
-        case 502:
-        case 503:
-        case 504:
-          errorMessage = '服务器暂时不可用，请稍后重试';
-          break;
-      }
-      
-      throw new Error(errorMessage);
-    }
-
-    const data = await response.json();
-
-    if (data.error) {
-      throw new Error(data.error);
-    }
-
-    return data as T;
-  } catch (err) {
-    if (err instanceof Error) {
-      // 网络错误处理
-      if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
-        throw new Error('网络连接失败，请检查网络设置');
-      }
-      throw err;
-    }
-    throw new Error('网络请求失败');
+export class ApiError extends Error {
+  constructor(message: string, public readonly status?: number) {
+    super(message);
+    this.name = 'ApiError';
   }
 }
 
-/**
- * 格式化错误消息
- */
+function messageForStatus(status: number): string {
+  if (status === 400) return '请求参数错误，请检查输入';
+  if (status === 401) return '未授权访问，请重新登录';
+  if (status === 403) return '拒绝访问，没有权限';
+  if (status === 404) return '请求的资源不存在';
+  if (status >= 500) return '服务器暂时不可用，请稍后重试';
+  return `请求失败（HTTP ${status}）`;
+}
+
+export async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const timeoutController = new AbortController();
+  const timeout = window.setTimeout(() => timeoutController.abort(), DEFAULT_TIMEOUT_MS);
+  const externalSignal = options.signal;
+  const abortFromExternal = () => timeoutController.abort();
+  externalSignal?.addEventListener('abort', abortFromExternal, { once: true });
+
+  try {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers: {
+        Accept: 'application/json',
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...options.headers,
+      },
+      credentials: 'same-origin',
+      signal: timeoutController.signal,
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new ApiError(payload?.message || payload?.error || messageForStatus(response.status), response.status);
+    }
+    if (payload?.error) throw new ApiError(payload.message || payload.error, response.status);
+    return payload as T;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new ApiError(externalSignal?.aborted ? '请求已取消' : '请求超时，请稍后重试');
+    }
+    throw new ApiError('网络连接失败，请检查网络设置');
+  } finally {
+    window.clearTimeout(timeout);
+    externalSignal?.removeEventListener('abort', abortFromExternal);
+  }
+}
+
 export function formatErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (typeof error === 'string') {
-    return error;
-  }
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
   return '未知错误';
 }
 
-/**
- * 重试请求
- * @param fn 请求函数
- * @param maxRetries 最大重试次数
- * @param delay 重试延迟（毫秒）
- */
-export async function retryRequest<T>(
-  fn: () => Promise<T>,
-  maxRetries: number = 3,
-  delay: number = 1000
-): Promise<T> {
-  let lastError: Error = new Error('请求失败');
-  
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error('请求失败');
-      if (i < maxRetries - 1) {
-        await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
-      }
-    }
-  }
-  
-  throw lastError;
+function isRetryable(error: unknown): boolean {
+  return !(error instanceof ApiError) || error.status === undefined || error.status === 408 || error.status === 429 || error.status >= 500;
 }
 
+export async function retryRequest<T>(
+  fn: () => Promise<T>,
+  maxAttempts: number = 3,
+  baseDelayMs: number = 500
+): Promise<T> {
+  let lastError: unknown = new ApiError('请求失败');
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryable(error) || attempt === maxAttempts - 1) break;
+      const jitter = Math.random() * baseDelayMs * 0.25;
+      await new Promise(resolve => window.setTimeout(resolve, baseDelayMs * 2 ** attempt + jitter));
+    }
+  }
+  throw lastError;
+}

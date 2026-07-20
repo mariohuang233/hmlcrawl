@@ -13,13 +13,30 @@ const usageSchema = new mongoose.Schema({
   remaining_kwh: {
     type: Number,
     required: true,
-    min: 0
+    min: 0,
+    max: 1000
   },
   collected_at: {
     type: Date,
     required: true,
     default: Date.now,
     index: true
+  },
+  crawl_id: {
+    type: String,
+    trim: true,
+    maxlength: 128
+  },
+  source: {
+    type: String,
+    trim: true,
+    maxlength: 32,
+    default: 'unknown'
+  },
+  format_version: {
+    type: String,
+    trim: true,
+    maxlength: 16
   }
 }, {
   timestamps: true
@@ -27,7 +44,10 @@ const usageSchema = new mongoose.Schema({
 
 // 复合唯一索引：用于去重（同电表同一时刻只能有一条记录）
 usageSchema.index({ meter_id: 1, collected_at: -1 }, { unique: true });
-usageSchema.index({ collected_at: -1 });
+usageSchema.index(
+  { meter_id: 1, crawl_id: 1 },
+  { unique: true, partialFilterExpression: { crawl_id: { $type: 'string' } } }
+);
 
 // 静态方法：获取指定时间范围的用电数据
 usageSchema.statics.getUsageInRange = function(meterId, startDate, endDate) {
@@ -37,14 +57,20 @@ usageSchema.statics.getUsageInRange = function(meterId, startDate, endDate) {
       $gte: startDate,
       $lte: endDate
     }
-  }).sort({ collected_at: 1 });
+  })
+    .select('meter_id meter_name remaining_kwh collected_at source crawl_id')
+    .sort({ collected_at: 1 })
+    .lean();
 };
 
 // 静态方法：获取最新的用电数据
 usageSchema.statics.getLatestUsage = function(meterId) {
   return this.findOne({
     meter_id: meterId
-  }).sort({ collected_at: -1 });
+  })
+    .select('meter_id meter_name remaining_kwh collected_at source crawl_id')
+    .sort({ collected_at: -1 })
+    .lean();
 };
 
 // 静态方法：计算用电量统计（使用聚合查询优化性能）

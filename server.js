@@ -19,7 +19,9 @@ const IS_VERCEL = !!process.env.VERCEL || process.env.VERCEL === '1';
 const IS_CLOUD = IS_RAILWAY || IS_ZEABUR || IS_RENDER || IS_VERCEL;
 
 // 云端始终启用爬虫，本地需要显式设置 ENABLE_CRAWLER=true
-const ENABLE_CRAWLER = IS_CLOUD ? true : process.env.ENABLE_CRAWLER === 'true';
+const ENABLE_CRAWLER = process.env.ENABLE_CRAWLER === undefined
+  ? IS_CLOUD
+  : process.env.ENABLE_CRAWLER === 'true';
 
 const app = express();
 
@@ -48,8 +50,9 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'ok',
+  const databaseReady = mongoose.connection.readyState === 1;
+  res.status(databaseReady ? 200 : 503).json({
+    status: databaseReady ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
@@ -138,7 +141,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   // 这样即使 MongoDB 异常，报告仍会尝试发送（失败时会推送错误提示）
   dailyReport.start();
 
-  if (IS_CLOUD) {
+  if (IS_CLOUD && ENABLE_CRAWLER) {
     const cloudName = IS_RENDER ? 'Render' : IS_RAILWAY ? 'Railway' : IS_ZEABUR ? 'Zeabur' : 'Vercel';
     logger.info(`==============================`);
     logger.info(`${cloudName} 云端保障爬虫已激活`);
@@ -155,7 +158,7 @@ mongoose.connect(MONGO_URI, mongooseOptions)
 
   logger.info('每日用电报告服务已在服务器启动时启动');
 
-  if (IS_CLOUD) {
+  if (IS_CLOUD && ENABLE_CRAWLER) {
     const cloudName = IS_RENDER ? 'Render' : IS_RAILWAY ? 'Railway' : IS_ZEABUR ? 'Zeabur' : 'Vercel';
     logger.info(`${cloudName} 云端实例: 自动启动保障爬虫`);
     crawler.start();
@@ -185,12 +188,15 @@ mongoose.connection.on('disconnected', () => {
   logger.warn('MongoDB连接已断开');
 });
 
+let isShuttingDown = false;
 const gracefulShutdown = (signal) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
   logger.info(`收到${signal}信号，正在关闭服务器...`);
   
-  server.close(() => {
+  server.close(async () => {
     logger.info('HTTP服务器已关闭');
-    mongoose.connection.close(false);
+    await mongoose.connection.close(false);
     logger.info('MongoDB连接已关闭');
     process.exit(0);
   });

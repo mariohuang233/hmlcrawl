@@ -1102,6 +1102,9 @@ router.post('/report', apiAuth, validateReportBody, async (req, res) => {
     const { meter_id, meter_name, remaining_kwh, collected_at, crawl_id, source, format_version } = req.body;
 
     const collectedDate = collected_at ? new Date(collected_at) : new Date();
+    if (Number.isNaN(collectedDate.getTime())) {
+      return res.status(400).json({ error: 'collected_at 不是有效日期' });
+    }
 
     if (crawl_id) {
       const existing = await Usage.findOne({
@@ -1118,7 +1121,10 @@ router.post('/report', apiAuth, validateReportBody, async (req, res) => {
       meter_id: meter_id || process.env.METER_ID || '18100071580',
       meter_name: meter_name || process.env.METER_NAME || '2759弄18号402阳台',
       remaining_kwh: req.validatedKwh,
-      collected_at: collectedDate
+      collected_at: collectedDate,
+      crawl_id,
+      source: source || 'api',
+      format_version
     };
 
     const usage = new Usage(usageData);
@@ -1148,7 +1154,8 @@ router.post('/report/batch', apiAuth, async (req, res) => {
       return res.status(400).json({ error: '单次最多上报500条记录' });
     }
 
-    let saved = 0;
+    const operations = [];
+    const identities = new Set();
     let skipped = 0;
     const errors = [];
 
@@ -1167,26 +1174,29 @@ router.post('/report/batch', apiAuth, async (req, res) => {
           continue;
         }
 
-        const existing = await Usage.findOne({
-          meter_id: record.meter_id || process.env.METER_ID || '18100071580',
-          collected_at: collectedDate
-        });
-
-        if (existing) {
+        const meterId = record.meter_id || process.env.METER_ID || '18100071580';
+        const identity = `${meterId}:${collectedDate.toISOString()}`;
+        if (identities.has(identity)) {
           skipped++;
           continue;
         }
-
+        identities.add(identity);
         const usageData = {
-          meter_id: record.meter_id || process.env.METER_ID || '18100071580',
+          meter_id: meterId,
           meter_name: record.meter_name || process.env.METER_NAME || '2759弄18号402阳台',
           remaining_kwh: kwh,
-          collected_at: collectedDate
+          collected_at: collectedDate,
+          crawl_id: record.crawl_id,
+          source: record.source || 'batch',
+          format_version: record.format_version
         };
-
-        const usage = new Usage(usageData);
-        await usage.save();
-        saved++;
+        operations.push({
+          updateOne: {
+            filter: { meter_id: meterId, collected_at: collectedDate },
+            update: { $setOnInsert: usageData },
+            upsert: true
+          }
+        });
       } catch (e) {
         if (e.code === 11000) {
           skipped++;
@@ -1194,6 +1204,13 @@ router.post('/report/batch', apiAuth, async (req, res) => {
           errors.push({ index: i, error: e.message });
         }
       }
+    }
+
+    let saved = 0;
+    if (operations.length > 0) {
+      const result = await Usage.bulkWrite(operations, { ordered: false });
+      saved = result.upsertedCount;
+      skipped += operations.length - saved;
     }
 
     logger.info(`批量上报: 保存 ${saved} 条, 跳过 ${skipped} 条, 错误 ${errors.length} 条`);
@@ -1279,4 +1296,3 @@ router.get('/recharge-history', async (req, res) => {
 });
 
 module.exports = router;
-
