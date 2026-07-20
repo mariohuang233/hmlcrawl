@@ -259,6 +259,42 @@ usageSchema.statics.getHourlyUsagePattern = async function(meterId, daysCount = 
   }
 };
 
+// 获取今天实际的小时用电分布
+usageSchema.statics.getTodayHourlyUsage = async function(meterId) {
+  try {
+    const now = new Date();
+    const todayStart = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    todayStart.setHours(0, 0, 0, 0);
+    todayStart.setTime(todayStart.getTime() - 8 * 60 * 60 * 1000);
+
+    const data = await this.getUsageInRange(meterId, todayStart, now);
+
+    const hourlyUsage = Array.from({ length: 24 }, (_, i) => ({ hour: i, kwh: 0, count: 0 }));
+
+    for (let i = 1; i < data.length; i++) {
+      const prev = data[i - 1];
+      const curr = data[i];
+      const diff = prev.remaining_kwh - curr.remaining_kwh;
+      if (diff < 0) continue;
+
+      const beijingHour = Math.floor((curr.collected_at.getTime() + 8 * 60 * 60 * 1000) / (1000 * 60 * 60)) % 24;
+      if (beijingHour >= 0 && beijingHour < 24) {
+        hourlyUsage[beijingHour].kwh += diff;
+        hourlyUsage[beijingHour].count++;
+      }
+    }
+
+    return hourlyUsage.map(h => ({
+      hour: h.hour,
+      kwh: Math.round(h.kwh * 100) / 100,
+      count: h.count
+    }));
+  } catch (error) {
+    console.error('获取今日小时用电分布失败:', error.message);
+    return Array.from({ length: 24 }, (_, i) => ({ hour: i, kwh: 0, count: 0 }));
+  }
+};
+
 usageSchema.statics.getRechargeHistory = async function(meterId, limit = 50) {
   try {
     const data = await this.find({ meter_id: meterId })

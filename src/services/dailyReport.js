@@ -179,16 +179,24 @@ async function fetchDailyData(meterId) {
   try {
     const now = new Date();
     const todayStart = getBeijingTodayStart(now);
+    
+    const yesterdayEnd = new Date(todayStart.getTime() - 1);
+    const yesterdayStart = new Date(yesterdayEnd.getTime() + 8 * 60 * 60 * 1000);
+    yesterdayStart.setHours(0, 0, 0, 0);
+    yesterdayStart.setTime(yesterdayStart.getTime() - 8 * 60 * 60 * 1000);
 
-    const [todayStats, latestUsage, dailyStats, hourlyPattern] = await Promise.all([
+    const [todayStats, yesterdayStats, latestUsage, dailyStats, hourlyPattern, todayHourlyUsage] = await Promise.all([
       Usage.calculateUsageStats(meterId, todayStart, now),
+      Usage.calculateUsageStats(meterId, yesterdayStart, yesterdayEnd),
       Usage.getLatestUsage(meterId),
       Usage.getDailyUsageStats(meterId, 7),
-      Usage.getHourlyUsagePattern(meterId, 7)
+      Usage.getHourlyUsagePattern(meterId, 7),
+      Usage.getTodayHourlyUsage(meterId)
     ]);
 
     const remainingKwh = latestUsage ? latestUsage.remaining_kwh : null;
     const todayUsage = todayStats.totalUsage;
+    const yesterdayUsage = yesterdayStats.totalUsage;
 
     const remaining = calculateSmartRemainingDuration(remainingKwh, dailyStats, hourlyPattern);
 
@@ -196,14 +204,19 @@ async function fetchDailyData(meterId) {
       ? dailyStats.filter(d => d.usageKwh > 0).reduce((sum, d) => sum + d.usageKwh, 0) / dailyStats.filter(d => d.usageKwh > 0).length
       : 0;
 
+    const usageDiff = todayUsage - yesterdayUsage;
+
     return {
       success: true,
       todayUsage,
+      yesterdayUsage,
+      usageDiff: Math.round(usageDiff * 100) / 100,
       remainingKwh,
       remainingDuration: remaining,
       avgDailyUsage: Math.round(avgDailyUsage * 100) / 100,
       dailyStats,
       hourlyPattern,
+      todayHourlyUsage,
       timestamp: now
     };
   } catch (error) {
@@ -236,7 +249,19 @@ function generateReportMessage(data) {
 
   let message = `📊 用电日报 · ${dateStr}\n\n`;
 
-  message += ` 💡 今日用电 ${data.todayUsage.toFixed(2)} 度 ｜ 日均 ${data.avgDailyUsage.toFixed(2)} 度\n`;
+  let compareText = '';
+  if (data.yesterdayUsage > 0) {
+    if (data.usageDiff > 0) {
+      compareText = `相较昨天 +${data.usageDiff.toFixed(1)} 度`;
+    } else if (data.usageDiff < 0) {
+      compareText = `相较昨天 ${data.usageDiff.toFixed(1)} 度`;
+    } else {
+      compareText = '与昨天持平';
+    }
+  } else {
+    compareText = `日均 ${data.avgDailyUsage.toFixed(2)} 度`;
+  }
+  message += ` 💡 今日用电 ${data.todayUsage.toFixed(2)} 度 ｜ ${compareText}\n`;
   
   const predictedTime = duration.hours !== null ? new Date(data.timestamp.getTime() + duration.hours * 60 * 60 * 1000) : null;
   let timeText = '';
@@ -297,13 +322,16 @@ function generateReportMessage(data) {
   message += ` ━━━━━━━━━━━━━━━━━━━━━━\n`;
   message += ` 📈 今日用电分布\n\n`;
 
-  const nightUsage = data.hourlyPattern.slice(0, 6).reduce((sum, h) => sum + h.avgKwh, 0);
-  const morningUsage = data.hourlyPattern.slice(6, 12).reduce((sum, h) => sum + h.avgKwh, 0);
-  const noonUsage = data.hourlyPattern.slice(12, 18).reduce((sum, h) => sum + h.avgKwh, 0);
-  const eveningUsage = data.hourlyPattern.slice(18, 24).reduce((sum, h) => sum + h.avgKwh, 0);
+  const hourlyData = data.todayHourlyUsage || data.hourlyPattern;
+  const getValue = (h) => h.kwh !== undefined ? h.kwh : h.avgKwh;
+
+  const nightUsage = hourlyData.slice(0, 6).reduce((sum, h) => sum + getValue(h), 0);
+  const morningUsage = hourlyData.slice(6, 12).reduce((sum, h) => sum + getValue(h), 0);
+  const noonUsage = hourlyData.slice(12, 18).reduce((sum, h) => sum + getValue(h), 0);
+  const eveningUsage = hourlyData.slice(18, 24).reduce((sum, h) => sum + getValue(h), 0);
   
-  const totalUsage = nightUsage + morningUsage + noonUsage + eveningUsage;
-  const eveningPercentage = totalUsage > 0 ? Math.round(eveningUsage / totalUsage * 100) : 0;
+  const totalPeriodUsage = nightUsage + morningUsage + noonUsage + eveningUsage;
+  const eveningPercentage = totalPeriodUsage > 0 ? Math.round(eveningUsage / totalPeriodUsage * 100) : 0;
   
   message += ` 🌌 0:00-6:00   深夜  ${nightUsage.toFixed(2)}度\n`;
   message += ` 🌅 6:00-12:00  早间  ${morningUsage.toFixed(2)}度\n`;
@@ -314,9 +342,9 @@ function generateReportMessage(data) {
   }
   message += `\n\n`;
 
-  const hourlyUsageList = data.hourlyPattern.map(h => ({
+  const hourlyUsageList = hourlyData.map(h => ({
     hour: h.hour,
-    usage: h.avgKwh
+    usage: getValue(h)
   })).sort((a, b) => b.usage - a.usage);
   
   const top3 = hourlyUsageList.slice(0, 3);
