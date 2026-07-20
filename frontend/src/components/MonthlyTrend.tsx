@@ -36,13 +36,23 @@ const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false }) => {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
+      const responseData = await response.json();
       
-      if (data.error) {
-        throw new Error(data.message || data.error);
+      if (responseData.error) {
+        throw new Error(responseData.message || responseData.error);
       }
-      
-      setData(data);
+
+      if (!Array.isArray(responseData)) {
+        throw new Error('月度趋势数据格式无效');
+      }
+
+      setData(responseData.map((item: MonthlyData) => ({
+        ...item,
+        used_kwh: Number.isFinite(Number(item.used_kwh)) ? Number(item.used_kwh) : 0,
+        prev_month_used_kwh: Number.isFinite(Number(item.prev_month_used_kwh))
+          ? Number(item.prev_month_used_kwh)
+          : 0
+      })));
     } catch (error) {
       console.error('Error fetching monthly trend:', error);
       setData([]);
@@ -101,8 +111,8 @@ const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false }) => {
         
         return `
           <div style="padding: 4px;">
-            <div style="margin-bottom: 8px; font-weight: 600; color: #0ea5e9; font-size: ${isMobile ? 15 : 14}px;">${point.axisValue}</div>
-            <div style="margin-bottom: 4px;">用电量: <span style="color: #0ea5e9; font-weight: 600;">${point.value}</span> kWh</div>
+            <div style="margin-bottom: 8px; font-weight: 600; color: #176a6d; font-size: ${isMobile ? 15 : 14}px;">${point.axisValue}</div>
+            <div style="margin-bottom: 4px;">用电量: <span style="color: #176a6d; font-weight: 600;">${point.value}</span> kWh</div>
             ${comparisonHtml}
           </div>
         `;
@@ -110,7 +120,7 @@ const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false }) => {
     },
     xAxis: {
       type: 'category',
-      data: data.map(item => item.month),
+      data: data.map(item => item.month.replace(/^(\d{4})-(\d{2})$/, '$1/$2')),
       axisLabel: {
         rotate: isMobile ? 45 : 45,
         interval: isMobile ? (index: number) => index % 2 === 0 : 0,
@@ -174,6 +184,7 @@ const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false }) => {
         name: '月用电',
         type: 'bar',
         data: data.map(item => item.used_kwh),
+        barMaxWidth: isMobile ? 20 : 28,
         itemStyle: {
           color: {
             type: 'linear',
@@ -182,16 +193,16 @@ const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false }) => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: '#0ea5e9' },
-              { offset: 0.5, color: '#38bdf8' },
-              { offset: 1, color: '#7dd3fc' }
+              { offset: 0, color: '#176a6d' },
+              { offset: 0.5, color: '#287f82' },
+              { offset: 1, color: '#89b9ba' }
             ]
           },
           borderRadius: [isMobile ? 6 : 8, isMobile ? 6 : 8, 0, 0]
         },
         emphasis: {
           itemStyle: {
-            color: '#0ea5e9'
+            color: '#176a6d'
           }
         },
         animationDelay: 0,
@@ -219,8 +230,20 @@ const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false }) => {
     );
   }
 
+  if (data.length === 0 || data.every(item => item.used_kwh <= 0)) {
+    return (
+      <div className={`card chart-card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
+        <h2 className="card-title">12个月用电趋势</h2>
+        <div className="chart-empty-state">
+          <span className="chart-empty-kicker">暂无月度数据</span>
+          <p>完成至少两次有效采集后，这里会显示每月用电柱状图。</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
+    <div className={`card chart-card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
       <ReactECharts 
         option={chartOption} 
         style={{ height: isMobile ? '380px' : '380px' }}

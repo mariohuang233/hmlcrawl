@@ -175,7 +175,7 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false }) 
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: '#a07048' },
+              { offset: 0, color: '#176a6d' },
               { offset: 0.5, color: '#c49a6c' },
               { offset: 1, color: '#d4b896' }
             ]
@@ -184,7 +184,7 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false }) 
         },
         emphasis: {
           itemStyle: {
-            color: '#a07048'
+            color: '#176a6d'
           }
         },
         animationDelay: 0,

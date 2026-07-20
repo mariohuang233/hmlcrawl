@@ -274,11 +274,11 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false }) => {
         symbolSize: 5,
         showSymbol: data.length <= 20,
         lineStyle: {
-          color: '#a07048',
+          color: '#176a6d',
           width: 3
         },
         itemStyle: {
-          color: '#a07048',
+          color: '#176a6d',
           borderColor: '#ffffff',
           borderWidth: 2
         },
@@ -290,9 +290,9 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false }) => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(160, 112, 72, 0.15)' },
-              { offset: 0.5, color: 'rgba(160, 112, 72, 0.08)' },
-              { offset: 1, color: 'rgba(160, 112, 72, 0.02)' }
+              { offset: 0, color: 'rgba(40, 127, 130, 0.16)' },
+              { offset: 0.5, color: 'rgba(40, 127, 130, 0.08)' },
+              { offset: 1, color: 'rgba(40, 127, 130, 0.02)' }
             ]
           }
         },
@@ -317,11 +317,11 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false }) => {
         height: mobileState ? 28 : 22,
         bottom: mobileState ? 15 : 12,
         backgroundColor: '#f5f3f1',
-        fillerColor: 'rgba(160, 112, 72, 0.15)',
+        fillerColor: 'rgba(40, 127, 130, 0.15)',
         borderColor: 'rgba(184, 134, 90, 0.12)',
         borderRadius: mobileState ? 14 : 11,
         handleStyle: {
-          color: '#a07048',
+          color: '#176a6d',
           borderColor: '#ffffff',
           borderWidth: mobileState ? 2 : 1
         },

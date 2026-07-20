@@ -36,10 +36,12 @@ const crawlerLogSchema = new mongoose.Schema({
 crawlerLogSchema.index({ timestamp: -1 });
 crawlerLogSchema.index({ action: 1, timestamp: -1 });
 crawlerLogSchema.index({ level: 1, timestamp: -1 });
+crawlerLogSchema.index({ source: 1, timestamp: -1 });
 
 // 静态方法：获取最近的日志
-crawlerLogSchema.statics.getRecentLogs = async function(limit = 100) {
-  return this.find()
+crawlerLogSchema.statics.getRecentLogs = async function(limit = 100, source) {
+  const query = source ? { source } : {};
+  return this.find(query)
     .sort({ timestamp: -1 })
     .limit(limit)
     .lean();

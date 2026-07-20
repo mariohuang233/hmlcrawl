@@ -10,6 +10,16 @@ const { crawlerLogger } = require('../utils/logger');
 const Format = require('../utils/crawler-format');
 const alerter = require('../utils/alerter');
 
+const IS_CLOUD_RUNTIME = !!(
+  process.env.RAILWAY_SERVICE_NAME ||
+  process.env.RAILWAY_STATIC_URL ||
+  process.env.ZEABUR_SERVICE_NAME ||
+  process.env.ZEABUR_DOMAIN ||
+  process.env.RENDER ||
+  process.env.VERCEL
+);
+const CRAWLER_LOG_SOURCE = IS_CLOUD_RUNTIME ? 'cloud-crawler' : 'local-crawler';
+
 const CONFIG = {
   PROXY_URL: process.env.PROXY_URL || process.env.VERCEL_PROXY_URL,
   USE_PROXY: !!process.env.PROXY_URL || !!process.env.VERCEL_PROXY_URL,
@@ -272,16 +282,16 @@ class ElectricityCrawler {
         action: entry.action || 'unknown',
         message: entry.error || entry.info || JSON.stringify(entry.data),
         data: entry.data,
-        source: 'local'
+        source: CRAWLER_LOG_SOURCE
       });
     } catch (e) {
       /* ignore */
     }
   }
 
-  async getLogs(limit = 100) {
+  async getLogs(limit = 100, source = CRAWLER_LOG_SOURCE) {
     try {
-      const dbLogs = await CrawlerLog.getRecentLogs(limit);
+      const dbLogs = await CrawlerLog.getRecentLogs(limit, source);
       if (dbLogs && dbLogs.length > 0) {
         return dbLogs.map(log => ({
           timestamp: log.timestamp,
@@ -296,7 +306,13 @@ class ElectricityCrawler {
     } catch (e) {
       /* ignore */
     }
-    return this.logEntries.slice(0, limit);
+    if (source !== CRAWLER_LOG_SOURCE) {
+      return [];
+    }
+    return this.logEntries.slice(0, limit).map(log => ({
+      ...log,
+      source: CRAWLER_LOG_SOURCE
+    }));
   }
 
   getStats() {

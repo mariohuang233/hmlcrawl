@@ -178,11 +178,11 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false }) => {
         symbol: 'circle',
         symbolSize: isMobile ? 4 : 5,
         lineStyle: {
-          color: '#a07048',
+          color: '#176a6d',
           width: isMobile ? 2 : 3
         },
         itemStyle: {
-          color: '#a07048',
+          color: '#176a6d',
           borderColor: '#ffffff',
           borderWidth: isMobile ? 1 : 2
         },
@@ -194,8 +194,8 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false }) => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(160, 112, 72, 0.12)' },
-              { offset: 1, color: 'rgba(160, 112, 72, 0.02)' }
+              { offset: 0, color: 'rgba(40, 127, 130, 0.14)' },
+              { offset: 1, color: 'rgba(40, 127, 130, 0.02)' }
             ]
           }
         },

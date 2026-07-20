@@ -96,6 +96,7 @@ interface LogEntry {
   level: 'info' | 'warn' | 'error';
   message: string;
   data?: any;
+  source?: string;
 }
 
 function App() {
@@ -134,7 +135,7 @@ function App() {
   const fetchLogs = useCallback(async () => {
     try {
       setLogsLoading(true);
-      const response = await fetch('/api/crawler/logs?limit=50');
+      const response = await fetch('/api/crawler/logs?source=local-crawler&limit=50');
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -144,7 +145,8 @@ function App() {
         const formattedLogs = data.logs.map((log: any) => ({
           timestamp: log.timestamp || log.time,
           level: log.level || ((log.action === 'error' || log.action === 'failed') ? 'error' : 'info'),
-          message: log.message || log.info || JSON.stringify(log.data || log, null, 2)
+          message: log.message || log.info || JSON.stringify(log.data || log, null, 2),
+          source: log.source
         }));
         setLogs(formattedLogs);
       } else {
@@ -281,7 +283,7 @@ function App() {
                 title={showLogs ? '隐藏日志' : '查看日志'}
                 aria-expanded={showLogs}
               >
-                <span>{showLogs ? '收起日志' : '系统日志'}</span>
+                <span>{showLogs ? '收起日志' : '本地日志'}</span>
               </button>
             </div>
           </div>
@@ -303,12 +305,20 @@ function App() {
           
           {showLogs && (
             <section className="logs-section" aria-live="polite">
-              <h2 className="logs-title">系统日志</h2>
-              <div className="logs-subtitle">最近 50 条记录</div>
+              <div className="logs-heading">
+                <div>
+                  <h2 className="logs-title">本地爬虫日志</h2>
+                  <div className="logs-subtitle">仅展示本机爬虫最近 50 条记录</div>
+                </div>
+                <span className="logs-source-badge">LOCAL</span>
+              </div>
               {logsLoading ? (
                 <div className="logs-loading">加载中...</div>
               ) : logs.length === 0 ? (
-                <div className="logs-empty">暂无日志</div>
+                <div className="logs-empty">
+                  <strong>暂无本地爬虫日志</strong>
+                  <span>启动本地爬虫并完成一次采集后，记录会显示在这里。</span>
+                </div>
               ) : (
                 <div className="logs-list">
                   {logs.map((log, index) => (

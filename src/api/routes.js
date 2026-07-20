@@ -855,7 +855,13 @@ router.get('/trend/30d', cacheMiddleware('30d', 300000), asyncHandler(async (req
 // 获取最近12个月月用电
 router.get('/trend/monthly', cacheMiddleware('monthly', 600000), asyncHandler(async (req, res) => {
     const endDate = new Date();
-    const startDate = new Date(endDate.getFullYear() - 1, endDate.getMonth(), 1);
+    const beijingNow = new Date(endDate.getTime() + 8 * 60 * 60 * 1000);
+    const firstMonthUtc = new Date(Date.UTC(
+      beijingNow.getUTCFullYear(),
+      beijingNow.getUTCMonth() - 11,
+      1
+    ));
+    const startDate = new Date(firstMonthUtc.getTime() - 8 * 60 * 60 * 1000);
     
     const data = await Usage.getUsageInRange('18100071580', startDate, endDate);
     
@@ -867,14 +873,15 @@ router.get('/trend/monthly', cacheMiddleware('monthly', 600000), asyncHandler(as
       const curr = data[i];
       
       const timeDiff = curr.collected_at.getTime() - prev.collected_at.getTime();
-      const maxGap = 24 * 60 * 60 * 1000;
+      // 容忍每日采集任务的执行抖动，避免略超 24 小时的数据间隔被全部丢弃。
+      const maxGap = 36 * 60 * 60 * 1000;
       
       if (timeDiff > maxGap) {
         continue;
       }
       
-      const beijingDate = getBeijingTodayStart(curr.collected_at);
-      const month = beijingDate.toISOString().substring(0, 7); // YYYY-MM
+      const beijingDate = new Date(curr.collected_at.getTime() + 8 * 60 * 60 * 1000);
+      const month = `${beijingDate.getUTCFullYear()}-${String(beijingDate.getUTCMonth() + 1).padStart(2, '0')}`;
       const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
       
       if (!monthlyUsage[month]) {
@@ -883,7 +890,15 @@ router.get('/trend/monthly', cacheMiddleware('monthly', 600000), asyncHandler(as
       monthlyUsage[month] += usedKwh;
     }
     
-    const sortedMonths = Object.keys(monthlyUsage).sort();
+    // 无论某月是否有采集记录，都稳定返回连续 12 个月，避免前端出现空坐标轴或缺月。
+    const sortedMonths = Array.from({ length: 12 }, (_, index) => {
+      const date = new Date(Date.UTC(
+        beijingNow.getUTCFullYear(),
+        beijingNow.getUTCMonth() - 11 + index,
+        1
+      ));
+      return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    });
     const result = sortedMonths.map((month, index) => {
       const usage = Math.round((monthlyUsage[month] || 0) * 100) / 100;
       const prevMonth = index > 0 ? sortedMonths[index - 1] : null;
@@ -977,11 +992,20 @@ router.post('/cleanup', async (req, res) => {
 // 获取爬虫日志
 router.get('/crawler/logs', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 100;
-    logger.info(`获取爬虫日志请求，限制: ${limit} 条`);
-    const logs = await crawler.getLogs(limit);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 200);
+    const source = req.query.source || 'local-crawler';
+    const allowedSources = new Set(['local-crawler', 'cloud-crawler']);
+    if (!allowedSources.has(source)) {
+      return res.status(400).json({
+        success: false,
+        error: 'invalid_source',
+        message: '日志来源仅支持 local-crawler 或 cloud-crawler'
+      });
+    }
+    logger.info(`获取爬虫日志请求，来源: ${source}，限制: ${limit} 条`);
+    const logs = await crawler.getLogs(limit, source);
     logger.info(`返回 ${logs.length} 条日志记录`);
-    res.json({ success: true, logs, count: logs.length });
+    res.json({ success: true, source, logs, count: logs.length });
   } catch (error) {
     logger.error('获取爬虫日志失败:', error.message);
     res.status(500).json({ error: error.message });

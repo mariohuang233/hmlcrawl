@@ -4,7 +4,7 @@ const fs = require('fs');
 const winstonDailyRotateFile = require('winston-daily-rotate-file');
 
 // 确保logs目录存在 - 使用项目根目录
-const logsDir = path.join(__dirname, '../../../logs');
+const logsDir = path.join(__dirname, '../../logs');
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
