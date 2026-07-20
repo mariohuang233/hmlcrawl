@@ -359,7 +359,8 @@ function generateReportMessage(data) {
     message += `\n`;
   }
 
-  message += ` 👉 [点击充值]（跳转到 https://www.wap.cnyiot.com/nat/pay.aspx?mid=${process.env.METER_ID || '18100071580'} ）\n`;
+  const rechargeUrl = `https://www.wap.cnyiot.com/nat/pay.aspx?mid=${process.env.METER_ID || '18100071580'}`;
+  message += ` 👉 [点击充值](${rechargeUrl})\n`;
   message += ` 📅 截至 23:59`;
 
   return {
