@@ -13,6 +13,10 @@ const useMediaQuery = (query: string) => {
   const [matches, setMatches] = useState(false);
 
   useEffect(() => {
+    if (typeof window.matchMedia !== 'function') {
+      return undefined;
+    }
+
     const media = window.matchMedia(query);
     if (media.matches !== matches) {
       setMatches(media.matches);
@@ -104,7 +108,6 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [headerScrolled, setHeaderScrolled] = useState(false);
   const isMobile = useMediaQuery('(max-width: 768px)');
 
   const fetchOverview = useCallback(async (silent = false) => {
@@ -183,14 +186,6 @@ function App() {
     return () => clearInterval(interval);
   }, [fetchOverview]);
 
-  useEffect(() => {
-    const handleScroll = () => {
-      setHeaderScrolled(window.scrollY > 20);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
   if (loading) {
     return (
       <div className="app-container">
@@ -246,7 +241,7 @@ function App() {
 
   return (
     <div className="app-container">
-      <header className={`app-header ${headerScrolled ? 'scrolled' : ''}`}>
+      <header className="app-header">
         <div className="header-content">
           <div className="header-inner">
             <div className="app-title-section">
@@ -266,20 +261,27 @@ function App() {
               </p>
             </div>
             <div className="header-actions">
+              <div className="system-status" aria-label="系统状态正常">
+                <span className="system-status-mark" aria-hidden="true"></span>
+                数据在线
+              </div>
               <button
                 onClick={handleRefresh}
-                className={`btn btn-icon ${isRefreshing ? 'refreshing' : ''}`}
+                className={`btn btn-quiet ${isRefreshing ? 'refreshing' : ''}`}
                 title="刷新数据"
+                aria-label="刷新全部数据"
                 disabled={isRefreshing}
               >
-                <span className="btn-icon-text">{isRefreshing ? '⟳' : '↻'}</span>
+                <span className="refresh-mark" aria-hidden="true">↻</span>
+                <span>{isRefreshing ? '刷新中' : '刷新'}</span>
               </button>
               <button
                 onClick={handleShowLogs}
-                className="btn btn-icon"
+                className={`btn btn-quiet ${showLogs ? 'is-active' : ''}`}
                 title={showLogs ? '隐藏日志' : '查看日志'}
+                aria-expanded={showLogs}
               >
-                <span className="btn-icon-text">{showLogs ? '✕' : '☰'}</span>
+                <span>{showLogs ? '收起日志' : '系统日志'}</span>
               </button>
             </div>
           </div>
@@ -300,7 +302,7 @@ function App() {
           <RechargeHistory key={`recharge-${refreshKey}`} isMobile={isMobile} refreshKey={refreshKey} />
           
           {showLogs && (
-            <div className="logs-section">
+            <section className="logs-section" aria-live="polite">
               <h2 className="logs-title">系统日志</h2>
               <div className="logs-subtitle">最近 50 条记录</div>
               {logsLoading ? (
@@ -327,7 +329,7 @@ function App() {
                   ))}
                 </div>
               )}
-            </div>
+            </section>
           )}
         </div>
       </main>
