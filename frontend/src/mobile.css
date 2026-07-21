@@ -1,0 +1,108 @@
+/* Loaded after the desktop system so mobile layout wins the cascade. */
+@media (max-width: 768px) {
+  .header-content { padding-inline: 14px; }
+  .header-inner { min-height: 58px; gap: 8px; }
+  .app-title-section { min-width: 0; gap: 8px; }
+  .app-title {
+    min-width: 0;
+    gap: 9px;
+    font-size: clamp(16px, 4.5vw, 19px);
+  }
+  .app-title-icon { width: 34px; height: 34px; }
+  .app-title-text {
+    min-width: 0;
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .header-actions { flex: 0 0 auto; gap: 6px; }
+  .btn-quiet {
+    width: 38px;
+    min-width: 38px;
+    min-height: 38px;
+    border-radius: 10px;
+  }
+  .app-main { padding: 18px 14px 44px; }
+  .card-title { margin-bottom: 14px; font-size: 15px; }
+
+  .hero-section {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .hero-card {
+    min-height: 0;
+    padding: 18px;
+    border-left-width: 3px !important;
+  }
+  .hero-content { align-items: center; gap: 14px; }
+  .hero-icon-wrapper {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+  }
+  .hero-icon { font-size: 23px; }
+  .hero-label {
+    margin-bottom: 4px;
+    font-size: 11px;
+    letter-spacing: .04em;
+  }
+  .hero-value-row { min-width: 0; flex-wrap: nowrap; }
+  .hero-value {
+    min-width: 0;
+    font-size: clamp(31px, 10vw, 42px);
+    line-height: 1.08;
+    white-space: nowrap;
+  }
+  .hero-unit { flex: 0 0 auto; font-size: 13px; }
+  .hero-subtitle {
+    margin-top: 5px;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .battery-bar-container { gap: 10px; margin-top: 10px; }
+  .battery-bar-text { min-width: 42px; font-size: 11px; }
+
+  .secondary-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .secondary-stat-card {
+    min-height: 112px;
+    padding: 14px;
+    border-radius: 14px;
+  }
+  .secondary-stat-icon { margin-bottom: 10px; font-size: 13px; }
+  .secondary-stat-value {
+    margin-bottom: 3px;
+    font-size: clamp(20px, 6vw, 25px);
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+  .secondary-stat-label { font-size: 11px; line-height: 1.4; }
+  .secondary-stat-comparison {
+    display: grid;
+    gap: 3px;
+    margin-top: 7px;
+  }
+  .comparison-badge { font-size: 10px; line-height: 1.35; }
+
+  .charts-grid-mobile { gap: 10px; margin-top: 10px; }
+  .charts-grid-mobile > .card { padding: 12px; border-radius: 14px; }
+  .chart-container { height: 310px !important; }
+  .logs-section { padding: 16px; }
+}
+
+@media (max-width: 390px) {
+  .header-content { padding-inline: 10px; }
+  .app-title-icon { width: 32px; height: 32px; }
+  .btn-quiet {
+    width: 36px;
+    min-width: 36px;
+    min-height: 36px;
+  }
+  .app-main { padding-inline: 10px; }
+  .hero-card { padding: 16px; }
+  .secondary-stat-card { padding: 12px; }
+}

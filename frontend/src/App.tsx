@@ -6,6 +6,7 @@ import DailyTrend from './components/DailyTrend';
 import MonthlyTrend from './components/MonthlyTrend';
 import RechargeHistory from './components/RechargeHistory';
 import './App.css';
+import './mobile.css';
 import { fetchAPI, retryRequest, formatErrorMessage } from './utils/api';
 import bubuIcon from './assets/bubu.png';
 
