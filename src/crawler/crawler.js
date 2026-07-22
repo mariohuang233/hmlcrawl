@@ -9,6 +9,7 @@ const CrawlerLog = require('../models/CrawlerLog');
 const { crawlerLogger } = require('../utils/logger');
 const Format = require('../utils/crawler-format');
 const batteryAlertService = require('../services/batteryAlertService');
+const { normalizeSource } = require('../services/batteryAlertPolicy');
 
 const IS_CLOUD_RUNTIME = !!(
   process.env.RAILWAY_SERVICE_NAME ||
@@ -306,8 +307,31 @@ class ElectricityCrawler {
           hostname: log.hostname
         }));
       }
+      if (source === 'local') {
+        const readings = await Usage.find({
+          source: { $in: ['local', 'ipad', 'mobile', 'api'] }
+        })
+          .sort({ collected_at: -1 })
+          .limit(limit)
+          .select('collected_at remaining_kwh meter_id source')
+          .lean();
+        if (readings.length > 0) {
+          return readings.map(reading => ({
+            timestamp: reading.collected_at,
+            level: 'info',
+            action: 'reading_received',
+            message: `采集到电量: ${reading.remaining_kwh} kWh`,
+            data: {
+              remaining_kwh: reading.remaining_kwh,
+              meter_id: reading.meter_id,
+              fallback: true
+            },
+            source: normalizeSource(reading.source)
+          }));
+        }
+      }
     } catch (e) {
-      /* ignore */
+      crawlerLogger.warn(`读取持久化爬虫日志失败，回退到内存日志: ${e.message}`);
     }
     const canUseMemoryLogs = source === CRAWLER_LOG_SOURCE ||
       (source === 'local' && CRAWLER_LOG_SOURCE === 'local-crawler');
