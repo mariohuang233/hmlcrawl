@@ -6,6 +6,7 @@ const logger = require('../utils/logger');
 const crawler = require('../crawler/crawler');
 const Format = require('../utils/crawler-format');
 const dailyReport = require('../services/dailyReport');
+const batteryAlertService = require('../services/batteryAlertService');
 const {
   getBeijingHour,
   getBeijingTodayStart,
@@ -994,12 +995,12 @@ router.get('/crawler/logs', async (req, res) => {
   try {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 200);
     const source = req.query.source || 'local-crawler';
-    const allowedSources = new Set(['local-crawler', 'cloud-crawler']);
+    const allowedSources = new Set(['local', 'local-crawler', 'cloud-crawler']);
     if (!allowedSources.has(source)) {
       return res.status(400).json({
         success: false,
         error: 'invalid_source',
-        message: '日志来源仅支持 local-crawler 或 cloud-crawler'
+        message: '日志来源仅支持 local、local-crawler 或 cloud-crawler'
       });
     }
     logger.info(`获取爬虫日志请求，来源: ${source}，限制: ${limit} 条`);
@@ -1085,7 +1086,14 @@ router.post('/reportData', async (req, res) => {
     if (!data) return res.status(400).json({ error: '缺少data参数' });
     const parsed = await crawler.parseHtml(data);
     await crawler.saveData(parsed);
-    res.json({ success: true });
+    const alertResult = await batteryAlertService.processReading({
+      remainingKwh: parsed.remaining_kwh,
+      source: 'local-crawler',
+      meterId: parsed.meter_id,
+      collectedAt: parsed.collected_at || new Date(),
+      ingestion: 'reportData'
+    });
+    res.json({ success: true, alert_status: alertResult.status });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1137,7 +1145,19 @@ router.post('/report', apiAuth, validateReportBody, async (req, res) => {
       });
       if (existing) {
         logger.info(`重复数据（crawl_id=${crawl_id}），返回409`);
-        return res.status(409).json({ success: true, message: '数据已存在（重复）', duplicate: true });
+        const alertResult = await batteryAlertService.processReading({
+          remainingKwh: req.validatedKwh,
+          source: source || 'api',
+          meterId: meter_id,
+          collectedAt: collectedDate,
+          ingestion: 'mobile-api-duplicate'
+        });
+        return res.status(409).json({
+          success: true,
+          message: '数据已存在（重复）',
+          duplicate: true,
+          alert_status: alertResult.status
+        });
       }
     }
 
@@ -1155,7 +1175,14 @@ router.post('/report', apiAuth, validateReportBody, async (req, res) => {
     await usage.save();
 
     logger.info(`数据上报成功: ${usageData.remaining_kwh} kWh (source=${source || 'unknown'})`);
-    res.json({ success: true, message: '数据已接收' });
+    const alertResult = await batteryAlertService.processReading({
+      remainingKwh: usageData.remaining_kwh,
+      source: usageData.source,
+      meterId: usageData.meter_id,
+      collectedAt: usageData.collected_at,
+      ingestion: 'mobile-api'
+    });
+    res.json({ success: true, message: '数据已接收', alert_status: alertResult.status });
   } catch (err) {
     if (err.code === 11000) {
       return res.status(409).json({ success: true, message: '数据已存在（重复）', duplicate: true });
@@ -1179,6 +1206,7 @@ router.post('/report/batch', apiAuth, async (req, res) => {
     }
 
     const operations = [];
+    const alertCandidates = [];
     const identities = new Set();
     let skipped = 0;
     const errors = [];
@@ -1221,6 +1249,7 @@ router.post('/report/batch', apiAuth, async (req, res) => {
             upsert: true
           }
         });
+        alertCandidates.push(usageData);
       } catch (e) {
         if (e.code === 11000) {
           skipped++;
@@ -1238,10 +1267,25 @@ router.post('/report/batch', apiAuth, async (req, res) => {
     }
 
     logger.info(`批量上报: 保存 ${saved} 条, 跳过 ${skipped} 条, 错误 ${errors.length} 条`);
+    let alertStatus;
+    if (alertCandidates.length > 0) {
+      const latest = alertCandidates.reduce((current, candidate) =>
+        candidate.collected_at > current.collected_at ? candidate : current
+      );
+      const alertResult = await batteryAlertService.processReading({
+        remainingKwh: latest.remaining_kwh,
+        source: latest.source,
+        meterId: latest.meter_id,
+        collectedAt: latest.collected_at,
+        ingestion: 'batch-api'
+      });
+      alertStatus = alertResult.status;
+    }
     res.json({
       success: true,
       saved,
       skipped,
+      alert_status: alertStatus,
       errors: errors.length > 0 ? errors : undefined
     });
   } catch (err) {

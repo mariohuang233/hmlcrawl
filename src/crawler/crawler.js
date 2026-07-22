@@ -8,7 +8,7 @@ const Usage = require('../models/Usage');
 const CrawlerLog = require('../models/CrawlerLog');
 const { crawlerLogger } = require('../utils/logger');
 const Format = require('../utils/crawler-format');
-const alerter = require('../utils/alerter');
+const batteryAlertService = require('../services/batteryAlertService');
 
 const IS_CLOUD_RUNTIME = !!(
   process.env.RAILWAY_SERVICE_NAME ||
@@ -291,7 +291,10 @@ class ElectricityCrawler {
 
   async getLogs(limit = 100, source = CRAWLER_LOG_SOURCE) {
     try {
-      const dbLogs = await CrawlerLog.getRecentLogs(limit, source);
+      const requestedSources = source === 'local'
+        ? ['local-crawler', 'mobile-crawler']
+        : source;
+      const dbLogs = await CrawlerLog.getRecentLogs(limit, requestedSources);
       if (dbLogs && dbLogs.length > 0) {
         return dbLogs.map(log => ({
           timestamp: log.timestamp,
@@ -306,7 +309,9 @@ class ElectricityCrawler {
     } catch (e) {
       /* ignore */
     }
-    if (source !== CRAWLER_LOG_SOURCE) {
+    const canUseMemoryLogs = source === CRAWLER_LOG_SOURCE ||
+      (source === 'local' && CRAWLER_LOG_SOURCE === 'local-crawler');
+    if (!canUseMemoryLogs) {
       return [];
     }
     return this.logEntries.slice(0, limit).map(log => ({
@@ -676,28 +681,18 @@ class ElectricityCrawler {
   }
 
   async _checkBatteryAlert(remainingKwh) {
-    if (remainingKwh <= this.batteryAlertThreshold) {
-      const now = Date.now();
-      const cooldownMs = this.batteryAlertCooldownHours * 60 * 60 * 1000;
-      
-      if (!this.lastBatteryAlertTime || now - this.lastBatteryAlertTime >= cooldownMs) {
-        crawlerLogger.warn(`电量低于阈值！当前 ${remainingKwh} kWh，阈值 ${this.batteryAlertThreshold} kWh，发送告警`);
-        const sent = await alerter.alertLowBattery(remainingKwh, this.batteryAlertThreshold);
-        if (sent) {
-          this.lastBatteryAlertTime = now;
-          this.updateStats('batteryAlerts');
-          await this.addLogEntry({
-            timestamp: new Date(),
-            action: 'battery_alert',
-            info: `电量告警已发送: ${remainingKwh} kWh`,
-            data: { remaining_kwh: remainingKwh, threshold: this.batteryAlertThreshold }
-          });
-        }
-      } else {
-        const remainingCooldown = Math.round((cooldownMs - (now - this.lastBatteryAlertTime)) / 3600000);
-        crawlerLogger.info(`电量低于阈值但处于冷却期，${remainingCooldown}小时后可再次发送告警`);
-      }
+    const result = await batteryAlertService.processReading({
+      remainingKwh,
+      source: CRAWLER_LOG_SOURCE,
+      meterId: this.meterId,
+      collectedAt: new Date(),
+      ingestion: 'node-crawler'
+    });
+    if (result.status === 'sent') {
+      this.lastBatteryAlertTime = Date.now();
+      this.updateStats('batteryAlerts');
     }
+    return result;
   }
 
   delay(ms) {

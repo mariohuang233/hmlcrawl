@@ -136,7 +136,7 @@ function App() {
   const fetchLogs = useCallback(async () => {
     try {
       setLogsLoading(true);
-      const response = await fetch('/api/crawler/logs?source=local-crawler&limit=50');
+      const response = await fetch('/api/crawler/logs?source=local&limit=50');
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -309,7 +309,7 @@ function App() {
               <div className="logs-heading">
                 <div>
                   <h2 className="logs-title">本地爬虫日志</h2>
-                  <div className="logs-subtitle">仅展示本机爬虫最近 50 条记录</div>
+                  <div className="logs-subtitle">本地 Node 与移动端爬虫最近 50 条记录</div>
                 </div>
                 <span className="logs-source-badge">LOCAL</span>
               </div>
@@ -318,7 +318,7 @@ function App() {
               ) : logs.length === 0 ? (
                 <div className="logs-empty">
                   <strong>暂无本地爬虫日志</strong>
-                  <span>启动本地爬虫并完成一次采集后，记录会显示在这里。</span>
+                  <span>本地或移动端爬虫完成一次采集后，记录会显示在这里。</span>
                 </div>
               ) : (
                 <div className="logs-list">

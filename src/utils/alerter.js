@@ -140,6 +140,18 @@ function formatAlert(level, message, details = {}) {
   if (details.threshold !== undefined) {
     text += `└ 阈值: ${details.threshold} kWh\n`;
   }
+  if (details.source) {
+    text += `└ 来源: ${details.source}\n`;
+  }
+  if (details.meter_id) {
+    text += `└ 电表: ${details.meter_id}\n`;
+  }
+  if (details.collected_at) {
+    const collectedAt = new Date(details.collected_at);
+    if (!Number.isNaN(collectedAt.getTime())) {
+      text += `└ 采集: ${collectedAt.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}\n`;
+    }
+  }
   if (details.uptime !== undefined) {
     text += `└ 运行: ${Math.round(details.uptime / 3600)}小时\n`;
   }
@@ -197,10 +209,11 @@ async function alertMemoryHigh(memMB) {
   return alert('warn', `内存使用过高: ${memMB}MB`, { uptime: process.uptime() });
 }
 
-async function alertLowBattery(remainingKwh, threshold = 1) {
+async function alertLowBattery(remainingKwh, threshold = 1, details = {}) {
   const percentage = Math.round((remainingKwh / threshold) * 100);
   const message = `电量低于阈值！当前剩余 ${remainingKwh} kWh（阈值: ${threshold} kWh），剩余 ${percentage}%`;
-  return alert('error', message, { 
+  return alert('error', message, {
+    ...details,
     remaining_kwh: remainingKwh, 
     threshold: threshold,
     uptime: process.uptime() 

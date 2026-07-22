@@ -40,7 +40,9 @@ crawlerLogSchema.index({ source: 1, timestamp: -1 });
 
 // 静态方法：获取最近的日志
 crawlerLogSchema.statics.getRecentLogs = async function(limit = 100, source) {
-  const query = source ? { source } : {};
+  const query = Array.isArray(source)
+    ? { source: { $in: source } }
+    : source ? { source } : {};
   return this.find(query)
     .sort({ timestamp: -1 })
     .limit(limit)
