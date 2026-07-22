@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import ReactECharts from 'echarts-for-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import Chart from './Chart';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
@@ -13,9 +13,10 @@ interface DailyData {
 
 interface DailyTrendProps {
   isMobile?: boolean;
+  refreshKey?: number;
 }
 
-const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false }) => {
+const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false, refreshKey = 0 }) => {
   const [data, setData] = useState<DailyData[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -24,11 +25,7 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false }) => {
     rootMargin: '0px 0px -50px 0px'
   });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/api/trend/30d`);
       
@@ -49,7 +46,11 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData, refreshKey]);
   
   const chartOption = {
     title: {
@@ -64,7 +65,8 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false }) => {
       top: isMobile ? 10 : 16
     },
     animation: hasTriggered,
-    animationDuration: 1800,
+    animationDuration: isMobile ? 400 : 650,
+    animationDurationUpdate: 250,
     animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'axis',
@@ -200,7 +202,7 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false }) => {
           }
         },
         animationDelay: 0,
-        animationDuration: 1800,
+        animationDuration: isMobile ? 400 : 650,
         animationEasing: 'cubicOut'
       }
     ],
@@ -226,15 +228,15 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false }) => {
 
   return (
     <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
-      <ReactECharts 
+      <Chart
         option={chartOption} 
         style={{ height: isMobile ? '380px' : '380px' }}
         className="chart-container"
-        notMerge={true}
-        lazyUpdate={false}
+        notMerge={false}
+        lazyUpdate={true}
       />
     </div>
   );
 };
 
-export default DailyTrend;
+export default React.memo(DailyTrend);

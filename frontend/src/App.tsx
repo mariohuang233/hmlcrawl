@@ -1,14 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { lazy, startTransition, useState, useEffect, useCallback, useRef } from 'react';
 import Overview from './components/Overview';
-import Trend24h from './components/Trend24h';
-import TodayUsage from './components/TodayUsage';
-import DailyTrend from './components/DailyTrend';
-import MonthlyTrend from './components/MonthlyTrend';
-import RechargeHistory from './components/RechargeHistory';
+import DeferredSection from './components/DeferredSection';
 import './App.css';
 import './mobile.css';
 import { fetchAPI, retryRequest, formatErrorMessage } from './utils/api';
 import bubuIcon from './assets/bubu.png';
+
+const Trend24h = lazy(() => import('./components/Trend24h'));
+const TodayUsage = lazy(() => import('./components/TodayUsage'));
+const DailyTrend = lazy(() => import('./components/DailyTrend'));
+const MonthlyTrend = lazy(() => import('./components/MonthlyTrend'));
+const RechargeHistory = lazy(() => import('./components/RechargeHistory'));
 
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = useState(false);
@@ -19,14 +21,12 @@ const useMediaQuery = (query: string) => {
     }
 
     const media = window.matchMedia(query);
-    if (media.matches !== matches) {
-      setMatches(media.matches);
-    }
+    setMatches(media.matches);
 
     const listener = () => setMatches(media.matches);
     media.addEventListener('change', listener);
     return () => media.removeEventListener('change', listener);
-  }, [matches, query]);
+  }, [query]);
 
   return matches;
 };
@@ -101,6 +101,7 @@ interface LogEntry {
 }
 
 function App() {
+  const lastRefreshAtRef = useRef(0);
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -122,10 +123,13 @@ function App() {
       const data = await retryRequest(() => fetchAPI<OverviewData>('/api/overview'), 2, 500);
       setOverview(data);
       setLastUpdate(new Date());
+      lastRefreshAtRef.current = Date.now();
       setError(null);
     } catch (err) {
       const errorMessage = formatErrorMessage(err);
-      setError(errorMessage);
+      if (!silent) {
+        setError(errorMessage);
+      }
       console.error('Error fetching overview:', err);
     } finally {
       setLoading(false);
@@ -163,7 +167,7 @@ function App() {
   }, []);
 
   const handleRefresh = useCallback(() => {
-    setRefreshKey(prev => prev + 1);
+    startTransition(() => setRefreshKey(prev => prev + 1));
     fetchOverview(true);
     if (showLogs) {
       fetchLogs();
@@ -182,11 +186,19 @@ function App() {
   }, [fetchOverview]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const refreshVisiblePage = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - lastRefreshAtRef.current < 5 * 60 * 1000) return;
       fetchOverview(true);
-      setRefreshKey(prev => prev + 1);
-    }, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+      startTransition(() => setRefreshKey(prev => prev + 1));
+    };
+
+    const interval = setInterval(refreshVisiblePage, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', refreshVisiblePage);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshVisiblePage);
+    };
   }, [fetchOverview]);
 
   if (loading) {
@@ -293,16 +305,26 @@ function App() {
 
       <main className="app-main">
         <div className="fade-in">
-          {overview && <Overview key={`overview-${refreshKey}`} data={overview} />}
+          {overview && <Overview data={overview} />}
           
           <div className={isMobile ? 'charts-grid-mobile' : 'charts-grid'}>
-            <Trend24h key={`trend24h-${refreshKey}`} isMobile={isMobile} />
-            <TodayUsage key={`today-${refreshKey}`} isMobile={isMobile} />
-            <DailyTrend key={`daily-${refreshKey}`} isMobile={isMobile} />
-            <MonthlyTrend key={`monthly-${refreshKey}`} isMobile={isMobile} />
+            <DeferredSection label="24小时趋势">
+              <Trend24h isMobile={isMobile} refreshKey={refreshKey} />
+            </DeferredSection>
+            <DeferredSection label="今日用电分布">
+              <TodayUsage isMobile={isMobile} refreshKey={refreshKey} />
+            </DeferredSection>
+            <DeferredSection label="30天用电趋势">
+              <DailyTrend isMobile={isMobile} refreshKey={refreshKey} />
+            </DeferredSection>
+            <DeferredSection label="12个月用电趋势">
+              <MonthlyTrend isMobile={isMobile} refreshKey={refreshKey} />
+            </DeferredSection>
           </div>
 
-          <RechargeHistory key={`recharge-${refreshKey}`} isMobile={isMobile} refreshKey={refreshKey} />
+          <DeferredSection label="充值记录" minHeight={240} rootMargin="500px 0px">
+            <RechargeHistory isMobile={isMobile} refreshKey={refreshKey} />
+          </DeferredSection>
           
           {showLogs && (
             <section className="logs-section" aria-live="polite">

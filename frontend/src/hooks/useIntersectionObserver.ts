@@ -34,8 +34,11 @@ export const useIntersectionObserver = (
         const isVisible = entry.isIntersecting;
         setIsIntersecting(isVisible);
 
-        if (isVisible && !hasTriggered) {
+        if (isVisible) {
           setHasTriggered(true);
+          if (triggerOnce) {
+            observer.disconnect();
+          }
         }
       },
       {
@@ -47,9 +50,9 @@ export const useIntersectionObserver = (
     observer.observe(element);
 
     return () => {
-      observer.unobserve(element);
+      observer.disconnect();
     };
-  }, [threshold, rootMargin, hasTriggered]);
+  }, [threshold, rootMargin, triggerOnce]);
 
   return {
     elementRef,

@@ -1707,6 +1707,42 @@ body {
   }
 }
 
+.deferred-section {
+  min-width: 0;
+  width: 100%;
+}
+
+.deferred-section > .card {
+  height: 100%;
+}
+
+.deferred-card {
+  display: grid;
+  place-items: center;
+}
+
+.deferred-card-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted, #6f7772);
+}
+
+.charts-grid > .deferred-section > .card {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.72), transparent 34%),
+    rgba(251,252,250,.94);
+}
+
+@media (max-width: 768px) {
+  .charts-grid-mobile > .deferred-section > .card {
+    padding: 12px;
+    border-radius: 14px;
+  }
+}
+
 /* Precision layer: subtle depth and hierarchy without adding dashboard noise. */
 .app-container {
   background:
@@ -1741,12 +1777,14 @@ body {
 .hero-card,
 .secondary-stat-card,
 .charts-grid > .card,
+.charts-grid > .deferred-section > .card,
 .logs-section {
   overflow: hidden;
 }
 
 .hero-card::after,
-.charts-grid > .card::after {
+.charts-grid > .card::after,
+.charts-grid > .deferred-section > .card::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -1778,14 +1816,16 @@ body {
   transform: translateY(0) scale(.995);
 }
 
-.charts-grid > .card {
+.charts-grid > .card,
+.charts-grid > .deferred-section > .card {
   position: relative;
   background:
     linear-gradient(180deg, rgba(255,255,255,.72), transparent 34%),
     rgba(251,252,250,.94);
 }
 
-.charts-grid > .card::before {
+.charts-grid > .card::before,
+.charts-grid > .deferred-section > .card::before {
   content: '';
   position: absolute;
   top: 0;
@@ -1998,7 +2038,8 @@ body {
     margin-top: 10px;
   }
 
-  .charts-grid-mobile > .card {
+  .charts-grid-mobile > .card,
+  .charts-grid-mobile > .deferred-section > .card {
     padding: 12px;
     border-radius: 14px;
   }
@@ -2398,7 +2439,8 @@ body {
   gap: 14px;
 }
 
-.charts-grid > .card {
+.charts-grid > .card,
+.charts-grid > .deferred-section > .card {
   margin-bottom: 0;
   padding: 18px;
 }

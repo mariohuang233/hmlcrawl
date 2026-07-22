@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import ReactECharts from 'echarts-for-react';
+import Chart from './Chart';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
@@ -15,9 +15,10 @@ interface TodayData {
 
 interface TodayUsageProps {
   isMobile?: boolean;
+  refreshKey?: number;
 }
 
-const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false }) => {
+const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, refreshKey = 0 }) => {
   const [data, setData] = useState<TodayData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +50,7 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false }) 
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, refreshKey]);
   
   const chartOption = useMemo(() => ({
     title: {
@@ -64,7 +65,8 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false }) 
       top: isMobile ? 10 : 16
     },
     animation: hasTriggered,
-    animationDuration: 1500,
+    animationDuration: isMobile ? 350 : 600,
+    animationDurationUpdate: 250,
     animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'axis',
@@ -188,7 +190,7 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false }) 
           }
         },
         animationDelay: 0,
-        animationDuration: 1500,
+        animationDuration: isMobile ? 350 : 600,
         animationEasing: 'cubicOut'
       }
     ],
@@ -225,12 +227,12 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false }) 
 
   return (
     <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
-      <ReactECharts 
+      <Chart
         option={chartOption} 
         style={{ height: isMobile ? '380px' : '380px' }}
         className="chart-container"
-        notMerge={true}
-        lazyUpdate={false}
+        notMerge={false}
+        lazyUpdate={true}
       />
     </div>
   );

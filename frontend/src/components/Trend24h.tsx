@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import ReactECharts from 'echarts-for-react';
+import Chart from './Chart';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { fetchAPI, retryRequest, formatErrorMessage } from '../utils/api';
 
@@ -11,9 +11,10 @@ interface TrendData {
 
 interface Trend24hProps {
   isMobile?: boolean;
+  refreshKey?: number;
 }
 
-const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false }) => {
+const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 }) => {
   const [data, setData] = useState<TrendData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +102,7 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false }) => {
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, refreshKey]);
   
   const mobileState = isMobile;
   
@@ -126,7 +127,8 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false }) => {
       }
     },
     animation: hasTriggered,
-    animationDuration: 1800,
+    animationDuration: mobileState ? 400 : 650,
+    animationDurationUpdate: 250,
     animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'axis',
@@ -297,7 +299,7 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false }) => {
           }
         },
         animationDelay: 0,
-        animationDuration: 1800,
+        animationDuration: mobileState ? 400 : 650,
         animationEasing: 'cubicOut'
       }
     ],
@@ -394,7 +396,7 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false }) => {
 
   return (
     <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
-      <ReactECharts 
+      <Chart
         option={chartOption} 
         style={{ height: mobileState ? '380px' : '380px' }}
         className="chart-container"
@@ -405,4 +407,4 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false }) => {
   );
 };
 
-export default Trend24h;
+export default React.memo(Trend24h);
