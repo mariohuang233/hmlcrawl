@@ -7,6 +7,7 @@ const crawler = require('../crawler/crawler');
 const Format = require('../utils/crawler-format');
 const dailyReport = require('../services/dailyReport');
 const batteryAlertService = require('../services/batteryAlertService');
+const dataEvents = require('../services/dataEvents');
 const {
   getBeijingHour,
   getBeijingTodayStart,
@@ -76,6 +77,12 @@ class Cache {
     }
   }
 
+  clear() {
+    const size = this.cache.size;
+    this.cache.clear();
+    return size;
+  }
+
   getStats() {
     return {
       size: this.cache.size,
@@ -89,6 +96,13 @@ class Cache {
 // 创建全局缓存实例
 const cache = new Cache(200, 2 * 60 * 1000);
 const CACHE_TTL = 2 * 60 * 1000; // 2分钟缓存
+
+dataEvents.on('reading:stored', () => {
+  const cleared = cache.clear();
+  if (cleared > 0) {
+    logger.info(`新读数已写入，清除 ${cleared} 个接口缓存`);
+  }
+});
 
 /**
  * 缓存中间件
@@ -1173,6 +1187,11 @@ router.post('/report', apiAuth, validateReportBody, async (req, res) => {
 
     const usage = new Usage(usageData);
     await usage.save();
+    dataEvents.emit('reading:stored', {
+      meterId: usageData.meter_id,
+      collectedAt: usageData.collected_at,
+      source: usageData.source
+    });
 
     logger.info(`数据上报成功: ${usageData.remaining_kwh} kWh (source=${source || 'unknown'})`);
     const alertResult = await batteryAlertService.processReading({
@@ -1264,6 +1283,13 @@ router.post('/report/batch', apiAuth, async (req, res) => {
       const result = await Usage.bulkWrite(operations, { ordered: false });
       saved = result.upsertedCount;
       skipped += operations.length - saved;
+      if (saved > 0) {
+        dataEvents.emit('reading:stored', {
+          meterId: alertCandidates[0]?.meter_id,
+          collectedAt: new Date(),
+          source: 'batch'
+        });
+      }
     }
 
     logger.info(`批量上报: 保存 ${saved} 条, 跳过 ${skipped} 条, 错误 ${errors.length} 条`);

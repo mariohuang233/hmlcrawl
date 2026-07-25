@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Chart from './Chart';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
+import { ColorTheme, getChartTheme } from '../utils/chartTheme';
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
 
@@ -16,9 +17,10 @@ interface TodayData {
 interface TodayUsageProps {
   isMobile?: boolean;
   refreshKey?: number;
+  theme?: ColorTheme;
 }
 
-const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, refreshKey = 0 }) => {
+const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, refreshKey = 0, theme = 'light' }) => {
   const [data, setData] = useState<TodayData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +54,8 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
     fetchData();
   }, [fetchData, refreshKey]);
   
+  const colors = useMemo(() => getChartTheme(theme), [theme]);
+
   const chartOption = useMemo(() => ({
     title: {
       text: '今日用电分布',
@@ -59,7 +63,7 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
       textStyle: {
         fontSize: isMobile ? 15 : 18,
         fontWeight: 600,
-        color: '#2d2620',
+        color: colors.text,
         fontFamily: 'Outfit, Nunito, sans-serif'
       },
       top: isMobile ? 10 : 16
@@ -70,17 +74,17 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
     animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(255, 255, 255, 0.98)',
-      borderColor: 'rgba(184, 134, 90, 0.12)',
+      backgroundColor: colors.tooltipBackground,
+      borderColor: colors.tooltipBorder,
       borderWidth: 1,
       borderRadius: 12,
       padding: isMobile ? 16 : 12,
       textStyle: {
-        color: '#2d2620',
+        color: colors.text,
         fontFamily: 'Outfit, Nunito, sans-serif',
         fontSize: isMobile ? 14 : 13
       },
-      extraCssText: 'box-shadow: 0 4px 16px rgba(45, 38, 32, 0.08);',
+      extraCssText: colors.tooltipShadow,
       formatter: (params: any) => {
         const point = params[0];
         const dataItem = data[point.dataIndex];
@@ -89,20 +93,20 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
         
         const vsYesterdayText = vsYesterday === 0 ? '持平' : 
           (vsYesterday > 0 ? `+${vsYesterday}%` : `${vsYesterday}%`);
-        const vsYesterdayColor = vsYesterday === 0 ? '#8a8078' :
+        const vsYesterdayColor = vsYesterday === 0 ? colors.muted :
           (vsYesterday > 0 ? '#f43f5e' : '#10b981');
         
         const vsAvgText = vsAvg === 0 ? '持平' : 
           (vsAvg > 0 ? `+${vsAvg}%` : `${vsAvg}%`);
-        const vsAvgColor = vsAvg === 0 ? '#8a8078' :
+        const vsAvgColor = vsAvg === 0 ? colors.muted :
           (vsAvg > 0 ? '#f43f5e' : '#10b981');
         
         return `
           <div style="padding: 4px;">
-            <div style="margin-bottom: 8px; font-weight: 600; color: #664733; font-size: ${isMobile ? 15 : 14}px;">${point.axisValue}</div>
-            <div style="margin-bottom: 4px;">今日: <span style="color: #664733; font-weight: 600;">${point.value}</span> kWh</div>
-            <div style="color: #8a8078; font-size: ${isMobile ? 13 : 12}px; margin-bottom: 2px;">昨日: ${dataItem.yesterday_used_kwh} kWh</div>
-            <div style="color: #8a8078; font-size: ${isMobile ? 13 : 12}px; margin-bottom: 4px;">平均: ${dataItem.avg_used_kwh} kWh</div>
+            <div style="margin-bottom: 8px; font-weight: 600; color: ${colors.textStrong}; font-size: ${isMobile ? 15 : 14}px;">${point.axisValue}</div>
+            <div style="margin-bottom: 4px;">今日: <span style="color: ${colors.textStrong}; font-weight: 600;">${point.value}</span> kWh</div>
+            <div style="color: ${colors.muted}; font-size: ${isMobile ? 13 : 12}px; margin-bottom: 2px;">昨日: ${dataItem.yesterday_used_kwh} kWh</div>
+            <div style="color: ${colors.muted}; font-size: ${isMobile ? 13 : 12}px; margin-bottom: 4px;">平均: ${dataItem.avg_used_kwh} kWh</div>
             <div style="color: ${vsYesterdayColor}; font-size: ${isMobile ? 13 : 12}px;">
               较昨日 ${vsYesterdayText}
             </div>
@@ -118,19 +122,19 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
       data: data.map(item => `${item.hour}时`),
       axisLabel: {
         interval: isMobile ? (index: number) => index % 4 === 0 : 1,
-        color: '#8a8078',
+        color: colors.muted,
         fontFamily: 'Outfit, Nunito, sans-serif',
         fontSize: isMobile ? 9 : 11,
         rotate: isMobile ? 45 : 0
       },
       axisLine: {
         lineStyle: {
-          color: 'rgba(184, 134, 90, 0.12)'
+          color: colors.axis
         }
       },
       axisTick: {
         lineStyle: {
-          color: 'rgba(184, 134, 90, 0.12)'
+          color: colors.axis
         }
       }
     },
@@ -138,28 +142,28 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
       type: 'value',
       name: '用电量 (kWh)',
       nameTextStyle: {
-        color: '#8a8078',
+        color: colors.muted,
         fontFamily: 'Outfit, Nunito, sans-serif',
         fontSize: isMobile ? 9 : 11
       },
       axisLabel: {
-        color: '#8a8078',
+        color: colors.muted,
         fontFamily: 'Outfit, Nunito, sans-serif',
         fontSize: isMobile ? 9 : 11
       },
       axisLine: {
         lineStyle: {
-          color: 'rgba(184, 134, 90, 0.12)'
+          color: colors.axis
         }
       },
       axisTick: {
         lineStyle: {
-          color: 'rgba(184, 134, 90, 0.12)'
+          color: colors.axis
         }
       },
       splitLine: {
         lineStyle: {
-          color: '#f5f3f1',
+          color: colors.grid,
           type: 'dashed'
         }
       }
@@ -178,8 +182,8 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
             y2: 1,
             colorStops: [
               { offset: 0, color: '#176a6d' },
-              { offset: 0.5, color: '#c49a6c' },
-              { offset: 1, color: '#d4b896' }
+              { offset: 0.5, color: '#4c8c82' },
+              { offset: 1, color: '#79aaa1' }
             ]
           },
           borderRadius: [isMobile ? 6 : 8, isMobile ? 6 : 8, 0, 0]
@@ -201,7 +205,7 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
       top: isMobile ? '14%' : '18%',
       containLabel: true
     }
-  }), [data, hasTriggered, isMobile]);
+  }), [colors, data, hasTriggered, isMobile]);
 
   if (loading) {
     return (
@@ -229,7 +233,7 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
     <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
       <Chart
         option={chartOption} 
-        style={{ height: isMobile ? '380px' : '380px' }}
+        style={{ height: isMobile ? '330px' : '380px' }}
         className="chart-container"
         notMerge={false}
         lazyUpdate={true}

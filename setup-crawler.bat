@@ -119,7 +119,7 @@ echo.
 echo [SUCCESS] 爬虫已启动！
 echo.
 echo   - 看门狗会每5分钟检查爬虫状态
-echo   - 爬虫每15分钟执行一次数据采集
+echo   - 爬虫每10分钟执行一次数据采集
 echo   - 日志位置: .\logs\fetch-*.log
 echo   - 看门狗日志: .\logs\watchdog.log
 echo.

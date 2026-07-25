@@ -100,7 +100,7 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
       >
         <h2 className="card-title">充值记录</h2>
         <div className="recharge-error">
-          <span className="error-icon">⚠️</span>
+          <strong>加载失败</strong>
           <span>加载失败：{error}</span>
         </div>
       </div>
@@ -123,14 +123,14 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
         <>
           <div className="recharge-summary">
             <div className="recharge-summary-item">
-              <div className="summary-icon">💰</div>
+              <div className="summary-code">次数</div>
               <div className="summary-content">
                 <div className="summary-value">{data.total}</div>
                 <div className="summary-label">累计充值次数</div>
               </div>
             </div>
             <div className="recharge-summary-item">
-              <div className="summary-icon">⚡</div>
+              <div className="summary-code">电量</div>
               <div className="summary-content">
                 <div className="summary-value">
                   {data.totalRechargeKwh.toFixed(1)}
@@ -141,7 +141,7 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
             </div>
             {recentInfo && (
               <div className="recharge-summary-item">
-                <div className="summary-icon">📅</div>
+                <div className="summary-code">最近</div>
                 <div className="summary-content">
                   <div className="summary-value recent">
                     {recentInfo.timeText}
@@ -200,7 +200,7 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
         </>
       ) : (
         <div className="recharge-empty">
-          <div className="empty-icon">📭</div>
+          <div className="empty-mark">暂无记录</div>
           <div className="empty-text">暂无充值记录</div>
           <div className="empty-subtitle">检测到充值后会自动显示在这里</div>
         </div>

@@ -10,6 +10,7 @@ const { crawlerLogger } = require('../utils/logger');
 const Format = require('../utils/crawler-format');
 const batteryAlertService = require('../services/batteryAlertService');
 const { normalizeSource } = require('../services/batteryAlertPolicy');
+const dataEvents = require('../services/dataEvents');
 
 const IS_CLOUD_RUNTIME = !!(
   process.env.RAILWAY_SERVICE_NAME ||
@@ -43,8 +44,8 @@ const CONFIG = {
   REQUEST_TIMEOUT: 30000,
   KEEP_ALIVE_MS: 15000,
   MAX_SOCKETS: 10,
-  CRAWL_INTERVAL_MINUTES: 15,
-  RANDOM_DELAY_MAX_SECONDS: 300,
+  CRAWL_INTERVAL_MINUTES: 10,
+  RANDOM_DELAY_MAX_SECONDS: 120,
   BATTERY_ALERT_THRESHOLD: parseFloat(process.env.BATTERY_ALERT_THRESHOLD) || 1,
   BATTERY_ALERT_COOLDOWN_HOURS: parseInt(process.env.BATTERY_ALERT_COOLDOWN_HOURS) || 4,
   CIRCUIT_BREAKER: {
@@ -636,6 +637,11 @@ class ElectricityCrawler {
     try {
       const usage = new Usage(usageData);
       await usage.save();
+      dataEvents.emit('reading:stored', {
+        meterId: usageData.meter_id,
+        collectedAt: usageData.collected_at,
+        source: usageData.source
+      });
       crawlerLogger.info(`数据已保存: ${JSON.stringify(usageData)} (crawl_id: ${record.crawl_id})`);
     } catch (error) {
       if (error.code === 11000) {
@@ -729,14 +735,14 @@ class ElectricityCrawler {
   }
 
   startCloudBackup() {
-    const randomDelay = Math.floor(Math.random() * 30) * 60 * 1000;
+    const randomDelay = Math.floor(Math.random() * CONFIG.CRAWL_INTERVAL_MINUTES) * 60 * 1000;
     crawlerLogger.info(`云端保障爬虫将在 ${Math.round(randomDelay / 60000)} 分钟后开始首次采集`);
     setTimeout(() => {
       this.crawlData().catch(e => crawlerLogger.error(`云端首次采集失败: ${e.message}`));
-      cron.schedule('0,30 * * * *', () => {
+      cron.schedule('*/10 * * * *', () => {
         setTimeout(() => this.crawlData(), Math.floor(Math.random() * 120) * 1000);
       }, { timezone: 'Asia/Shanghai' });
-      crawlerLogger.info('云端保障爬虫已启动，每30分钟执行一次');
+      crawlerLogger.info('云端保障爬虫已启动，每10分钟执行一次');
     }, randomDelay);
   }
 

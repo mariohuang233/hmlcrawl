@@ -7,7 +7,7 @@ function getConfig() {
   return {
     threshold: positiveNumber(process.env.BATTERY_ALERT_THRESHOLD, 1),
     cooldownHours: positiveNumber(process.env.BATTERY_ALERT_COOLDOWN_HOURS, 4),
-    maxDataAgeMinutes: positiveNumber(process.env.BATTERY_ALERT_MAX_DATA_AGE_MINUTES, 30)
+    maxDataAgeMinutes: positiveNumber(process.env.BATTERY_ALERT_MAX_DATA_AGE_MINUTES, 20)
   };
 }
 

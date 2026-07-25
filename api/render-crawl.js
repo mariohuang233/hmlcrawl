@@ -1,5 +1,5 @@
 // Render Cron Job - 爬虫定时执行脚本
-// 由 Render Cron Job 每15分钟调用一次
+// 由 Render Cron Job 每10分钟调用一次
 // 直接使用爬虫模块采集数据，不依赖 Web 服务
 const mongoose = require('mongoose');
 const path = require('path');

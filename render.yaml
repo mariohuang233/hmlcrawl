@@ -22,7 +22,7 @@ jobs:
   - type: cron
     name: electricity-crawler
     runtime: node
-    schedule: "*/15 * * * *"
+    schedule: "*/10 * * * *"
     startCommand: node api/render-crawl.js
     region: singapore
     envVars:

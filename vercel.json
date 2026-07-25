@@ -7,7 +7,7 @@
   "crons": [
     {
       "path": "/api/crawl",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/10 * * * *"
     }
   ],
   "buildCommand": "cd frontend && npm install --prefer-offline --no-audit && npm run build",

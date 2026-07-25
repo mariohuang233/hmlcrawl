@@ -3,6 +3,9 @@ const puppeteer = require('puppeteer');
 const cron = require('node-cron');
 const Usage = require('../models/Usage');
 const { crawlerLogger } = require('../utils/logger');
+const dataEvents = require('../services/dataEvents');
+
+const CRAWL_INTERVAL_MINUTES = 10;
 
 class ElectricityCrawlerPuppeteer {
   constructor() {
@@ -29,8 +32,8 @@ class ElectricityCrawlerPuppeteer {
   }
 
   start() {
-    cron.schedule('*/15 * * * *', () => {
-      const randomDelay = Math.floor(Math.random() * 300) * 1000;
+    cron.schedule(`*/${CRAWL_INTERVAL_MINUTES} * * * *`, () => {
+      const randomDelay = Math.floor(Math.random() * 120) * 1000;
       setTimeout(() => {
         this.crawlData();
       }, randomDelay);
@@ -38,7 +41,7 @@ class ElectricityCrawlerPuppeteer {
       timezone: 'Asia/Shanghai'
     });
     
-    crawlerLogger.info('Puppeteer爬虫定时任务已启动（每15分钟执行一次）');
+    crawlerLogger.info(`Puppeteer爬虫定时任务已启动（每${CRAWL_INTERVAL_MINUTES}分钟执行一次）`);
     
     const initialDelay = Math.floor(Math.random() * 60 + 30) * 1000;
     setTimeout(() => {
@@ -227,8 +230,17 @@ class ElectricityCrawlerPuppeteer {
     try {
       const usage = new Usage(data);
       await usage.save();
+      dataEvents.emit('reading:stored', {
+        meterId: data.meter_id,
+        collectedAt: data.collected_at,
+        source: 'puppeteer'
+      });
       crawlerLogger.info(`数据已保存: ${JSON.stringify(data)}`);
     } catch (error) {
+      if (error.code === 11000) {
+        crawlerLogger.warn('数据已存在（重复），跳过保存');
+        return;
+      }
       throw new Error(`数据库保存失败: ${error.message}`);
     }
   }
@@ -244,4 +256,3 @@ class ElectricityCrawlerPuppeteer {
 }
 
 module.exports = new ElectricityCrawlerPuppeteer();
-

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Chart from './Chart';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { fetchAPI, retryRequest, formatErrorMessage } from '../utils/api';
+import { ColorTheme, getChartTheme } from '../utils/chartTheme';
 
 interface TrendData {
   time: string;
@@ -12,9 +13,10 @@ interface TrendData {
 interface Trend24hProps {
   isMobile?: boolean;
   refreshKey?: number;
+  theme?: ColorTheme;
 }
 
-const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 }) => {
+const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, theme = 'light' }) => {
   const [data, setData] = useState<TrendData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,15 +26,15 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
     rootMargin: '0px 0px -50px 0px'
   });
 
-  const roundTo15Minutes = (date: Date) => {
+  const roundTo10Minutes = (date: Date) => {
     const rounded = new Date(date);
     const minutes = rounded.getMinutes();
-    const roundedMinutes = Math.floor(minutes / 15) * 15;
+    const roundedMinutes = Math.floor(minutes / 10) * 10;
     rounded.setMinutes(roundedMinutes, 0, 0);
     return rounded;
   };
 
-  const aggregateDataBy15Min = useMemo(() => (rawData: any[]) => {
+  const aggregateDataBy10Min = useMemo(() => (rawData: any[]) => {
     try {
       const timeMap = new Map();
       
@@ -40,7 +42,7 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
         try {
           const date = new Date(item.time);
           const beijingTime = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-          const roundedBeijingTime = roundTo15Minutes(beijingTime);
+          const roundedBeijingTime = roundTo10Minutes(beijingTime);
           const utcRounded = new Date(roundedBeijingTime.getTime() - 8 * 60 * 60 * 1000);
           const timeKey = utcRounded.toISOString();
           
@@ -87,7 +89,7 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
       setError(null);
       const rawData = await retryRequest(() => fetchAPI<any[]>('/api/trend/24h'), 3, 1000);
       
-      const aggregatedData = aggregateDataBy15Min(rawData);
+      const aggregatedData = aggregateDataBy10Min(rawData);
       
       setData(aggregatedData);
     } catch (err) {
@@ -98,13 +100,14 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
     } finally {
       setLoading(false);
     }
-  }, [aggregateDataBy15Min]);
+  }, [aggregateDataBy10Min]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData, refreshKey]);
   
   const mobileState = isMobile;
+  const colors = getChartTheme(theme);
   
   const chartOption = {
     title: {
@@ -113,16 +116,16 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
       textStyle: {
         fontSize: mobileState ? 15 : 18,
         fontWeight: 600,
-        color: '#2d2620',
+        color: colors.text,
         fontFamily: 'Outfit, Nunito, sans-serif'
       },
       top: mobileState ? 12 : 16,
       subtext: mobileState 
-        ? '每15分钟更新'
-        : '每15分钟更新 · 拖拽下方滑块缩放',
+        ? '每10分钟更新'
+        : '每10分钟更新 · 拖拽下方滑块缩放',
       subtextStyle: {
         fontSize: mobileState ? 10 : 12,
-        color: '#8a8078',
+        color: colors.muted,
         fontFamily: 'Outfit, Nunito, sans-serif'
       }
     },
@@ -132,17 +135,17 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
     animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(255, 255, 255, 0.98)',
-      borderColor: 'rgba(184, 134, 90, 0.12)',
+      backgroundColor: colors.tooltipBackground,
+      borderColor: colors.tooltipBorder,
       borderWidth: 1,
       borderRadius: 12,
       padding: 12,
       textStyle: {
-        color: '#2d2620',
+        color: colors.text,
         fontFamily: 'Outfit, Nunito, sans-serif',
         fontSize: 13
       },
-      extraCssText: 'box-shadow: 0 4px 16px rgba(45, 38, 32, 0.08);',
+      extraCssText: colors.tooltipShadow,
       formatter: (params: any) => {
         const point = params[0];
         const timeLabel = point.axisValue;
@@ -170,10 +173,10 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
         
         return `
           <div style="padding: 4px;">
-            <div style="margin-bottom: 8px; font-weight: 600; color: #664733; font-size: 14px;">${beijingTime}</div>
+            <div style="margin-bottom: 8px; font-weight: 600; color: ${colors.textStrong}; font-size: 14px;">${beijingTime}</div>
             <div style="margin-bottom: 4px;">
-              <span style="display: inline-block; width: 8px; height: 8px; background: #a07048; border-radius: 50%; margin-right: 8px;"></span>
-              <span>用电量: <span style="color: #664733; font-weight: 600;">${usage}</span> kWh</span>
+              <span style="display: inline-block; width: 8px; height: 8px; background: #276f66; border-radius: 50%; margin-right: 8px;"></span>
+              <span>用电量: <span style="color: ${colors.textStrong}; font-weight: 600;">${usage}</span> kWh</span>
             </div>
             <div>
               <span style="display: inline-block; width: 8px; height: 8px; background: #0ea5e9; border-radius: 50%; margin-right: 8px;"></span>
@@ -187,7 +190,7 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
       type: 'category',
       data: data.map(item => item.time),
       axisLabel: {
-        color: '#8a8078',
+        color: colors.muted,
         fontFamily: 'Outfit, Nunito, sans-serif',
         fontSize: mobileState ? 9 : 11,
         interval: (index: number) => {
@@ -223,12 +226,12 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
       },
       axisLine: {
         lineStyle: {
-          color: 'rgba(184, 134, 90, 0.12)'
+          color: colors.axis
         }
       },
       axisTick: {
         lineStyle: {
-          color: 'rgba(184, 134, 90, 0.12)'
+          color: colors.axis
         }
       }
     },
@@ -236,12 +239,12 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
       type: 'value',
       name: '用电量 (kWh)',
       nameTextStyle: {
-        color: '#8a8078',
+        color: colors.muted,
         fontFamily: 'Outfit, Nunito, sans-serif',
         fontSize: mobileState ? 9 : 11
       },
       axisLabel: {
-        color: '#8a8078',
+        color: colors.muted,
         fontFamily: 'Outfit, Nunito, sans-serif',
         fontSize: mobileState ? 9 : 10,
         formatter: (value: number) => {
@@ -251,17 +254,17 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
       },
       axisLine: {
         lineStyle: {
-          color: 'rgba(184, 134, 90, 0.12)'
+          color: colors.axis
         }
       },
       axisTick: {
         lineStyle: {
-          color: 'rgba(184, 134, 90, 0.12)'
+          color: colors.axis
         }
       },
       splitLine: {
         lineStyle: {
-          color: '#f5f3f1',
+          color: colors.grid,
           type: 'dashed'
         }
       }
@@ -281,7 +284,7 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
         },
         itemStyle: {
           color: '#176a6d',
-          borderColor: '#ffffff',
+          borderColor: colors.pointBorder,
           borderWidth: 2
         },
         areaStyle: {
@@ -318,17 +321,17 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
         end: 100,
         height: mobileState ? 28 : 22,
         bottom: mobileState ? 15 : 12,
-        backgroundColor: '#f5f3f1',
-        fillerColor: 'rgba(40, 127, 130, 0.15)',
-        borderColor: 'rgba(184, 134, 90, 0.12)',
+        backgroundColor: colors.zoomBackground,
+        fillerColor: colors.zoomFill,
+        borderColor: colors.axis,
         borderRadius: mobileState ? 14 : 11,
         handleStyle: {
           color: '#176a6d',
-          borderColor: '#ffffff',
+          borderColor: colors.pointBorder,
           borderWidth: mobileState ? 2 : 1
         },
         textStyle: {
-          color: '#8a8078',
+          color: colors.muted,
           fontSize: mobileState ? 10 : 9,
           fontFamily: 'Outfit, Nunito, sans-serif'
         },
@@ -363,7 +366,7 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
           fontSize: '14px',
           padding: '20px'
         }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>😔</div>
+          <div className="error-mark" aria-hidden="true">图表异常</div>
           <p style={{ marginBottom: '16px', textAlign: 'center' }}>{error}</p>
           <button 
             onClick={fetchData}
@@ -385,7 +388,7 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
           alignItems: 'center', 
           justifyContent: 'center', 
           height: '300px',
-          color: '#8a8078',
+          color: '#70807c',
           fontSize: '14px'
         }}>
           暂无数据可用
@@ -398,7 +401,7 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0 })
     <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
       <Chart
         option={chartOption} 
-        style={{ height: mobileState ? '380px' : '380px' }}
+        style={{ height: mobileState ? '330px' : '380px' }}
         className="chart-container"
         notMerge={false}
         lazyUpdate={true}

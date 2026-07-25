@@ -101,7 +101,6 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
         value: '--',
         label: '预计用完时间',
         subtitle: prediction.message,
-        icon: '🔋',
         status: 'neutral' as const
       };
     }
@@ -144,7 +143,6 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       value: timeStr,
       label: '预计用完时间',
       subtitle: analysisDetail,
-      icon: diffDays > 7 ? '🔋' : diffDays > 3 ? '⚡' : '🔔',
       analysis: prediction.analysis,
       status
     };
@@ -155,8 +153,8 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
   const getBatteryLevel = (remaining: number) => {
     if (remaining <= 10) return { level: 'critical', color: '#f43f5e', bgColor: '#fff1f2' };
     if (remaining <= 30) return { level: 'low', color: '#f59e0b', bgColor: '#fffbeb' };
-    if (remaining <= 60) return { level: 'medium', color: '#0ea5e9', bgColor: '#f0f9ff' };
-    return { level: 'high', color: '#10b981', bgColor: '#ecfdf5' };
+    if (remaining <= 60) return { level: 'medium', color: '#78c6ba', bgColor: '#eaf7f4' };
+    return { level: 'high', color: '#57b79f', bgColor: '#e9f7f2' };
   };
 
   const batteryLevel = getBatteryLevel(data.current_remaining);
@@ -166,7 +164,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       value: data.today_usage,
       label: '今日用电',
       unit: 'kWh',
-      icon: '⚡',
+      shortLabel: '今日',
       precision: 2,
       delay: 100,
       comparison: data.comparisons ? {
@@ -182,7 +180,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
         ? `本周用电（从${formatDate(data.data_coverage.week_actual_start)}起）`
         : '本周用电',
       unit: 'kWh',
-      icon: '📊',
+      shortLabel: '本周',
       precision: 2,
       delay: 200,
       warning: data.data_coverage && !data.data_coverage.week_data_complete,
@@ -197,7 +195,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
         ? `本月用电（从${formatDate(data.data_coverage.month_actual_start)}起）`
         : '本月用电',
       unit: 'kWh',
-      icon: '📈',
+      shortLabel: '本月',
       precision: 2,
       delay: 300,
       warning: data.data_coverage && !data.data_coverage.month_data_complete,
@@ -211,7 +209,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       label: '本月预计费用',
       unit: '元',
       prefix: '¥',
-      icon: '💰',
+      shortLabel: '费用',
       precision: 2,
       delay: 400,
       comparison: data.comparisons ? {
@@ -226,7 +224,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       <h2 className="card-title">用电总览</h2>
       {isDataIncomplete && (
         <div className="data-warning">
-          <span>⚠️</span>
+          <strong>数据提示</strong>
           <span>数据不完整：数据库中只有从 {data.data_coverage?.earliest_data ? formatDate(data.data_coverage.earliest_data) : '最近'} 开始的记录，因此本周和本月用电量可能相同。</span>
         </div>
       )}
@@ -235,16 +233,12 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
         <div 
           className={`hero-card ${hasTriggered ? 'animate-in' : ''}`}
           style={{ 
-            animationDelay: '0ms',
-            borderLeft: `4px solid ${batteryLevel.color}`
+            animationDelay: '0ms'
           }}
         >
           <div className="hero-content">
-            <div className="hero-icon-wrapper" style={{ background: batteryLevel.bgColor }}>
-              <span className="hero-icon">🔋</span>
-              <span className="hero-status-dot" style={{ backgroundColor: batteryLevel.color }}></span>
-            </div>
             <div className="hero-info">
+              <div className="hero-kicker">电量余额</div>
               <div className="hero-label">当前剩余电量</div>
               <div className="hero-value-row">
                 <span className="hero-value" style={{ color: batteryLevel.color }}>
@@ -283,18 +277,13 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
             style={{ animationDelay: '150ms' }}
           >
             <div className="hero-content">
-              <div className="hero-icon-wrapper" style={{ 
-                background: predictionInfo.status === 'danger' ? '#fff1f2' : 
-                           predictionInfo.status === 'warning' ? '#fffbeb' : '#f0f9ff' 
-              }}>
-                <span className="hero-icon">{predictionInfo.icon}</span>
-              </div>
               <div className="hero-info">
+                <div className="hero-kicker">续航预估</div>
                 <div className="hero-label">{predictionInfo.label}</div>
                 <div className="hero-value-row">
                   <span className="hero-value" style={{ 
                     color: predictionInfo.status === 'danger' ? '#f43f5e' : 
-                           predictionInfo.status === 'warning' ? '#f59e0b' : '#2d2620' 
+                           predictionInfo.status === 'warning' ? '#f59e0b' : 'var(--text-primary)'
                   }}>
                     {predictionInfo.value}
                   </span>
@@ -316,7 +305,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
               border: (stat as any).warning ? '1px solid var(--accent-amber-200)' : undefined
             }}
           >
-            <div className="secondary-stat-icon">{stat.icon}</div>
+            <div className="secondary-stat-index">{stat.shortLabel}</div>
             <div className="secondary-stat-content">
               <div className="secondary-stat-value">
                 {(stat as any).prefix || ''}

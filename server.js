@@ -145,7 +145,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     const cloudName = IS_RENDER ? 'Render' : IS_RAILWAY ? 'Railway' : IS_ZEABUR ? 'Zeabur' : 'Vercel';
     logger.info(`==============================`);
     logger.info(`${cloudName} 云端保障爬虫已激活`);
-    logger.info(`爬虫将在15分钟后开始周期性采集`);
+    logger.info(`爬虫将按每10分钟一次的周期进行采集`);
     logger.info(`同时作为本地爬虫的备份保障`);
     logger.info(`==============================`);
   }

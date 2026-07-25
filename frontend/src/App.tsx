@@ -3,14 +3,17 @@ import Overview from './components/Overview';
 import DeferredSection from './components/DeferredSection';
 import './App.css';
 import './mobile.css';
+import './premium.css';
 import { fetchAPI, retryRequest, formatErrorMessage } from './utils/api';
 import bubuIcon from './assets/bubu.png';
+import { ColorTheme } from './utils/chartTheme';
 
 const Trend24h = lazy(() => import('./components/Trend24h'));
 const TodayUsage = lazy(() => import('./components/TodayUsage'));
 const DailyTrend = lazy(() => import('./components/DailyTrend'));
 const MonthlyTrend = lazy(() => import('./components/MonthlyTrend'));
 const RechargeHistory = lazy(() => import('./components/RechargeHistory'));
+const DATA_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
 
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = useState(false);
@@ -112,6 +115,22 @@ function App() {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const isMobile = useMediaQuery('(max-width: 768px)');
+  const [theme, setTheme] = useState<ColorTheme>(() => {
+    if (typeof window === 'undefined') return 'light';
+    const savedTheme = window.localStorage.getItem('electricity-monitor-theme');
+    if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme;
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    window.localStorage.setItem('electricity-monitor-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(current => current === 'dark' ? 'light' : 'dark');
+  }, []);
 
   const fetchOverview = useCallback(async (silent = false) => {
     try {
@@ -188,12 +207,12 @@ function App() {
   useEffect(() => {
     const refreshVisiblePage = () => {
       if (document.visibilityState !== 'visible') return;
-      if (Date.now() - lastRefreshAtRef.current < 5 * 60 * 1000) return;
+      if (Date.now() - lastRefreshAtRef.current < DATA_REFRESH_INTERVAL_MS) return;
       fetchOverview(true);
       startTransition(() => setRefreshKey(prev => prev + 1));
     };
 
-    const interval = setInterval(refreshVisiblePage, 5 * 60 * 1000);
+    const interval = setInterval(refreshVisiblePage, DATA_REFRESH_INTERVAL_MS);
     document.addEventListener('visibilitychange', refreshVisiblePage);
     return () => {
       clearInterval(interval);
@@ -215,6 +234,15 @@ function App() {
                   <span className="app-title-text">一二布布的电量监控</span>
                 </h1>
                 <p className="app-subtitle">温暖守护，智能用电</p>
+              </div>
+              <div className="header-actions">
+                <button
+                  onClick={toggleTheme}
+                  className="btn btn-quiet theme-toggle"
+                  aria-label={`切换到${theme === 'dark' ? '日间' : '夜间'}模式`}
+                >
+                  <span>{theme === 'dark' ? '日间模式' : '夜间模式'}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -241,7 +269,7 @@ function App() {
     return (
       <div className="error-container">
         <div className="error-content fade-in">
-          <div className="error-icon">😔</div>
+          <div className="error-mark" aria-hidden="true">连接异常</div>
           <p className="error-message">{error}</p>
           <button 
             onClick={handleRefresh}
@@ -281,6 +309,14 @@ function App() {
                 数据在线
               </div>
               <button
+                onClick={toggleTheme}
+                className="btn btn-quiet theme-toggle"
+                title={`切换到${theme === 'dark' ? '日间' : '夜间'}模式`}
+                aria-label={`切换到${theme === 'dark' ? '日间' : '夜间'}模式`}
+              >
+                <span>{theme === 'dark' ? '日间模式' : '夜间模式'}</span>
+              </button>
+              <button
                 onClick={handleRefresh}
                 className={`btn btn-quiet ${isRefreshing ? 'refreshing' : ''}`}
                 title="刷新数据"
@@ -309,16 +345,16 @@ function App() {
           
           <div className={isMobile ? 'charts-grid-mobile' : 'charts-grid'}>
             <DeferredSection label="24小时趋势">
-              <Trend24h isMobile={isMobile} refreshKey={refreshKey} />
+              <Trend24h isMobile={isMobile} refreshKey={refreshKey} theme={theme} />
             </DeferredSection>
             <DeferredSection label="今日用电分布">
-              <TodayUsage isMobile={isMobile} refreshKey={refreshKey} />
+              <TodayUsage isMobile={isMobile} refreshKey={refreshKey} theme={theme} />
             </DeferredSection>
             <DeferredSection label="30天用电趋势">
-              <DailyTrend isMobile={isMobile} refreshKey={refreshKey} />
+              <DailyTrend isMobile={isMobile} refreshKey={refreshKey} theme={theme} />
             </DeferredSection>
             <DeferredSection label="12个月用电趋势">
-              <MonthlyTrend isMobile={isMobile} refreshKey={refreshKey} />
+              <MonthlyTrend isMobile={isMobile} refreshKey={refreshKey} theme={theme} />
             </DeferredSection>
           </div>
 
