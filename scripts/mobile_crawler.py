@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """
-iPad/手机端轻量爬虫 v5.1 - 强化后台运行能力
+iPad/手机端轻量爬虫 v5.2 - 可靠定时调度
 ==============================================
-支持iOS后台运行，包含本地缓存补发、心跳检测、自动恢复机制
+支持持续定时运行，包含本地缓存补发、休眠恢复补偿、心跳检测和自动恢复机制
 
 使用方法:
-    python3 mobile_crawler.py [--daemon]
+    python3 mobile_crawler.py
 
 iOS (iSH):
     apk add python3 curl git
     git clone https://github.com/mariohuang233/hmlcrawl.git
     cd hmlcrawl
-    python3 scripts/mobile_crawler.py --daemon
+    python3 scripts/mobile_crawler.py
 
 参数:
-    --daemon  后台运行模式（异常后自动重启）
+    --daemon     守护恢复模式（默认开启，保留兼容）
+    --no-daemon  调试模式（未捕获异常时退出）
 
 数据格式版本: 1.0 (与本地爬虫共享)
 """
@@ -48,6 +49,8 @@ DIRECT_IPS = [
 ]
 FETCH_INTERVAL = 10 * 60
 HEARTBEAT_INTERVAL = 60
+SCHEDULER_TICK_SECONDS = 5
+SUSPEND_RECOVERY_THRESHOLD = 30
 MAX_RETRIES = 3
 INITIAL_RETRY_DELAY = 5
 FORMAT_VERSION = 1
@@ -58,7 +61,7 @@ is_running = True
 
 def log(msg):
     line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}"
-    print(line)
+    print(line, flush=True)
     try:
         with open(os.path.join(DATA_DIR, "mobile_crawler.log"), "a", encoding="utf-8") as f:
             f.write(line + "\n")
@@ -206,7 +209,7 @@ def upload_to_api(record):
         
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "hmlcrawl-mobile/5.1"
+            "User-Agent": "hmlcrawl-mobile/5.2"
         }
         if API_TOKEN:
             headers["X-API-Token"] = API_TOKEN
@@ -340,23 +343,43 @@ def signal_handler(signum, frame):
     global is_running
     log(f"收到信号 {signum}，准备退出...")
     is_running = False
-    sys.exit(0)
 
-def main_loop(daemon=False):
+def format_run_time(timestamp):
+    return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+
+def wait_until(target_time):
+    """等待到绝对时间；进程从系统挂起状态恢复后会立即结束等待。"""
+    global is_running
+    while is_running:
+        remaining = target_time - time.time()
+        if remaining <= 0:
+            return True
+        time.sleep(min(SCHEDULER_TICK_SECONDS, remaining))
+    return False
+
+def get_next_run_time(scheduled_time, finished_time, interval):
+    """保持固定周期；若本轮过久或设备休眠，跳过已错过的空档而不连续轰炸目标站。"""
+    next_run = scheduled_time + interval
+    if next_run <= finished_time:
+        missed_intervals = int((finished_time - next_run) // interval) + 1
+        next_run += missed_intervals * interval
+    return next_run
+
+def main_loop(daemon=True):
     global is_running
     
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
     log("=" * 40)
-    log("iPad/手机端爬虫 v5.1 - 强化后台运行")
+    log("iPad/手机端爬虫 v5.2 - 可靠定时调度")
     log(f"电表: {METER_ID} ({METER_NAME})")
     log(f"间隔: {FETCH_INTERVAL // 60}分钟")
     log(f"心跳: {HEARTBEAT_INTERVAL}秒")
     log(f"来源: ipad")
     log(f"后端: {BACKEND_URL if BACKEND_URL else '未配置'}")
     log(f"数据目录: {DATA_DIR}")
-    log(f"守护模式: {'开启' if daemon else '关闭'}")
+    log(f"守护恢复: {'开启' if daemon else '关闭'}")
     log("=" * 40)
 
     replay_cached_data()
@@ -364,35 +387,51 @@ def main_loop(daemon=False):
     heartbeat_thread = threading.Thread(target=heartbeat_monitor, daemon=True)
     heartbeat_thread.start()
 
-    crawl_and_report()
-
     interval = FETCH_INTERVAL
+    log(f"定时调度已启动: 每 {interval // 60} 分钟执行一次")
+    scheduled_time = time.time()
 
     while is_running:
-        log(f"等待 {interval // 60} 分钟后下一次爬取...")
-        
-        for _ in range(interval // 10):
-            if not is_running:
-                break
-            time.sleep(10)
-        
-        if not is_running:
+        if not wait_until(scheduled_time):
             break
-        
+
+        started_at = time.time()
+        delay = started_at - scheduled_time
+        if delay >= SUSPEND_RECOVERY_THRESHOLD:
+            log(f"检测到系统休眠或调度延迟 {int(delay)} 秒，立即补执行本轮采集")
+        else:
+            log(f"定时任务触发: {format_run_time(started_at)}")
+
         try:
             crawl_and_report()
         except Exception as e:
             log(f"爬取异常: {e}")
             if daemon:
-                log("守护模式，5分钟后自动重启")
-                time.sleep(300)
+                log("守护恢复已接管异常，继续等待下一轮")
             else:
                 raise
+        finally:
+            finished_at = time.time()
+            scheduled_time = get_next_run_time(scheduled_time, finished_at, interval)
+            log(f"下次定时采集: {format_run_time(scheduled_time)}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="iPad/手机端爬虫")
-    parser.add_argument("--daemon", action="store_true", help="守护模式（异常后自动重启）")
+    recovery_group = parser.add_mutually_exclusive_group()
+    recovery_group.add_argument(
+        "--daemon",
+        dest="daemon",
+        action="store_true",
+        help="开启守护恢复（默认，保留旧命令兼容）"
+    )
+    recovery_group.add_argument(
+        "--no-daemon",
+        dest="daemon",
+        action="store_false",
+        help="关闭守护恢复，未捕获异常时退出"
+    )
+    parser.set_defaults(daemon=True)
     parser.add_argument("--once", action="store_true", help="单次运行模式（执行一次后退出，适合快捷指令）")
     args = parser.parse_args()
 
