@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Chart from './Chart';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { ColorTheme, getChartTheme } from '../utils/chartTheme';
+import { createSparseCategoryInterval } from '../utils/chartAxis';
 import ChartCardHeader from './ChartCardHeader';
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
@@ -123,7 +124,11 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
       type: 'category',
       data: data.map(item => `${item.hour}时`),
       axisLabel: {
-        interval: isMobile ? (index: number) => index % 4 === 0 : 1,
+        interval: createSparseCategoryInterval(data.length, isMobile ? 6 : 8),
+        hideOverlap: true,
+        showMinLabel: true,
+        showMaxLabel: true,
+        margin: isMobile ? 9 : 11,
         color: colors.muted,
         fontFamily: 'inherit',
         fontSize: isMobile ? 10 : 11,

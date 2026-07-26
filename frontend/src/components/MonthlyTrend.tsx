@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Chart from './Chart';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { ColorTheme, getChartTheme } from '../utils/chartTheme';
+import { createSparseCategoryInterval } from '../utils/chartAxis';
 import ChartCardHeader from './ChartCardHeader';
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
@@ -127,7 +128,11 @@ const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false, refreshKe
       data: data.map(item => item.month.replace(/^(\d{4})-(\d{2})$/, '$1/$2')),
       axisLabel: {
         rotate: 0,
-        interval: isMobile ? (index: number) => index % 2 === 0 : 0,
+        interval: createSparseCategoryInterval(data.length, isMobile ? 4 : 6),
+        hideOverlap: true,
+        showMinLabel: true,
+        showMaxLabel: true,
+        margin: isMobile ? 9 : 11,
         color: colors.muted,
         fontFamily: 'inherit',
         fontSize: isMobile ? 10 : 11,

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Chart from './Chart';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { ColorTheme, getChartTheme } from '../utils/chartTheme';
+import { createSparseCategoryInterval } from '../utils/chartAxis';
 import ChartCardHeader from './ChartCardHeader';
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
@@ -117,7 +118,11 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false, refreshKey = 
       data: data.map(item => item.date),
       axisLabel: {
         rotate: 0,
-        interval: isMobile ? (index: number) => index % 6 === 0 : 2,
+        interval: createSparseCategoryInterval(data.length, isMobile ? 5 : 7),
+        hideOverlap: true,
+        showMinLabel: true,
+        showMaxLabel: true,
+        margin: isMobile ? 9 : 11,
         color: colors.muted,
         fontFamily: 'inherit',
         fontSize: isMobile ? 10 : 11,

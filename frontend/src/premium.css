@@ -272,18 +272,23 @@ select {
 .hero-section {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
-  gap: 16px;
+  gap: 0;
   align-items: stretch;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 28px;
+  background: var(--bg-surface);
 }
 
 .hero-card {
   min-height: 190px;
   padding: 26px;
   overflow: hidden;
-  border: 1px solid var(--border-light);
-  border-radius: 16px;
+  border: 0 !important;
+  border-radius: 0;
   color: var(--text-primary);
-  background: var(--bg-surface);
+  background: transparent !important;
   box-shadow: none;
   opacity: 1;
   transform: none;
@@ -377,22 +382,22 @@ select {
 .hero-card:first-child,
 .hero-card-prediction {
   color: var(--text-primary);
-  background: var(--bg-surface);
+  background: transparent !important;
 }
 
 .hero-card-prediction.danger {
-  border-color: var(--border-light);
-  border-radius: 22px;
-  background: var(--bg-surface);
+  border: 0;
+  border-radius: 0;
+  background: transparent !important;
 }
 
 .hero-card-prediction.warning {
-  border-color: var(--border-light);
-  background: var(--bg-card);
+  border: 0;
+  background: transparent !important;
 }
 
 .hero-card:hover {
-  border-color: var(--border-medium);
+  border-color: transparent;
   transform: none;
   box-shadow: none;
 }
@@ -452,14 +457,18 @@ select {
 
 .hero-card-prediction {
   align-self: center;
-  min-height: 190px;
-  padding: 28px;
-  background: var(--bg-card);
+  min-height: 220px;
+  padding: 32px;
+  border-left: 1px solid var(--border-light) !important;
+  background: transparent !important;
 }
 
 .hero-card-prediction .hero-kicker {
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 20px;
+}
+
+.hero-card-prediction::after {
+  display: none !important;
 }
 
 .hero-unit {
@@ -626,6 +635,19 @@ select {
 .charts-grid-mobile > .deferred-section > .card {
   height: auto !important;
   min-height: 0;
+}
+
+.charts-grid > .deferred-section > .card,
+.charts-grid-mobile > .deferred-section > .card {
+  color: var(--text-primary);
+  background: var(--bg-card) !important;
+}
+
+.charts-grid > .deferred-section > .card::before,
+.charts-grid > .deferred-section > .card::after,
+.charts-grid-mobile > .deferred-section > .card::before,
+.charts-grid-mobile > .deferred-section > .card::after {
+  display: none !important;
 }
 
 .chart-card {
@@ -1110,6 +1132,18 @@ html[data-theme="dark"] .battery-bar-bg {
   background: rgba(244, 244, 240, 0.13);
 }
 
+html[data-theme="dark"] .charts-grid > .deferred-section > .card,
+html[data-theme="dark"] .charts-grid-mobile > .deferred-section > .card,
+html[data-theme="dark"] .chart-card,
+html[data-theme="dark"] .timeline-content,
+html[data-theme="dark"] .recharge-summary-item,
+html[data-theme="dark"] .recharge-more-hint,
+html[data-theme="dark"] .recharge-empty,
+html[data-theme="dark"] .recharge-error {
+  color: var(--text-primary);
+  background: var(--bg-card) !important;
+}
+
 @media (max-width: 900px) {
   .hero-section {
     grid-template-columns: minmax(0, 1fr) minmax(250px, 0.78fr);
@@ -1221,6 +1255,10 @@ html[data-theme="dark"] .battery-bar-bg {
     font-weight: 700;
   }
 
+  .header-actions .btn-quiet:last-child::before {
+    display: none !important;
+  }
+
   .refresh-mark {
     font-size: 18px;
   }
@@ -1248,7 +1286,9 @@ html[data-theme="dark"] .battery-bar-bg {
 
   .hero-section {
     grid-template-columns: 1fr;
-    gap: 2px;
+    gap: 0;
+    padding: 12px 18px 18px;
+    border-radius: 24px;
   }
 
   .hero-card {
@@ -1269,8 +1309,10 @@ html[data-theme="dark"] .battery-bar-bg {
 
   .hero-card-prediction {
     min-height: 138px;
-    padding: 20px;
-    border-radius: 20px;
+    padding: 22px 6px 6px;
+    border-top: 1px solid var(--border-light) !important;
+    border-left: 0 !important;
+    border-radius: 0;
   }
 
   .hero-kicker {

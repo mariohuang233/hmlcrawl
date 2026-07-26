@@ -3,6 +3,7 @@ import Chart from './Chart';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { fetchAPI, retryRequest, formatErrorMessage } from '../utils/api';
 import { ColorTheme, getChartTheme } from '../utils/chartTheme';
+import { createSparseCategoryInterval } from '../utils/chartAxis';
 import ChartCardHeader from './ChartCardHeader';
 
 interface TrendData {
@@ -178,19 +179,11 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
         color: colors.muted,
         fontFamily: 'inherit',
         fontSize: mobileState ? 10 : 11,
-        interval: (index: number) => {
-          const totalPoints = data.length;
-          if (mobileState) {
-            if (totalPoints <= 12) return index % 2 === 0;
-            else if (totalPoints <= 24) return index % 3 === 0;
-            else if (totalPoints <= 48) return index % 6 === 0;
-            else return index % 8 === 0;
-          }
-          if (totalPoints <= 12) return true;
-          else if (totalPoints <= 24) return index % 2 === 0;
-          else if (totalPoints <= 48) return index % 4 === 0;
-          else return index % 6 === 0;
-        },
+        interval: createSparseCategoryInterval(data.length, mobileState ? 5 : 8),
+        hideOverlap: true,
+        showMinLabel: true,
+        showMaxLabel: true,
+        margin: mobileState ? 9 : 11,
         rotate: 0,
         formatter: (value: string) => {
           try {
