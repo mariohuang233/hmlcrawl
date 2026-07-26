@@ -46,7 +46,11 @@ const DeferredSection: React.FC<DeferredSectionProps> = ({
   );
 
   return (
-    <div ref={containerRef} className="deferred-section" style={{ minHeight }}>
+    <div
+      ref={containerRef}
+      className={`deferred-section ${shouldRender ? 'is-rendered' : 'is-pending'}`}
+      style={shouldRender ? undefined : { minHeight }}
+    >
       {shouldRender ? <Suspense fallback={fallback}>{children}</Suspense> : fallback}
     </div>
   );

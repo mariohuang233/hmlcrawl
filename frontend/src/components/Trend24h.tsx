@@ -3,6 +3,7 @@ import Chart from './Chart';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { fetchAPI, retryRequest, formatErrorMessage } from '../utils/api';
 import { ColorTheme, getChartTheme } from '../utils/chartTheme';
+import ChartCardHeader from './ChartCardHeader';
 
 interface TrendData {
   time: string;
@@ -108,42 +109,28 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
   
   const mobileState = isMobile;
   const colors = getChartTheme(theme);
+  const latestRemaining = data.length > 0 ? data[data.length - 1].remaining_kwh : 0;
   
   const chartOption = {
-    title: {
-      text: '24小时用电趋势',
-      left: 'center',
-      textStyle: {
-        fontSize: mobileState ? 15 : 18,
-        fontWeight: 600,
-        color: colors.text,
-        fontFamily: 'Outfit, Nunito, sans-serif'
-      },
-      top: mobileState ? 12 : 16,
-      subtext: mobileState 
-        ? '每10分钟更新'
-        : '每10分钟更新 · 拖拽下方滑块缩放',
-      subtextStyle: {
-        fontSize: mobileState ? 10 : 12,
-        color: colors.muted,
-        fontFamily: 'Outfit, Nunito, sans-serif'
-      }
-    },
     animation: hasTriggered,
-    animationDuration: mobileState ? 400 : 650,
-    animationDurationUpdate: 250,
+    animationDuration: mobileState ? 260 : 420,
+    animationDurationUpdate: 180,
     animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'axis',
+      triggerOn: 'mousemove|click',
+      confine: true,
+      enterable: false,
+      hideDelay: 40,
       backgroundColor: colors.tooltipBackground,
       borderColor: colors.tooltipBorder,
       borderWidth: 1,
-      borderRadius: 12,
-      padding: 12,
+      borderRadius: 10,
+      padding: mobileState ? 10 : 12,
       textStyle: {
         color: colors.text,
-        fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: 13
+        fontFamily: 'inherit',
+        fontSize: mobileState ? 11 : 12
       },
       extraCssText: colors.tooltipShadow,
       formatter: (params: any) => {
@@ -172,15 +159,13 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
         }
         
         return `
-          <div style="padding: 4px;">
-            <div style="margin-bottom: 8px; font-weight: 600; color: ${colors.textStrong}; font-size: 14px;">${beijingTime}</div>
-            <div style="margin-bottom: 4px;">
-              <span style="display: inline-block; width: 8px; height: 8px; background: #276f66; border-radius: 50%; margin-right: 8px;"></span>
-              <span>用电量: <span style="color: ${colors.textStrong}; font-weight: 600;">${usage}</span> kWh</span>
+          <div style="min-width:${mobileState ? 145 : 165}px">
+            <div style="margin-bottom:7px;font-weight:700;color:${colors.textStrong}">${beijingTime}</div>
+            <div style="display:flex;justify-content:space-between;gap:16px;margin-bottom:4px;color:${colors.muted}">
+              <span>用电</span><strong style="color:${colors.textStrong}">${usage} kWh</strong>
             </div>
-            <div>
-              <span style="display: inline-block; width: 8px; height: 8px; background: #0ea5e9; border-radius: 50%; margin-right: 8px;"></span>
-              <span>剩余电量: <span style="color: #0ea5e9; font-weight: 600;">${remaining}</span> kWh</span>
+            <div style="display:flex;justify-content:space-between;gap:16px;color:${colors.muted}">
+              <span>余量</span><strong style="color:${colors.textStrong}">${remaining} kWh</strong>
             </div>
           </div>
         `;
@@ -191,8 +176,8 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
       data: data.map(item => item.time),
       axisLabel: {
         color: colors.muted,
-        fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: mobileState ? 9 : 11,
+        fontFamily: 'inherit',
+        fontSize: mobileState ? 10 : 11,
         interval: (index: number) => {
           const totalPoints = data.length;
           if (mobileState) {
@@ -206,7 +191,7 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
           else if (totalPoints <= 48) return index % 4 === 0;
           else return index % 6 === 0;
         },
-        rotate: mobileState ? 45 : 0,
+        rotate: 0,
         formatter: (value: string) => {
           try {
             const utcDate = new Date(value);
@@ -240,12 +225,12 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
       name: '用电量 (kWh)',
       nameTextStyle: {
         color: colors.muted,
-        fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: mobileState ? 9 : 11
+        fontFamily: 'inherit',
+        fontSize: mobileState ? 10 : 11
       },
       axisLabel: {
         color: colors.muted,
-        fontFamily: 'Outfit, Nunito, sans-serif',
+        fontFamily: 'inherit',
         fontSize: mobileState ? 9 : 10,
         formatter: (value: number) => {
           if (typeof value !== 'number' || isNaN(value)) return '0.0';
@@ -265,7 +250,7 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
       splitLine: {
         lineStyle: {
           color: colors.grid,
-          type: 'dashed'
+          type: 'solid'
         }
       }
     },
@@ -279,11 +264,11 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
         symbolSize: 5,
         showSymbol: data.length <= 20,
         lineStyle: {
-          color: '#176a6d',
-          width: 3
+          color: colors.series,
+          width: mobileState ? 2 : 2.5
         },
         itemStyle: {
-          color: '#176a6d',
+          color: colors.series,
           borderColor: colors.pointBorder,
           borderWidth: 2
         },
@@ -295,25 +280,33 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(40, 127, 130, 0.16)' },
-              { offset: 0.5, color: 'rgba(40, 127, 130, 0.08)' },
-              { offset: 1, color: 'rgba(40, 127, 130, 0.02)' }
+              { offset: 0, color: colors.areaTop },
+              { offset: 1, color: colors.areaBottom }
             ]
           }
         },
         animationDelay: 0,
-        animationDuration: mobileState ? 400 : 650,
+        animationDuration: mobileState ? 260 : 420,
         animationEasing: 'cubicOut'
       }
     ],
     grid: {
-      left: mobileState ? '14%' : '8%',
-      right: mobileState ? '6%' : '4%',
-      bottom: mobileState ? '28%' : '18%',
-      top: mobileState ? '16%' : '20%',
+      left: mobileState ? 42 : 54,
+      right: mobileState ? 12 : 20,
+      bottom: mobileState ? 28 : 50,
+      top: 10,
       containLabel: true
     },
-    dataZoom: data.length > 0 ? [
+    dataZoom: data.length > 0 ? (mobileState ? [
+      {
+        type: 'inside',
+        start: 0,
+        end: 100,
+        zoomOnMouseWheel: false,
+        moveOnMouseMove: true,
+        moveOnMouseWheel: false
+      }
+    ] : [
       {
         type: 'slider',
         show: true,
@@ -326,19 +319,19 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
         borderColor: colors.axis,
         borderRadius: mobileState ? 14 : 11,
         handleStyle: {
-          color: '#176a6d',
+          color: colors.series,
           borderColor: colors.pointBorder,
           borderWidth: mobileState ? 2 : 1
         },
         textStyle: {
           color: colors.muted,
           fontSize: mobileState ? 10 : 9,
-          fontFamily: 'Outfit, Nunito, sans-serif'
+          fontFamily: 'inherit'
         },
         showDetail: false,
         showDataShadow: false
       }
-    ] : []
+    ]) : []
   };
 
   if (loading) {
@@ -398,10 +391,15 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
   }
 
   return (
-    <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
+    <div className={`card chart-card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
+      <ChartCardHeader
+        title="24小时用电"
+        description="每10分钟更新"
+        value={`余量 ${latestRemaining.toFixed(2)} kWh`}
+      />
       <Chart
         option={chartOption} 
-        style={{ height: mobileState ? '330px' : '380px' }}
+        style={{ height: mobileState ? '230px' : '300px' }}
         className="chart-container"
         notMerge={false}
         lazyUpdate={true}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Chart from './Chart';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { ColorTheme, getChartTheme } from '../utils/chartTheme';
+import ChartCardHeader from './ChartCardHeader';
 
 const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
 
@@ -55,34 +56,35 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
   }, [fetchData, refreshKey]);
   
   const colors = useMemo(() => getChartTheme(theme), [theme]);
+  const todayTotal = useMemo(
+    () => data.reduce((total, item) => total + (Number(item.used_kwh) || 0), 0),
+    [data]
+  );
+  const latestActiveIndex = useMemo(
+    () => data.reduce((latest, item, index) => item.used_kwh > 0 ? index : latest, -1),
+    [data]
+  );
 
   const chartOption = useMemo(() => ({
-    title: {
-      text: '今日用电分布',
-      left: 'center',
-      textStyle: {
-        fontSize: isMobile ? 15 : 18,
-        fontWeight: 600,
-        color: colors.text,
-        fontFamily: 'Outfit, Nunito, sans-serif'
-      },
-      top: isMobile ? 10 : 16
-    },
     animation: hasTriggered,
-    animationDuration: isMobile ? 350 : 600,
-    animationDurationUpdate: 250,
+    animationDuration: isMobile ? 260 : 420,
+    animationDurationUpdate: 180,
     animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'axis',
+      triggerOn: 'mousemove|click',
+      confine: true,
+      enterable: false,
+      hideDelay: 40,
       backgroundColor: colors.tooltipBackground,
       borderColor: colors.tooltipBorder,
       borderWidth: 1,
-      borderRadius: 12,
-      padding: isMobile ? 16 : 12,
+      borderRadius: 10,
+      padding: isMobile ? 10 : 12,
       textStyle: {
         color: colors.text,
-        fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: isMobile ? 14 : 13
+        fontFamily: 'inherit',
+        fontSize: isMobile ? 11 : 12
       },
       extraCssText: colors.tooltipShadow,
       formatter: (params: any) => {
@@ -94,24 +96,24 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
         const vsYesterdayText = vsYesterday === 0 ? '持平' : 
           (vsYesterday > 0 ? `+${vsYesterday}%` : `${vsYesterday}%`);
         const vsYesterdayColor = vsYesterday === 0 ? colors.muted :
-          (vsYesterday > 0 ? '#f43f5e' : '#10b981');
+          (vsYesterday > 0 ? colors.accent : colors.positive);
         
         const vsAvgText = vsAvg === 0 ? '持平' : 
           (vsAvg > 0 ? `+${vsAvg}%` : `${vsAvg}%`);
         const vsAvgColor = vsAvg === 0 ? colors.muted :
-          (vsAvg > 0 ? '#f43f5e' : '#10b981');
+          (vsAvg > 0 ? colors.accent : colors.positive);
         
         return `
-          <div style="padding: 4px;">
-            <div style="margin-bottom: 8px; font-weight: 600; color: ${colors.textStrong}; font-size: ${isMobile ? 15 : 14}px;">${point.axisValue}</div>
-            <div style="margin-bottom: 4px;">今日: <span style="color: ${colors.textStrong}; font-weight: 600;">${point.value}</span> kWh</div>
-            <div style="color: ${colors.muted}; font-size: ${isMobile ? 13 : 12}px; margin-bottom: 2px;">昨日: ${dataItem.yesterday_used_kwh} kWh</div>
-            <div style="color: ${colors.muted}; font-size: ${isMobile ? 13 : 12}px; margin-bottom: 4px;">平均: ${dataItem.avg_used_kwh} kWh</div>
-            <div style="color: ${vsYesterdayColor}; font-size: ${isMobile ? 13 : 12}px;">
-              较昨日 ${vsYesterdayText}
+          <div style="min-width:${isMobile ? 148 : 172}px">
+            <div style="margin-bottom:7px;font-weight:700;color:${colors.textStrong}">${point.axisValue}</div>
+            <div style="display:flex;justify-content:space-between;gap:16px;margin-bottom:4px;color:${colors.muted}">
+              <span>今日</span><strong style="color:${colors.textStrong}">${point.value} kWh</strong>
             </div>
-            <div style="color: ${vsAvgColor}; font-size: ${isMobile ? 13 : 12}px;">
-              较平均 ${vsAvgText}
+            <div style="display:flex;justify-content:space-between;gap:16px;color:${colors.muted}">
+              <span>较昨日</span><strong style="color:${vsYesterdayColor}">${vsYesterdayText}</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:16px;color:${colors.muted}">
+              <span>较平均</span><strong style="color:${vsAvgColor}">${vsAvgText}</strong>
             </div>
           </div>
         `;
@@ -123,9 +125,9 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
       axisLabel: {
         interval: isMobile ? (index: number) => index % 4 === 0 : 1,
         color: colors.muted,
-        fontFamily: 'Outfit, Nunito, sans-serif',
-        fontSize: isMobile ? 9 : 11,
-        rotate: isMobile ? 45 : 0
+        fontFamily: 'inherit',
+        fontSize: isMobile ? 10 : 11,
+        rotate: 0
       },
       axisLine: {
         lineStyle: {
@@ -143,12 +145,12 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
       name: '用电量 (kWh)',
       nameTextStyle: {
         color: colors.muted,
-        fontFamily: 'Outfit, Nunito, sans-serif',
+        fontFamily: 'inherit',
         fontSize: isMobile ? 9 : 11
       },
       axisLabel: {
         color: colors.muted,
-        fontFamily: 'Outfit, Nunito, sans-serif',
+        fontFamily: 'inherit',
         fontSize: isMobile ? 9 : 11
       },
       axisLine: {
@@ -164,7 +166,7 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
       splitLine: {
         lineStyle: {
           color: colors.grid,
-          type: 'dashed'
+          type: 'solid'
         }
       }
     },
@@ -172,40 +174,36 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
       {
         name: '用电量',
         type: 'bar',
-        data: data.map(item => item.used_kwh),
+        data: data.map((item, index) => ({
+          value: item.used_kwh,
+          itemStyle: {
+            color: index === latestActiveIndex ? colors.series : colors.seriesMuted
+          }
+        })),
+        barMaxWidth: isMobile ? 12 : 18,
+        barMinHeight: 2,
         itemStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: '#176a6d' },
-              { offset: 0.5, color: '#4c8c82' },
-              { offset: 1, color: '#79aaa1' }
-            ]
-          },
-          borderRadius: [isMobile ? 6 : 8, isMobile ? 6 : 8, 0, 0]
+          color: colors.seriesMuted,
+          borderRadius: [6, 6, 0, 0]
         },
         emphasis: {
           itemStyle: {
-            color: '#176a6d'
+            color: colors.series
           }
         },
         animationDelay: 0,
-        animationDuration: isMobile ? 350 : 600,
+        animationDuration: isMobile ? 260 : 420,
         animationEasing: 'cubicOut'
       }
     ],
     grid: {
-      left: isMobile ? '14%' : '5%',
-      right: isMobile ? '6%' : '5%',
-      bottom: isMobile ? '25%' : '10%',
-      top: isMobile ? '14%' : '18%',
+      left: isMobile ? 42 : 54,
+      right: isMobile ? 12 : 20,
+      bottom: isMobile ? 28 : 34,
+      top: 10,
       containLabel: true
     }
-  }), [colors, data, hasTriggered, isMobile]);
+  }), [colors, data, hasTriggered, isMobile, latestActiveIndex]);
 
   if (loading) {
     return (
@@ -230,10 +228,15 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
   }
 
   return (
-    <div className={`card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
+    <div className={`card chart-card ${hasTriggered ? 'animate-in' : ''}`} ref={elementRef as React.RefObject<HTMLDivElement>}>
+      <ChartCardHeader
+        title="今日用电"
+        description="按小时查看"
+        value={`${todayTotal.toFixed(2)} kWh`}
+      />
       <Chart
         option={chartOption} 
-        style={{ height: isMobile ? '330px' : '380px' }}
+        style={{ height: isMobile ? '230px' : '300px' }}
         className="chart-container"
         notMerge={false}
         lazyUpdate={true}

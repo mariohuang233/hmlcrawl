@@ -90,9 +90,9 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
   };
 
   const getComparisonColor = (percentage: number) => {
-    if (percentage === 0) return '#8a8078';
-    if (percentage > 0) return '#f43f5e';
-    return '#10b981';
+    if (percentage === 0) return 'var(--text-tertiary)';
+    if (percentage > 0) return 'var(--accent)';
+    return 'var(--text-secondary)';
   };
 
   const formatPredictedTime = (prediction: PredictionData) => {
@@ -151,10 +151,8 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
   const predictionInfo = data.predicted_depletion ? formatPredictedTime(data.predicted_depletion) : null;
   
   const getBatteryLevel = (remaining: number) => {
-    if (remaining <= 10) return { level: 'critical', color: '#f43f5e', bgColor: '#fff1f2' };
-    if (remaining <= 30) return { level: 'low', color: '#f59e0b', bgColor: '#fffbeb' };
-    if (remaining <= 60) return { level: 'medium', color: '#78c6ba', bgColor: '#eaf7f4' };
-    return { level: 'high', color: '#57b79f', bgColor: '#e9f7f2' };
+    if (remaining <= 10) return { level: 'critical', color: 'var(--accent)', bgColor: 'var(--accent-soft)' };
+    return { level: 'normal', color: 'var(--text-primary)', bgColor: 'var(--bg-surface)' };
   };
 
   const batteryLevel = getBatteryLevel(data.current_remaining);
@@ -231,10 +229,11 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       
       <div className="hero-section">
         <div 
-          className={`hero-card ${hasTriggered ? 'animate-in' : ''}`}
+          className={`hero-card hero-card-balance ${hasTriggered ? 'animate-in' : ''}`}
           style={{ 
-            animationDelay: '0ms'
-          }}
+            animationDelay: '0ms',
+            '--balance-progress': `${Math.min(Math.max(data.current_remaining, 0), 100) * 3.6}deg`
+          } as React.CSSProperties}
         >
           <div className="hero-content">
             <div className="hero-info">
@@ -259,7 +258,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
                     className="battery-bar-fill" 
                     style={{ 
                       width: `${Math.min(data.current_remaining, 100)}%`,
-                      background: `linear-gradient(90deg, ${batteryLevel.color} 0%, ${batteryLevel.color}dd 100%)`
+                      background: batteryLevel.color
                     }}
                   ></div>
                 </div>
@@ -282,8 +281,8 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
                 <div className="hero-label">{predictionInfo.label}</div>
                 <div className="hero-value-row">
                   <span className="hero-value" style={{ 
-                    color: predictionInfo.status === 'danger' ? '#f43f5e' : 
-                           predictionInfo.status === 'warning' ? '#f59e0b' : 'var(--text-primary)'
+                    color: predictionInfo.status === 'danger' ? 'var(--accent)' :
+                           predictionInfo.status === 'warning' ? 'var(--warning)' : 'var(--text-primary)'
                   }}>
                     {predictionInfo.value}
                   </span>
