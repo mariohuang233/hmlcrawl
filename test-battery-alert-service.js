@@ -6,6 +6,7 @@ const {
   normalizeSource,
   isFreshReading
 } = require('./src/services/batteryAlertPolicy');
+const { buildLowBatteryNotification } = require('./src/utils/alerter');
 
 test('normalizeSource groups local mobile sources without including cloud logs', () => {
   assert.equal(normalizeSource('ipad'), 'mobile-crawler');
@@ -45,7 +46,7 @@ test('getConfig uses explicit positive values and safe defaults', () => {
     assert.deepEqual(getConfig(), {
       threshold: 1,
       cooldownHours: 4,
-      maxDataAgeMinutes: 30
+      maxDataAgeMinutes: 20
     });
   } finally {
     const restore = (name, value) => {
@@ -56,4 +57,24 @@ test('getConfig uses explicit positive values and safe defaults', () => {
     restore('BATTERY_ALERT_COOLDOWN_HOURS', original.cooldown);
     restore('BATTERY_ALERT_MAX_DATA_AGE_MINUTES', original.maxAge);
   }
+});
+
+test('low battery notification is actionable and does not show a misleading percentage', () => {
+  const notification = buildLowBatteryNotification(0.82, 1, {
+    meter_id: 'meter 123',
+    source: 'mobile-crawler',
+    collected_at: '2026-07-27T10:00:00.000Z'
+  });
+
+  assert.equal(notification.title, '🔴 电量不足｜仅剩 0.82 度');
+  assert.equal(
+    notification.rechargeUrl,
+    'https://www.wap.cnyiot.com/nat/pay.aspx?mid=meter%20123'
+  );
+  assert.match(notification.message, /当前余额：0\.82 度/);
+  assert.match(notification.message, /移动端爬虫/);
+  assert.match(notification.message, /\[立即充值\]\(https:\/\/www\.wap\.cnyiot\.com/);
+  assert.doesNotMatch(notification.title, /ERROR/);
+  assert.doesNotMatch(notification.message, /剩余\s*\d+%/);
+  assert.doesNotMatch(notification.message, /主机:|运行:/);
 });

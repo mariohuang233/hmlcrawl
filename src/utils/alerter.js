@@ -171,7 +171,7 @@ function formatAlert(level, message, details = {}) {
 async function alert(level, message, details = {}) {
   if (!shouldAlert(level)) return false;
 
-  const throttleKey = `${level}:${message}`;
+  const throttleKey = details.throttleKey || `${level}:${message}`;
   if (isThrottled(throttleKey)) {
     return false;
   }
@@ -183,8 +183,9 @@ async function alert(level, message, details = {}) {
     return false;
   }
 
-  const text = formatAlert(level, message, details);
-  const title = `${level.toUpperCase()} - ${message.substring(0, 30)}${message.length > 30 ? '...' : ''}`;
+  const text = details.preformatted ? message : formatAlert(level, message, details);
+  const title = details.title ||
+    `${level.toUpperCase()} - ${message.substring(0, 30)}${message.length > 30 ? '...' : ''}`;
   
   const sent = await sendServerChan(title, text);
   
@@ -209,14 +210,63 @@ async function alertMemoryHigh(memMB) {
   return alert('warn', `内存使用过高: ${memMB}MB`, { uptime: process.uptime() });
 }
 
+function formatKwh(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue)
+    ? numericValue.toFixed(2).replace(/\.?0+$/, '')
+    : String(value);
+}
+
+function buildLowBatteryNotification(remainingKwh, threshold = 1, details = {}) {
+  const remainingText = formatKwh(remainingKwh);
+  const thresholdText = formatKwh(threshold);
+  const meterId = details.meter_id || process.env.METER_ID || '18100071580';
+  const rechargeUrl = `https://www.wap.cnyiot.com/nat/pay.aspx?mid=${encodeURIComponent(meterId)}`;
+  const sourceLabels = {
+    'mobile-crawler': '移动端爬虫',
+    'local-crawler': '本地爬虫',
+    'cloud-crawler': '云端爬虫'
+  };
+
+  const lines = [
+    `🔋 当前余额：${remainingText} 度`,
+    `⚠️ 已低于 ${thresholdText} 度提醒线`
+  ];
+
+  if (details.collected_at) {
+    const collectedAt = new Date(details.collected_at);
+    if (!Number.isNaN(collectedAt.getTime())) {
+      lines.push(`🕒 采集时间：${collectedAt.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
+    }
+  }
+
+  if (details.source) {
+    lines.push(`📡 数据来源：${sourceLabels[details.source] || details.source}`);
+  }
+
+  lines.push(
+    '',
+    `👉 [立即充值](${rechargeUrl})`,
+    '',
+    '如已完成充值，无需重复操作；余额恢复后系统会自动停止低电提醒。'
+  );
+
+  return {
+    title: `🔴 电量不足｜仅剩 ${remainingText} 度`,
+    message: lines.join('\n'),
+    rechargeUrl
+  };
+}
+
 async function alertLowBattery(remainingKwh, threshold = 1, details = {}) {
-  const percentage = Math.round((remainingKwh / threshold) * 100);
-  const message = `电量低于阈值！当前剩余 ${remainingKwh} kWh（阈值: ${threshold} kWh），剩余 ${percentage}%`;
-  return alert('error', message, {
+  const notification = buildLowBatteryNotification(remainingKwh, threshold, details);
+  return alert('error', notification.message, {
     ...details,
-    remaining_kwh: remainingKwh, 
+    remaining_kwh: remainingKwh,
     threshold: threshold,
-    uptime: process.uptime() 
+    title: notification.title,
+    preformatted: true,
+    throttleKey: `low-battery:${details.meter_id || process.env.METER_ID || 'default'}`
   });
 }
 
@@ -245,6 +295,7 @@ module.exports = {
   alertLowBattery,
   alertCrawlerRestarted,
   alertMongoDisconnected,
+  buildLowBatteryNotification,
   getConfig,
   sendServerChan
 };
