@@ -359,7 +359,42 @@ usageSchema.statics.getRechargeHistory = async function(meterId, limit = 50) {
 
     recharges.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
-    const limitedRecords = limit > 0 ? recharges.slice(0, limit) : recharges;
+    // Enrich before applying the limit so the oldest returned item still has
+    // the correct previous recharge when more history exists.
+    const enrichedRecharges = recharges.map((recharge, index) => {
+      const previousRecharge = recharges[index + 1];
+      if (!previousRecharge) {
+        return {
+          ...recharge,
+          previousRechargeTime: null,
+          intervalSincePreviousMs: null,
+          cycleConsumedKwh: null,
+          cycleDailyUsageKwh: null
+        };
+      }
+
+      const intervalSincePreviousMs =
+        new Date(recharge.time).getTime() - new Date(previousRecharge.time).getTime();
+      const cycleConsumedKwh = Math.max(
+        0,
+        Math.round((previousRecharge.afterKwh - recharge.beforeKwh) * 100) / 100
+      );
+      const intervalDays = intervalSincePreviousMs / (24 * 60 * 60 * 1000);
+
+      return {
+        ...recharge,
+        previousRechargeTime: previousRecharge.time,
+        intervalSincePreviousMs,
+        cycleConsumedKwh,
+        cycleDailyUsageKwh: intervalDays > 0
+          ? Math.round((cycleConsumedKwh / intervalDays) * 100) / 100
+          : null
+      };
+    });
+
+    const limitedRecords = limit > 0
+      ? enrichedRecharges.slice(0, limit)
+      : enrichedRecharges;
 
     return {
       total: recharges.length,

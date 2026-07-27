@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { fetchAPI, retryRequest, formatErrorMessage, RechargeHistoryData } from '../utils/api';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 
@@ -6,6 +6,25 @@ interface RechargeHistoryProps {
   isMobile?: boolean;
   refreshKey?: number;
 }
+
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+const formatDuration = (durationMs: number, compact = false) => {
+  const totalMinutes = Math.max(1, Math.round(durationMs / MINUTE_MS));
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return compact || hours === 0 ? `${days}天` : `${days}天${hours}小时`;
+  }
+  if (hours > 0) {
+    return compact || minutes === 0 ? `${hours}小时` : `${hours}小时${minutes}分钟`;
+  }
+  return `${minutes}分钟`;
+};
 
 const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, refreshKey = 0 }) => {
   const [data, setData] = useState<RechargeHistoryData | null>(null);
@@ -65,32 +84,95 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
     return '#8b5cf6';
   };
 
-  const getRecentRechargeInfo = () => {
-    if (!data || data.records.length === 0) return null;
-    const latest = data.records[0];
-    const now = new Date();
-    const rechargeDate = new Date(latest.time);
-    const diffDays = Math.floor((now.getTime() - rechargeDate.getTime()) / (1000 * 60 * 60 * 24));
-    
-    let timeText = '';
-    if (diffDays === 0) {
-      timeText = '今天';
-    } else if (diffDays === 1) {
-      timeText = '昨天';
-    } else if (diffDays < 7) {
-      timeText = `${diffDays}天前`;
-    } else {
-      timeText = formatDate(latest.time);
-    }
-    
+  const records = useMemo(() => {
+    if (!data) return [];
+    return [...data.records].sort(
+      (a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()
+    );
+  }, [data]);
+
+  const cadence = useMemo(() => {
+    if (records.length < 2) return null;
+
+    const intervals = records
+      .map((record, index) => {
+        if (record.intervalSincePreviousMs !== undefined) {
+          return record.intervalSincePreviousMs;
+        }
+        const previousRecharge = records[index + 1];
+        return previousRecharge
+          ? new Date(record.time).getTime() - new Date(previousRecharge.time).getTime()
+          : null;
+      })
+      .filter((interval): interval is number => (
+        interval !== null && Number.isFinite(interval) && interval > 0
+      ))
+      .sort((a, b) => a - b);
+
+    if (intervals.length === 0) return null;
+
+    const middle = Math.floor(intervals.length / 2);
+    const medianInterval = intervals.length % 2 === 0
+      ? (intervals[middle - 1] + intervals[middle]) / 2
+      : intervals[middle];
+    const latestRechargeAt = new Date(records[0].time).getTime();
+    const expectedNextAt = latestRechargeAt + medianInterval;
+    const remainingMs = expectedNextAt - Date.now();
+
     return {
-      amount: latest.amountKwh,
-      timeText,
-      date: formatDateTime(latest.time)
+      medianInterval,
+      typicalText: formatDuration(medianInterval, true),
+      nextText: remainingMs >= 0
+        ? `${formatDate(new Date(expectedNextAt).toISOString())}左右`
+        : `已超${formatDuration(Math.abs(remainingMs), true)}`
+    };
+  }, [records]);
+
+  const getCycleInfo = (index: number) => {
+    const record = records[index];
+    const previousRecharge = records[index + 1];
+
+    if (!record) {
+      return {
+        intervalText: '暂无周期数据',
+        dailyUsageText: null
+      };
+    }
+
+    const intervalMs = record.intervalSincePreviousMs ?? (
+      previousRecharge
+        ? new Date(record.time).getTime() - new Date(previousRecharge.time).getTime()
+        : null
+    );
+    if (intervalMs === null) {
+      return {
+        intervalText: '首次充值记录',
+        dailyUsageText: null
+      };
+    }
+
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+      return {
+        intervalText: '间隔数据异常',
+        dailyUsageText: null
+      };
+    }
+
+    const consumedKwh = record.cycleConsumedKwh ?? (
+      previousRecharge ? Math.max(0, previousRecharge.afterKwh - record.beforeKwh) : null
+    );
+    const intervalDays = intervalMs / DAY_MS;
+    const dailyUsage = record.cycleDailyUsageKwh ?? (
+      intervalDays > 0 && consumedKwh !== null ? consumedKwh / intervalDays : null
+    );
+
+    return {
+      intervalText: formatDuration(intervalMs),
+      dailyUsageText: dailyUsage !== null && Number.isFinite(dailyUsage)
+        ? `期间日均 ${dailyUsage.toFixed(2)} kWh`
+        : null
     };
   };
-
-  const recentInfo = getRecentRechargeInfo();
 
   if (error) {
     return (
@@ -139,57 +221,76 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
                 <div className="summary-label">累计充值电量</div>
               </div>
             </div>
-            {recentInfo && (
-              <div className="recharge-summary-item">
-                <div className="summary-code">最近</div>
-                <div className="summary-content">
-                  <div className="summary-value recent">
-                    {recentInfo.timeText}
-                  </div>
-                  <div className="summary-label">最近充值</div>
+            <div className="recharge-summary-item">
+              <div className="summary-code">间隔</div>
+              <div className="summary-content">
+                <div className="summary-value">{cadence?.typicalText ?? '—'}</div>
+                <div className="summary-label">
+                  {cadence ? '典型充值间隔 · 中位数' : '记录不足，继续积累'}
                 </div>
               </div>
-            )}
+            </div>
+            <div className="recharge-summary-item">
+              <div className="summary-code">预计</div>
+              <div className="summary-content">
+                <div className={`summary-value ${cadence ? 'recent' : ''}`}>
+                  {cadence?.nextText ?? '—'}
+                </div>
+                <div className="summary-label">
+                  {cadence ? '按历史充值节奏估算' : '至少需要两次充值'}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="recharge-timeline">
-            {data.records.map((record, index) => (
-              <div
-                key={`${record.time}-${index}`}
-                className="timeline-item"
-                style={{ animationDelay: `${index * 40}ms` }}
-              >
-                <div className="timeline-dot" style={{ backgroundColor: getAmountColor(record.amountKwh) }}>
-                  {index === 0 && <div className="timeline-pulse"></div>}
-                </div>
-                
-                {index < data.records.length - 1 && (
-                  <div className="timeline-line"></div>
-                )}
+            {records.map((record, index) => {
+              const cycleInfo = getCycleInfo(index);
+              return (
+                <div
+                  key={`${record.time}-${index}`}
+                  className="timeline-item"
+                  style={{ animationDelay: `${index * 40}ms` }}
+                >
+                  <div className="timeline-dot" style={{ backgroundColor: getAmountColor(record.amountKwh) }}>
+                    {index === 0 && <div className="timeline-pulse"></div>}
+                  </div>
 
-                <div className="timeline-content">
-                  <div className="timeline-header">
-                    <span className="recharge-amount" style={{ color: getAmountColor(record.amountKwh) }}>
-                      +{record.amountKwh.toFixed(2)} kWh
-                    </span>
-                    <span className="recharge-date">
-                      {isMobile ? formatDate(record.time) : formatDateTime(record.time)}
-                    </span>
-                  </div>
-                  <div className="timeline-detail">
-                    <span className="detail-item">
-                      <span className="detail-label">充值前</span>
-                      <span className="detail-value">{record.beforeKwh.toFixed(2)} kWh</span>
-                    </span>
-                    <span className="detail-arrow">→</span>
-                    <span className="detail-item">
-                      <span className="detail-label">充值后</span>
-                      <span className="detail-value after">{record.afterKwh.toFixed(2)} kWh</span>
-                    </span>
+                  {index < records.length - 1 && (
+                    <div className="timeline-line"></div>
+                  )}
+
+                  <div className="timeline-content">
+                    <div className="timeline-header">
+                      <span className="recharge-amount" style={{ color: getAmountColor(record.amountKwh) }}>
+                        +{record.amountKwh.toFixed(2)} kWh
+                      </span>
+                      <span className="recharge-date">
+                        {isMobile ? formatDate(record.time) : formatDateTime(record.time)}
+                      </span>
+                    </div>
+                    <div className="timeline-detail">
+                      <span className="detail-item">
+                        <span className="detail-label">充值前</span>
+                        <span className="detail-value">{record.beforeKwh.toFixed(2)} kWh</span>
+                      </span>
+                      <span className="detail-arrow">→</span>
+                      <span className="detail-item">
+                        <span className="detail-label">充值后</span>
+                        <span className="detail-value after">{record.afterKwh.toFixed(2)} kWh</span>
+                      </span>
+                    </div>
+                    <div className="recharge-cycle">
+                      <span className="recharge-cycle-label">距上一次充值</span>
+                      <strong className="recharge-cycle-value">{cycleInfo.intervalText}</strong>
+                      {cycleInfo.dailyUsageText && (
+                        <span className="recharge-cycle-meta">{cycleInfo.dailyUsageText}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {data.records.length >= 50 && (

@@ -8,6 +8,10 @@ export interface RechargeRecord {
   beforeKwh: number;
   afterKwh: number;
   meter_name?: string;
+  previousRechargeTime?: string | null;
+  intervalSincePreviousMs?: number | null;
+  cycleConsumedKwh?: number | null;
+  cycleDailyUsageKwh?: number | null;
 }
 
 export interface RechargeHistoryData {
