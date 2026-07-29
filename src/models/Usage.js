@@ -323,46 +323,64 @@ usageSchema.statics.getTodayHourlyUsage = async function(meterId) {
 
 usageSchema.statics.getRechargeHistory = async function(meterId, limit = 50) {
   try {
-    const data = await this.find({ meter_id: meterId })
-      .sort({ collected_at: 1 })
-      .select('remaining_kwh collected_at meter_name')
-      .lean();
-
-    if (data.length < 2) {
-      return {
-        total: 0,
-        totalRechargeKwh: 0,
-        records: []
-      };
-    }
-
-    const recharges = [];
-    let totalRechargeKwh = 0;
-
-    for (let i = 1; i < data.length; i++) {
-      const prev = data[i - 1];
-      const curr = data[i];
-      const diff = curr.remaining_kwh - prev.remaining_kwh;
-
-      if (diff > 0.1) {
-        const rechargeAmount = Math.round(diff * 100) / 100;
-        recharges.push({
-          time: curr.collected_at,
-          amountKwh: rechargeAmount,
-          beforeKwh: Math.round(prev.remaining_kwh * 100) / 100,
-          afterKwh: Math.round(curr.remaining_kwh * 100) / 100,
-          meter_name: curr.meter_name || prev.meter_name
-        });
-        totalRechargeKwh += rechargeAmount;
+    const requestedLimit = Number(limit);
+    const safeLimit = Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(Math.floor(requestedLimit), 200)
+      : 50;
+    const [result = {}] = await this.aggregate([
+      { $match: { meter_id: meterId } },
+      {
+        $setWindowFields: {
+          partitionBy: '$meter_id',
+          sortBy: { collected_at: 1 },
+          output: {
+            previousRemainingKwh: {
+              $shift: { output: '$remaining_kwh', by: -1, default: null }
+            },
+            previousMeterName: {
+              $shift: { output: '$meter_name', by: -1, default: null }
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          time: '$collected_at',
+          amountKwh: { $subtract: ['$remaining_kwh', '$previousRemainingKwh'] },
+          beforeKwh: '$previousRemainingKwh',
+          afterKwh: '$remaining_kwh',
+          meter_name: { $ifNull: ['$meter_name', '$previousMeterName'] }
+        }
+      },
+      { $match: { amountKwh: { $gt: 0.1 } } },
+      {
+        $facet: {
+          summary: [{
+            $group: {
+              _id: null,
+              total: { $sum: 1 },
+              totalRechargeKwh: { $sum: '$amountKwh' }
+            }
+          }],
+          records: [
+            { $sort: { time: -1 } },
+            { $limit: safeLimit + 1 }
+          ]
+        }
       }
-    }
+    ]);
 
-    recharges.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+    const summary = result.summary?.[0] || { total: 0, totalRechargeKwh: 0 };
+    const rechargeRecords = (result.records || []).map(recharge => ({
+      ...recharge,
+      amountKwh: Math.round(recharge.amountKwh * 100) / 100,
+      beforeKwh: Math.round(recharge.beforeKwh * 100) / 100,
+      afterKwh: Math.round(recharge.afterKwh * 100) / 100
+    }));
 
-    // Enrich before applying the limit so the oldest returned item still has
-    // the correct previous recharge when more history exists.
-    const enrichedRecharges = recharges.map((recharge, index) => {
-      const previousRecharge = recharges[index + 1];
+    const enrichedRecharges = rechargeRecords.slice(0, safeLimit).map((recharge, index) => {
+      const previousRecharge = rechargeRecords[index + 1];
       if (!previousRecharge) {
         return {
           ...recharge,
@@ -392,14 +410,10 @@ usageSchema.statics.getRechargeHistory = async function(meterId, limit = 50) {
       };
     });
 
-    const limitedRecords = limit > 0
-      ? enrichedRecharges.slice(0, limit)
-      : enrichedRecharges;
-
     return {
-      total: recharges.length,
-      totalRechargeKwh: Math.round(totalRechargeKwh * 100) / 100,
-      records: limitedRecords
+      total: summary.total,
+      totalRechargeKwh: Math.round(summary.totalRechargeKwh * 100) / 100,
+      records: enrichedRecharges
     };
   } catch (error) {
     console.error('获取充值记录失败:', error.message);

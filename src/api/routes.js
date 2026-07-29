@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
 const Usage = require('../models/Usage');
+const CrawlerLog = require('../models/CrawlerLog');
 const logger = require('../utils/logger');
 const crawler = require('../crawler/crawler');
 const Format = require('../utils/crawler-format');
@@ -121,7 +122,9 @@ function cacheMiddleware(key, ttl = CACHE_TTL) {
     // 重写res.json以缓存响应
     const originalJson = res.json;
     res.json = function(data) {
-      cache.set(cacheKey, data, ttl);
+      if (this.statusCode >= 200 && this.statusCode < 300) {
+        cache.set(cacheKey, data, ttl);
+      }
       return originalJson.call(this, data);
     };
     
@@ -617,7 +620,8 @@ router.get('/overview', cacheMiddleware('overview', 60000), asyncHandler(async (
     
     const meterId = process.env.METER_ID || '18100071580';
     
-    const [todayStats, weekStats, monthStats, latestUsage, yesterdayStats, lastWeekStats, lastMonthStats, lastWeekSameDayStats] = await Promise.all([
+    const recentLogStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const [todayStats, weekStats, monthStats, latestUsage, yesterdayStats, lastWeekStats, lastMonthStats, lastWeekSameDayStats, recentCrawlResults] = await Promise.all([
       Usage.calculateUsageStats(meterId, todayStart, now),
       Usage.calculateUsageStats(meterId, weekStart, now),
       Usage.calculateUsageStats(meterId, monthStart, now),
@@ -625,7 +629,15 @@ router.get('/overview', cacheMiddleware('overview', 60000), asyncHandler(async (
       Usage.calculateUsageStats(meterId, yesterdayStart, yesterdayEnd),
       Usage.calculateUsageStats(meterId, lastWeekStart, lastWeekEnd),
       Usage.calculateUsageStats(meterId, lastMonthStart, lastMonthEnd),
-      Usage.calculateUsageStats(meterId, lastWeekSameDayStart, lastWeekSameDayEnd)
+      Usage.calculateUsageStats(meterId, lastWeekSameDayStart, lastWeekSameDayEnd),
+      CrawlerLog.find({
+        timestamp: { $gte: recentLogStart },
+        action: { $in: ['success', 'failed'] }
+      })
+        .select('action')
+        .sort({ timestamp: -1 })
+        .limit(100)
+        .lean()
     ]);
 
     // 检查数据覆盖范围
@@ -648,9 +660,22 @@ router.get('/overview', cacheMiddleware('overview', 60000), asyncHandler(async (
     const weekVsLastWeek = calculatePercentageChange(weekStats.totalUsage, lastWeekStats.totalUsage);
     const monthVsLastMonth = calculatePercentageChange(monthStats.totalUsage, lastMonthStats.totalUsage);
     const costVsLastMonth = calculatePercentageChange(monthPrediction.estimated_cost, lastMonthStats.totalUsage * 1);
+    const latestCollectedAt = latestUsage ? latestUsage.collected_at : null;
+    const dataAgeMinutes = latestCollectedAt
+      ? Math.max(0, Math.floor((now.getTime() - new Date(latestCollectedAt).getTime()) / 60000))
+      : null;
+    const successfulCrawls = recentCrawlResults.filter(log => log.action === 'success').length;
+    const recentSuccessRate = recentCrawlResults.length > 0
+      ? Math.round((successfulCrawls / recentCrawlResults.length) * 1000) / 10
+      : null;
 
     res.json({
       current_remaining: latestUsage ? latestUsage.remaining_kwh : 0,
+      latest_collected_at: latestCollectedAt,
+      data_age_minutes: dataAgeMinutes,
+      collection_source: latestUsage ? latestUsage.source : null,
+      recent_success_rate: recentSuccessRate,
+      recent_attempts: recentCrawlResults.length,
       today_usage: todayStats.totalUsage,
       week_usage: weekStats.totalUsage,
       month_usage: monthStats.totalUsage,

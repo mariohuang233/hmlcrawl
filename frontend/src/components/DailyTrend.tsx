@@ -4,8 +4,7 @@ import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { ColorTheme, getChartTheme } from '../utils/chartTheme';
 import { createSparseCategoryInterval } from '../utils/chartAxis';
 import ChartCardHeader from './ChartCardHeader';
-
-const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
+import { fetchAPI } from '../utils/api';
 
 interface DailyData {
   date: string;
@@ -31,19 +30,8 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false, refreshKey = 
 
   const fetchData = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/trend/30d`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(data.message || data.error);
-      }
-      
-      setData(data);
+      const responseData = await fetchAPI<DailyData[]>('/api/trend/30d');
+      setData(responseData);
     } catch (error) {
       console.error('Error fetching daily trend:', error);
       setData([]);
@@ -241,6 +229,8 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false, refreshKey = 
         value={`${totalUsage.toFixed(1)} kWh`}
       />
       <Chart
+        ariaLabel="最近 30 天每日用电趋势图"
+        summary={`图表包含 ${data.length} 天数据，累计用电 ${totalUsage.toFixed(1)} kWh。`}
         option={chartOption} 
         style={{ height: isMobile ? '230px' : '300px' }}
         className="chart-container"
