@@ -20,10 +20,18 @@ echarts.use([
   CanvasRenderer
 ]);
 
-type ChartProps = Omit<React.ComponentProps<typeof ReactEChartsCore>, 'echarts'>;
+type ChartProps = Omit<React.ComponentProps<typeof ReactEChartsCore>, 'echarts'> & {
+  ariaLabel: string;
+  summary?: string;
+};
 
-const Chart: React.FC<ChartProps> = React.memo((props) => (
-  <ReactEChartsCore echarts={echarts} {...props} />
+const Chart: React.FC<ChartProps> = React.memo(({ ariaLabel, summary, ...props }) => (
+  <>
+    <div className="accessible-chart" role="img" aria-label={ariaLabel}>
+      <ReactEChartsCore echarts={echarts} {...props} />
+    </div>
+    <p className="sr-only">{summary || ariaLabel}</p>
+  </>
 ));
 
 export default Chart;

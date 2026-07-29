@@ -4,8 +4,7 @@ import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { ColorTheme, getChartTheme } from '../utils/chartTheme';
 import { createSparseCategoryInterval } from '../utils/chartAxis';
 import ChartCardHeader from './ChartCardHeader';
-
-const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
+import { fetchAPI } from '../utils/api';
 
 interface MonthlyData {
   month: string;
@@ -31,17 +30,7 @@ const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false, refreshKe
 
   const fetchData = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/trend/monthly`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const responseData = await response.json();
-      
-      if (responseData.error) {
-        throw new Error(responseData.message || responseData.error);
-      }
+      const responseData = await fetchAPI<MonthlyData[]>('/api/trend/monthly');
 
       if (!Array.isArray(responseData)) {
         throw new Error('月度趋势数据格式无效');
@@ -253,6 +242,8 @@ const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false, refreshKe
         value={`本月 ${currentMonthUsage.toFixed(1)} kWh`}
       />
       <Chart
+        ariaLabel="最近 12 个月用电趋势图"
+        summary={`图表包含 ${data.length} 个月数据，本月用电 ${currentMonthUsage.toFixed(1)} kWh。`}
         option={chartOption} 
         style={{ height: isMobile ? '230px' : '300px' }}
         className="chart-container"

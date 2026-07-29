@@ -391,6 +391,8 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
         value={`余量 ${latestRemaining.toFixed(2)} kWh`}
       />
       <Chart
+        ariaLabel="过去 24 小时用电量与剩余电量趋势图"
+        summary={`图表包含 ${data.length} 个时间点，当前剩余 ${latestRemaining.toFixed(2)} kWh。`}
         option={chartOption} 
         style={{ height: mobileState ? '230px' : '300px' }}
         className="chart-container"

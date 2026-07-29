@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface UseAnimatedNumberOptions {
-  duration?: number; // 动画持续时间（毫秒）
+  duration?: number;
   easing?: 'easeOut' | 'easeInOut' | 'easeOutBounce' | 'easeOutElastic';
-  delay?: number; // 延迟开始时间（毫秒）
-  precision?: number; // 小数位数
-  autoStart?: boolean; // 是否自动开始动画，默认为true
+  delay?: number;
+  precision?: number;
+  autoStart?: boolean;
 }
 
 interface UseAnimatedNumberReturn {
@@ -14,15 +14,20 @@ interface UseAnimatedNumberReturn {
   startAnimation: () => void;
 }
 
-/**
- * 数字动画Hook
- * 提供从0到目标值的平滑动画效果
- */
+function smartDuration(value: number): number {
+  const absValue = Math.abs(value);
+  if (absValue < 1) return 800;
+  if (absValue < 10) return 1200;
+  if (absValue < 100) return 1800;
+  return Math.min(2500, 1000 + absValue * 10);
+}
+
 export const useAnimatedNumber = (
   targetValue: number,
   options: UseAnimatedNumberOptions = {}
 ): UseAnimatedNumberReturn => {
   const {
+    duration,
     easing = 'easeOutBounce',
     delay = 0,
     precision = 2,
@@ -31,117 +36,113 @@ export const useAnimatedNumber = (
 
   const [animatedValue, setAnimatedValue] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(
+    () => typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+  const valueRef = useRef(0);
   const animationRef = useRef<number | null>(null);
-  const startTimeRef = useRef<number | null>(null);
-  const hasInitialized = useRef(false);
-  const prevTargetValue = useRef<number | null>(null);
+  const delayRef = useRef<number | null>(null);
 
-  // 缓动函数，使用useMemo缓存以避免依赖变化
   const easingFunctions = useMemo(() => ({
     easeOut: (t: number) => 1 - Math.pow(1 - t, 3),
     easeInOut: (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t,
     easeOutBounce: (t: number) => {
-      if (t < 1 / 2.75) {
-        return 7.5625 * t * t;
-      } else if (t < 2 / 2.75) {
-        return 7.5625 * (t -= 1.5 / 2.75) * t + 0.75;
-      } else if (t < 2.5 / 2.75) {
-        return 7.5625 * (t -= 2.25 / 2.75) * t + 0.9375;
-      } else {
-        return 7.5625 * (t -= 2.625 / 2.75) * t + 0.984375;
-      }
+      if (t < 1 / 2.75) return 7.5625 * t * t;
+      if (t < 2 / 2.75) return 7.5625 * (t -= 1.5 / 2.75) * t + 0.75;
+      if (t < 2.5 / 2.75) return 7.5625 * (t -= 2.25 / 2.75) * t + 0.9375;
+      return 7.5625 * (t -= 2.625 / 2.75) * t + 0.984375;
     },
     easeOutElastic: (t: number) => {
-      if (t === 0) return 0;
-      if (t === 1) return 1;
+      if (t === 0 || t === 1) return t;
       const c4 = (2 * Math.PI) / 3;
       return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
     }
   }), []);
 
-  // 根据数值大小智能调整动画持续时间
-  const getSmartDuration = (value: number): number => {
-    const absValue = Math.abs(value);
-    
-    // 小数值快速完成
-    if (absValue < 1) return 800;
-    // 中等数值
-    if (absValue < 10) return 1200;
-    // 大数值稍长但不过于拖沓
-    if (absValue < 100) return 1800;
-    // 超大数值
-    return Math.min(2500, 1000 + absValue * 10);
-  };
-
-  const animate = useCallback((timestamp: number) => {
-    if (!startTimeRef.current) {
-      startTimeRef.current = timestamp;
+  const cancelAnimation = useCallback(() => {
+    if (animationRef.current !== null) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
     }
-
-    const elapsed = timestamp - (startTimeRef.current || 0);
-    const progress = Math.min(elapsed / getSmartDuration(targetValue), 1);
-    
-    // 应用缓动函数
-    const easedProgress = easingFunctions[easing](progress);
-    
-    // 计算当前值
-    const currentValue = targetValue * easedProgress;
-    
-    // 设置精度
-    const roundedValue = Number(currentValue.toFixed(precision));
-    setAnimatedValue(roundedValue);
-
-    if (progress < 1) {
-      animationRef.current = requestAnimationFrame(animate);
-    } else {
-      // 动画完成
-      setAnimatedValue(Number(targetValue.toFixed(precision)));
-      setIsAnimating(false);
+    if (delayRef.current !== null) {
+      window.clearTimeout(delayRef.current);
+      delayRef.current = null;
     }
-  }, [targetValue, easing, precision, easingFunctions]);
-
-  const startAnimation = useCallback(() => {
-    if (isAnimating) return;
-    
-    setIsAnimating(true);
-    setAnimatedValue(0);
-    
-    if (delay > 0) {
-      setTimeout(() => {
-        startTimeRef.current = null;
-        animationRef.current = requestAnimationFrame(animate);
-      }, delay);
-    } else {
-      startTimeRef.current = null;
-      animationRef.current = requestAnimationFrame(animate);
-    }
-  }, [isAnimating, delay, animate]);
-
-  // 清理动画
-  useEffect(() => {
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
   }, []);
 
-  // 当目标值改变时，重新开始动画
-  useEffect(() => {
-    if (targetValue !== 0 && autoStart) {
-      // 只有当目标值真正发生变化时才触发动画
-      if (prevTargetValue.current !== targetValue) {
-        prevTargetValue.current = targetValue;
-        // 重置初始化状态，允许重新触发动画
-        hasInitialized.current = false;
-        startAnimation();
-      }
-    }
-  }, [targetValue, startAnimation, autoStart]);
+  const updateValue = useCallback((value: number) => {
+    const rounded = Number(value.toFixed(precision));
+    valueRef.current = rounded;
+    setAnimatedValue(rounded);
+  }, [precision]);
 
-  return {
-    animatedValue,
-    isAnimating,
-    startAnimation
-  };
+  const startAnimation = useCallback(() => {
+    cancelAnimation();
+
+    if (reduceMotion) {
+      updateValue(targetValue);
+      setIsAnimating(false);
+      return;
+    }
+
+    const fromValue = valueRef.current;
+    const distance = targetValue - fromValue;
+    if (distance === 0) {
+      setIsAnimating(false);
+      return;
+    }
+    const animationDuration = Math.max(1, duration ?? smartDuration(distance));
+    setIsAnimating(true);
+
+    const begin = () => {
+      delayRef.current = null;
+      let startedAt: number | null = null;
+      const animate = (timestamp: number) => {
+        if (startedAt === null) startedAt = timestamp;
+        const progress = Math.min((timestamp - startedAt) / animationDuration, 1);
+        updateValue(fromValue + distance * easingFunctions[easing](progress));
+        if (progress < 1) {
+          animationRef.current = requestAnimationFrame(animate);
+        } else {
+          animationRef.current = null;
+          updateValue(targetValue);
+          setIsAnimating(false);
+        }
+      };
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    if (delay > 0) {
+      delayRef.current = window.setTimeout(begin, delay);
+    } else {
+      begin();
+    }
+  }, [
+    cancelAnimation,
+    delay,
+    duration,
+    easing,
+    easingFunctions,
+    reduceMotion,
+    targetValue,
+    updateValue
+  ]);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const onChange = () => setReduceMotion(media.matches);
+    onChange();
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (autoStart) startAnimation();
+    return cancelAnimation;
+  }, [autoStart, cancelAnimation, startAnimation]);
+
+  return { animatedValue, isAnimating, startAnimation };
 };

@@ -1,8 +1,6 @@
 import React, { lazy, startTransition, useState, useEffect, useCallback, useRef } from 'react';
 import Overview from './components/Overview';
 import DeferredSection from './components/DeferredSection';
-import './App.css';
-import './mobile.css';
 import './premium.css';
 import { fetchAPI, retryRequest, formatErrorMessage } from './utils/api';
 import bubuIcon from './assets/bubu.png';
@@ -80,6 +78,11 @@ interface ComparisonData {
 
 interface OverviewData {
   current_remaining: number;
+  latest_collected_at: string | null;
+  data_age_minutes: number | null;
+  collection_source: string | null;
+  recent_success_rate: number | null;
+  recent_attempts: number;
   today_usage: number;
   week_usage: number;
   month_usage: number;
@@ -103,6 +106,21 @@ interface LogEntry {
   source?: string;
 }
 
+function getCollectionStatus(data: OverviewData | null) {
+  const ageMinutes = data?.data_age_minutes;
+  if (!data?.latest_collected_at || ageMinutes === null || ageMinutes === undefined) {
+    return { level: 'offline', label: '暂无数据', ageLabel: '尚无采集记录' };
+  }
+  const ageLabel = ageMinutes < 1
+    ? '刚刚采集'
+    : ageMinutes < 60
+      ? `${ageMinutes} 分钟前采集`
+      : `${Math.floor(ageMinutes / 60)} 小时前采集`;
+  if (ageMinutes <= 20) return { level: 'online', label: '数据在线', ageLabel };
+  if (ageMinutes <= 60) return { level: 'stale', label: '数据延迟', ageLabel };
+  return { level: 'offline', label: '数据离线', ageLabel };
+}
+
 function App() {
   const lastRefreshAtRef = useRef(0);
   const [overview, setOverview] = useState<OverviewData | null>(null);
@@ -112,7 +130,6 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [theme, setTheme] = useState<ColorTheme>(() => {
@@ -141,7 +158,6 @@ function App() {
       }
       const data = await retryRequest(() => fetchAPI<OverviewData>('/api/overview'), 2, 500);
       setOverview(data);
-      setLastUpdate(new Date());
       lastRefreshAtRef.current = Date.now();
       setError(null);
     } catch (err) {
@@ -159,11 +175,9 @@ function App() {
   const fetchLogs = useCallback(async () => {
     try {
       setLogsLoading(true);
-      const response = await fetch('/api/crawler/logs?source=local&limit=50');
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      const data = await response.json();
+      const data = await fetchAPI<{ success: boolean; logs?: any[] }>(
+        '/api/crawler/logs?source=local&limit=50'
+      );
       
       if (data.success && data.logs) {
         const formattedLogs = data.logs.map((log: any) => ({
@@ -203,6 +217,15 @@ function App() {
   useEffect(() => {
     fetchOverview();
   }, [fetchOverview]);
+
+  const collectionStatus = getCollectionStatus(overview);
+  const collectionStatusDetails = [
+    collectionStatus.ageLabel,
+    overview?.collection_source ? `来源 ${overview.collection_source}` : null,
+    overview?.recent_success_rate !== null && overview?.recent_success_rate !== undefined
+      ? `近 24 小时成功率 ${overview.recent_success_rate}%（${overview.recent_attempts} 次）`
+      : null
+  ].filter(Boolean).join('，');
 
   useEffect(() => {
     const refreshVisiblePage = () => {
@@ -296,17 +319,21 @@ function App() {
               </h1>
               <p className="app-subtitle">
                 温暖守护，智能用电
-                {lastUpdate && (
+                {overview?.latest_collected_at && (
                   <span className="last-update">
-                    · 更新于 {lastUpdate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                    · {collectionStatus.ageLabel}
                   </span>
                 )}
               </p>
             </div>
             <div className="header-actions">
-              <div className="system-status" aria-label="系统状态正常">
+              <div
+                className={`system-status is-${collectionStatus.level}`}
+                aria-label={`${collectionStatus.label}，${collectionStatusDetails}`}
+                title={collectionStatusDetails}
+              >
                 <span className="system-status-mark" aria-hidden="true"></span>
-                数据在线
+                {collectionStatus.label}
               </div>
               <button
                 onClick={toggleTheme}

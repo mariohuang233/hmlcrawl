@@ -132,7 +132,7 @@ select {
 }
 
 .system-status {
-  min-height: 38px;
+  min-height: 44px;
   padding: 0 10px;
   color: var(--text-secondary);
   font-size: 11px;
@@ -146,13 +146,24 @@ select {
   box-shadow: 0 0 0 4px rgba(22, 134, 111, 0.09);
 }
 
+.system-status.is-stale .system-status-mark {
+  background: var(--warning);
+  box-shadow: 0 0 0 4px rgba(193, 125, 17, 0.12);
+}
+
+.system-status.is-offline .system-status-mark {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(181, 63, 74, 0.12);
+}
+
 .btn {
+  min-height: 44px;
   transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
 }
 
 .btn-quiet {
   min-width: auto;
-  min-height: 38px;
+  min-height: 44px;
   padding: 0 13px;
   border: 1px solid var(--border-light);
   border-radius: 999px;
@@ -172,7 +183,7 @@ select {
 }
 
 .btn-primary {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 18px;
   border: 1px solid var(--text-primary);
   border-radius: var(--radius-control);
@@ -192,6 +203,23 @@ select {
   color: currentColor;
   font-size: 18px;
   line-height: 1;
+}
+
+.accessible-chart {
+  min-width: 0;
+  width: 100%;
+}
+
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
 
 .app-main {
@@ -297,7 +325,7 @@ select {
 .hero-card-balance {
   position: relative;
   display: grid;
-  min-height: 300px;
+  min-height: 230px;
   place-items: center;
   overflow: visible;
   border: 0 !important;
@@ -305,42 +333,11 @@ select {
 }
 
 .hero-card-balance::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: min(74%, 238px);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: conic-gradient(
-    from -90deg,
-    var(--accent) 0 var(--balance-progress),
-    transparent var(--balance-progress) 360deg
-  );
-  -webkit-mask: radial-gradient(circle, transparent 0 66%, #000 67% 100%);
-  mask: radial-gradient(circle, transparent 0 66%, #000 67% 100%);
-  opacity: 0.98;
-  transform: translate(-50%, -50%);
+  display: none;
 }
 
 .hero-card-balance::before {
-  content: "" !important;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  display: block !important;
-  width: min(79%, 254px);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: repeating-conic-gradient(
-    from -90deg,
-    var(--border-medium) 0 7deg,
-    transparent 7deg 11deg
-  );
-  -webkit-mask: radial-gradient(circle, transparent 0 70%, #000 71% 100%);
-  mask: radial-gradient(circle, transparent 0 70%, #000 71% 100%);
-  opacity: 0.56;
-  transform: translate(-50%, -50%);
+  display: none !important;
 }
 
 .hero-card-balance .hero-content {
@@ -1259,9 +1256,9 @@ html[data-theme="dark"] .recharge-error {
   }
 
   .btn-quiet {
-    width: 36px;
-    min-width: 36px;
-    min-height: 36px;
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
     padding: 0;
     border-radius: 50%;
     font-size: 0;
@@ -1330,7 +1327,7 @@ html[data-theme="dark"] .recharge-error {
   }
 
   .hero-card-balance {
-    min-height: 278px;
+    min-height: 210px;
     padding: 0;
     border: 0 !important;
   }

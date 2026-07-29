@@ -4,8 +4,7 @@ import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 import { ColorTheme, getChartTheme } from '../utils/chartTheme';
 import { createSparseCategoryInterval } from '../utils/chartAxis';
 import ChartCardHeader from './ChartCardHeader';
-
-const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000';
+import { fetchAPI, formatErrorMessage } from '../utils/api';
 
 interface TodayData {
   hour: number;
@@ -35,18 +34,12 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE}/api/trend/today`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      
-      const data = await response.json();
-      setData(data);
+      const responseData = await fetchAPI<TodayData[]>('/api/trend/today');
+      setData(responseData);
       setError(null);
     } catch (error) {
       console.error('Error fetching today usage:', error);
-      setError('加载失败');
+      setError(formatErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -240,6 +233,8 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
         value={`${todayTotal.toFixed(2)} kWh`}
       />
       <Chart
+        ariaLabel="今日逐小时用电量对比图"
+        summary={`图表按小时展示今日、昨日和历史平均用电量，今日累计 ${todayTotal.toFixed(2)} kWh。`}
         option={chartOption} 
         style={{ height: isMobile ? '230px' : '300px' }}
         className="chart-container"

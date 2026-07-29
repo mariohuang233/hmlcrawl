@@ -1,4 +1,11 @@
-export const API_BASE = process.env.REACT_APP_API_BASE || (process.env.NODE_ENV === 'production' ? '' : '/');
+const configuredApiBase = import.meta.env.VITE_API_BASE || '';
+
+export const API_BASE = configuredApiBase.trim().replace(/\/+$/, '');
+
+export function apiUrl(endpoint: string): string {
+  const normalizedEndpoint = `/${endpoint}`.replace(/\/{2,}/g, '/');
+  return `${API_BASE}${normalizedEndpoint}`;
+}
 
 const DEFAULT_TIMEOUT_MS = 12_000;
 
@@ -49,7 +56,7 @@ export async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): 
   externalSignal?.addEventListener('abort', abortFromExternal, { once: true });
 
   try {
-    const response = await fetch(`${API_BASE}${endpoint}`, {
+    const response = await fetch(apiUrl(endpoint), {
       ...options,
       headers: {
         Accept: 'application/json',

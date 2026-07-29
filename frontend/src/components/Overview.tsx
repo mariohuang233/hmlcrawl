@@ -230,10 +230,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       <div className="hero-section">
         <div 
           className={`hero-card hero-card-balance ${hasTriggered ? 'animate-in' : ''}`}
-          style={{ 
-            animationDelay: '0ms',
-            '--balance-progress': `${Math.min(Math.max(data.current_remaining, 0), 100) * 3.6}deg`
-          } as React.CSSProperties}
+          style={{ animationDelay: '0ms' }}
         >
           <div className="hero-content">
             <div className="hero-info">
@@ -251,20 +248,6 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
                   />
                 </span>
                 <span className="hero-unit" style={{ color: batteryLevel.color }}>kWh</span>
-              </div>
-              <div className="battery-bar-container">
-                <div className="battery-bar-bg">
-                  <div 
-                    className="battery-bar-fill" 
-                    style={{ 
-                      width: `${Math.min(data.current_remaining, 100)}%`,
-                      background: batteryLevel.color
-                    }}
-                  ></div>
-                </div>
-                <span className="battery-bar-text" style={{ color: batteryLevel.color }}>
-                  {data.current_remaining.toFixed(1)}%
-                </span>
               </div>
             </div>
           </div>
