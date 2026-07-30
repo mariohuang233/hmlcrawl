@@ -1,71 +1,36 @@
-const mongoose = require('mongoose');
-const fs = require('fs');
-const path = require('path');
 const Usage = require('../models/Usage');
 const { crawlerLogger } = require('../utils/logger');
 const {
   toBeijingTime,
-  getBeijingTodayStart,
-  getBeijingTodayEnd,
   formatBeijingTime,
   getBeijingHour,
   getBeijingMinute
 } = require('../utils/timezone');
 const { sendServerChan } = require('../utils/alerter');
+const {
+  getPreviousDayRange,
+  shiftRange,
+  calculatePeriodSummary,
+  validatePeriodSummary
+} = require('./reportAnalytics');
+const {
+  ReportDataError,
+  deliverReport
+} = require('./reportNotificationService');
+const { getDelivery } = require('./reportDeliveryService');
 
 const CONFIG = {
-  reportHour: 23,
-  reportMinute: 59,
-  cooldownHours: 23,
-  // 启动后若已过当天报告时间且未发送，在此宽限窗口内(分钟)补发
-  startupGraceMinutes: 30,
+  reportHour: 0,
+  reportMinute: 10,
+  // 次日00:10汇总前一天；重启后在一小时内允许补发
+  startupGraceMinutes: 60,
   // 备份检测间隔(分钟)：用 setInterval 兜底，防止 setTimeout 因容器重启而错过
-  backupCheckMinutes: 5,
-  stateFilePath: path.join(__dirname, '../../.daily_report_state.json')
+  backupCheckMinutes: 5
 };
 
-let lastReportDate = null;
 let timer = null;
 let backupInterval = null;
 let sending = false; // 防止并发发送
-
-function ensureStateFile() {
-  try {
-    if (!fs.existsSync(path.dirname(CONFIG.stateFilePath))) {
-      fs.mkdirSync(path.dirname(CONFIG.stateFilePath), { recursive: true });
-    }
-    if (!fs.existsSync(CONFIG.stateFilePath)) {
-      fs.writeFileSync(CONFIG.stateFilePath, JSON.stringify({ lastReportDate: null }, null, 2));
-    }
-  } catch (err) {
-    crawlerLogger.warn(`无法创建状态文件: ${err.message}`);
-  }
-}
-
-function loadLastReportDate() {
-  try {
-    ensureStateFile();
-    const content = fs.readFileSync(CONFIG.stateFilePath, 'utf8');
-    const state = JSON.parse(content);
-    lastReportDate = state.lastReportDate;
-    if (lastReportDate) {
-      crawlerLogger.info(`加载上次报告日期: ${lastReportDate}`);
-    }
-  } catch (err) {
-    crawlerLogger.warn(`加载状态文件失败: ${err.message}`);
-    lastReportDate = null;
-  }
-}
-
-function saveLastReportDate(dateStr) {
-  try {
-    ensureStateFile();
-    fs.writeFileSync(CONFIG.stateFilePath, JSON.stringify({ lastReportDate: dateStr }, null, 2));
-    crawlerLogger.info(`保存报告日期: ${dateStr}`);
-  } catch (err) {
-    crawlerLogger.warn(`保存状态文件失败: ${err.message}`);
-  }
-}
 
 function calculateSmartRemainingDuration(remainingKwh, dailyStats, hourlyPattern) {
   if (!remainingKwh || remainingKwh <= 0) {
@@ -175,48 +140,59 @@ function calculateSmartRemainingDuration(remainingKwh, dailyStats, hourlyPattern
   };
 }
 
-async function fetchDailyData(meterId) {
+async function fetchDailyData(meterId, now = new Date()) {
   try {
-    const now = new Date();
-    const todayStart = getBeijingTodayStart(now);
-    
-    const yesterdayEnd = new Date(todayStart.getTime() - 1);
-    const yesterdayStart = new Date(yesterdayEnd.getTime() + 8 * 60 * 60 * 1000);
-    yesterdayStart.setHours(0, 0, 0, 0);
-    yesterdayStart.setTime(yesterdayStart.getTime() - 8 * 60 * 60 * 1000);
+    const reportRange = getPreviousDayRange(now);
+    const comparisonRange = shiftRange(reportRange, 'day');
 
-    const [todayStats, yesterdayStats, latestUsage, dailyStats, hourlyPattern, todayHourlyUsage] = await Promise.all([
-      Usage.calculateUsageStats(meterId, todayStart, now),
-      Usage.calculateUsageStats(meterId, yesterdayStart, yesterdayEnd),
-      Usage.getLatestUsage(meterId),
+    const [reportStats, comparisonStats, dailyStats, hourlyPattern] = await Promise.all([
+      calculatePeriodSummary(meterId, reportRange),
+      calculatePeriodSummary(meterId, comparisonRange),
       Usage.getDailyUsageStats(meterId, 7),
-      Usage.getHourlyUsagePattern(meterId, 7),
-      Usage.getTodayHourlyUsage(meterId)
+      Usage.getHourlyUsagePattern(meterId, 7)
     ]);
 
-    const remainingKwh = latestUsage ? latestUsage.remaining_kwh : null;
-    const todayUsage = todayStats.totalUsage;
-    const yesterdayUsage = yesterdayStats.totalUsage;
+    const validation = validatePeriodSummary(reportStats);
+    if (!validation.valid) {
+      return {
+        success: false,
+        error: validation.reason,
+        errorType: 'data_unavailable',
+        reportRange,
+        dataPoints: reportStats.dataPoints,
+        latestCollectedAt: reportStats.latestCollectedAt,
+        timestamp: now
+      };
+    }
 
-    const remaining = calculateSmartRemainingDuration(remainingKwh, dailyStats, hourlyPattern);
+    const remaining = calculateSmartRemainingDuration(
+      reportStats.remainingKwh,
+      dailyStats,
+      hourlyPattern
+    );
 
     const avgDailyUsage = dailyStats.filter(d => d.usageKwh > 0).length > 0
       ? dailyStats.filter(d => d.usageKwh > 0).reduce((sum, d) => sum + d.usageKwh, 0) / dailyStats.filter(d => d.usageKwh > 0).length
       : 0;
 
-    const usageDiff = todayUsage - yesterdayUsage;
+    const usageDiff = reportStats.totalUsage - comparisonStats.totalUsage;
 
     return {
       success: true,
-      todayUsage,
-      yesterdayUsage,
+      todayUsage: reportStats.totalUsage,
+      yesterdayUsage: comparisonStats.totalUsage,
       usageDiff: Math.round(usageDiff * 100) / 100,
-      remainingKwh,
+      remainingKwh: reportStats.remainingKwh,
       remainingDuration: remaining,
       avgDailyUsage: Math.round(avgDailyUsage * 100) / 100,
       dailyStats,
       hourlyPattern,
-      todayHourlyUsage,
+      todayHourlyUsage: reportStats.hourlyUsage,
+      reportRange,
+      reportDate: reportRange.periodKey,
+      dataPoints: reportStats.dataPoints,
+      coveragePercent: reportStats.coveragePercent,
+      latestCollectedAt: reportStats.latestCollectedAt,
       timestamp: now
     };
   } catch (error) {
@@ -237,7 +213,7 @@ function generateReportMessage(data) {
     };
   }
 
-  const beijingDate = toBeijingTime(data.timestamp);
+  const beijingDate = toBeijingTime(data.reportRange?.start || data.timestamp);
   const year = beijingDate.getUTCFullYear();
   const month = beijingDate.getUTCMonth() + 1;
   const day = beijingDate.getUTCDate();
@@ -261,7 +237,7 @@ function generateReportMessage(data) {
   } else {
     compareText = `日均 ${data.avgDailyUsage.toFixed(2)} 度`;
   }
-  message += ` 💡 今日用电 ${data.todayUsage.toFixed(2)} 度 ｜ ${compareText}\n`;
+  message += ` 💡 昨日用电 ${data.todayUsage.toFixed(2)} 度 ｜ ${compareText.replace('昨天', '前一天')}\n`;
   
   const predictedTime = duration.hours !== null ? new Date(data.timestamp.getTime() + duration.hours * 60 * 60 * 1000) : null;
   let timeText = '';
@@ -320,7 +296,7 @@ function generateReportMessage(data) {
   }
 
   message += ` ━━━━━━━━━━━━━━━━━━━━━━\n`;
-  message += ` 📈 今日用电分布\n\n`;
+  message += ` 📈 昨日用电分布\n\n`;
 
   const hourlyData = data.todayHourlyUsage || data.hourlyPattern;
   const getValue = (h) => h.kwh !== undefined ? h.kwh : h.avgKwh;
@@ -361,7 +337,14 @@ function generateReportMessage(data) {
 
   const rechargeUrl = `https://www.wap.cnyiot.com/nat/pay.aspx?mid=${process.env.METER_ID || '18100071580'}`;
   message += ` 👉 [点击充值](${rechargeUrl})\n`;
-  message += ` 📅 截至 23:59`;
+  if (data.latestCollectedAt) {
+    message += ` 📅 最新采集 ${formatBeijingTime(data.latestCollectedAt, 'datetime')}`;
+  } else {
+    message += ` 📅 统计截止 23:59`;
+  }
+  if (data.coveragePercent !== undefined) {
+    message += ` ｜ 数据完整率 ${data.coveragePercent}%`;
+  }
 
   return {
     title: `📊 用电日报 · ${dateStr}`,
@@ -378,32 +361,27 @@ async function sendDailyReport() {
   sending = true;
 
   try {
-    const today = new Date();
-    const beijingDateStr = formatBeijingTime(today, 'date');
-
-    if (lastReportDate === beijingDateStr) {
-      crawlerLogger.info(`今日(${beijingDateStr})已发送过日报，跳过`);
-      return false;
-    }
-
-    crawlerLogger.info(`开始发送每日用电报告...`);
-
+    const now = new Date();
     const meterId = process.env.METER_ID || '18100071580';
-    const data = await fetchDailyData(meterId);
+    const reportRange = getPreviousDayRange(now);
+    crawlerLogger.info(`开始发送 ${reportRange.periodKey} 每日用电报告...`);
 
-    const report = generateReportMessage(data);
-
-    const sent = await sendServerChan(report.title, report.message);
-
-    if (sent) {
-      crawlerLogger.info(`每日用电报告发送成功`);
-      lastReportDate = beijingDateStr;
-      saveLastReportDate(lastReportDate);
-      return true;
-    } else {
-      crawlerLogger.error(`每日用电报告发送失败`);
-      return false;
-    }
+    const result = await deliverReport({
+      reportType: 'daily',
+      meterId,
+      periodKey: reportRange.periodKey,
+      buildReport: async () => {
+        const data = await fetchDailyData(meterId, now);
+        if (!data.success) {
+          throw new ReportDataError(data.error, {
+            dataPoints: data.dataPoints,
+            latestCollectedAt: data.latestCollectedAt
+          });
+        }
+        return generateReportMessage(data);
+      }
+    });
+    return result.sent;
   } finally {
     sending = false;
   }
@@ -415,11 +393,10 @@ async function sendDailyReport() {
  * 旧实现用 setHours/setMinutes 会按服务器本地时区解释，在 UTC 服务器(Railway)上
  * 会导致触发时间偏移数小时，甚至产生负延迟→1秒死循环。
  */
-function calculateNextReportDelay() {
-  const now = new Date();
+function calculateNextReportDelay(now = new Date()) {
   const beijingNow = toBeijingTime(now); // 偏移后的 Date，其 UTC 分量即北京日期/时间分量
 
-  // 目标：北京日期的 23:59，先用 Date.UTC 当作北京时间构造，再减8h换算为真实 UTC 时刻
+  // 目标：北京时间次日 00:10 汇总前一天，先构造北京时间再减8h换算为真实 UTC 时刻
   let targetUtcMs = Date.UTC(
     beijingNow.getUTCFullYear(),
     beijingNow.getUTCMonth(),
@@ -457,7 +434,7 @@ function scheduleReport() {
 
 /**
  * 备份兜底检测：每隔几分钟检查一次
- * 场景：容器在 23:59 附近重启，setTimeout 错过窗口。
+ * 场景：容器在 00:10 附近重启，setTimeout 错过窗口。
  * 仅当当前北京时间已过报告时间、当天未发送、且在宽限窗口内时补发。
  */
 function startBackupChecker() {
@@ -468,19 +445,14 @@ function startBackupChecker() {
       const now = new Date();
       const beijingHour = getBeijingHour(now);
       const beijingMinute = getBeijingMinute(now);
-      const beijingDateStr = formatBeijingTime(now, 'date');
-
-      // 当天已发送，无需补发
-      if (lastReportDate === beijingDateStr) return;
-
-      // 当前北京时间已过 23:59 ?
+      // 当前北京时间已过 00:10 ?
       const passedReportTime =
         beijingHour > CONFIG.reportHour ||
         (beijingHour === CONFIG.reportHour && beijingMinute >= CONFIG.reportMinute);
 
       if (!passedReportTime) return;
 
-      // 计算距离 23:59 已过多少分钟
+      // 计算距离 00:10 已过多少分钟
       const beijingNow = toBeijingTime(now);
       const reportUtcMs = Date.UTC(
         beijingNow.getUTCFullYear(),
@@ -497,8 +469,8 @@ function startBackupChecker() {
           crawlerLogger.error(`备份补发失败: ${err.message}`);
         });
       } else {
-        // 超过宽限窗口，可能是服务器长时间宕机，记录但不补发，避免在凌晨乱推
-        crawlerLogger.warn(`当天未发送报告但已超过宽限窗口(${Math.round(elapsedMinutes)}分钟)，本次不补发`);
+        // 超过宽限窗口后等待下一次人工触发，避免全天反复查询
+        return;
       }
     } catch (err) {
       crawlerLogger.error(`备份检测异常: ${err.message}`);
@@ -512,15 +484,13 @@ function start() {
     return;
   }
 
-  loadLastReportDate();
-
   const hasServerChanKey = !!process.env.SERVER_CHAN_KEY;
   const beijingTime = formatBeijingTime(new Date(), 'datetime');
 
   crawlerLogger.info(`==============================`);
   crawlerLogger.info(`每日报告服务启动`);
   crawlerLogger.info(`当前北京时间: ${beijingTime}`);
-  crawlerLogger.info(`报告时间: 每天 ${CONFIG.reportHour}:${CONFIG.reportMinute.toString().padStart(2, '0')} (北京时间)`);
+  crawlerLogger.info(`报告时间: 每天 ${CONFIG.reportHour}:${CONFIG.reportMinute.toString().padStart(2, '0')} 汇总前一天 (北京时间)`);
   crawlerLogger.info(`Server酱推送: ${hasServerChanKey ? '✅ 已配置' : '❌ 未配置(SERVER_CHAN_KEY)'}`);
   crawlerLogger.info(`数据源 MeterID: ${process.env.METER_ID || '18100071580 (默认)'}`);
   crawlerLogger.info(`==============================`);
@@ -572,11 +542,21 @@ async function testReport(useMockData = true) {
     data = {
       success: true,
       todayUsage: 3.74,
+      yesterdayUsage: 3.41,
+      usageDiff: 0.33,
       remainingKwh: 26.03,
       remainingDuration: remaining,
       avgDailyUsage: 3.87,
       dailyStats: mockDailyStats,
       hourlyPattern: mockHourlyPattern,
+      todayHourlyUsage: mockHourlyPattern.map(item => ({
+        hour: item.hour,
+        kwh: item.avgKwh,
+        count: item.count
+      })),
+      reportRange: getPreviousDayRange(new Date()),
+      coveragePercent: 100,
+      latestCollectedAt: getPreviousDayRange(new Date()).end,
       timestamp: new Date()
     };
   } else {
@@ -600,20 +580,23 @@ async function testReport(useMockData = true) {
   return { sent, report };
 }
 
-function getStatus() {
+async function getStatus() {
   const now = new Date();
   const nextDelay = calculateNextReportDelay();
+  const meterId = process.env.METER_ID || '18100071580';
+  const reportRange = getPreviousDayRange(now);
+  const delivery = await getDelivery('daily', meterId, reportRange.periodKey);
   return {
     running: !!timer,
     backupCheckerRunning: !!backupInterval,
-    lastReportDate: lastReportDate,
-    todayBeijingDate: formatBeijingTime(now, 'date'),
-    alreadySentToday: lastReportDate === formatBeijingTime(now, 'date'),
-    reportTime: `${CONFIG.reportHour}:${CONFIG.reportMinute.toString().padStart(2, '0')} (北京时间)`,
+    latestPeriod: reportRange.periodKey,
+    latestDeliveryStatus: delivery?.status || 'pending',
+    alreadySent: delivery?.status === 'sent',
+    reportTime: `${CONFIG.reportHour}:${CONFIG.reportMinute.toString().padStart(2, '0')} 汇总前一天 (北京时间)`,
     nextFireBeijingTime: formatBeijingTime(new Date(Date.now() + nextDelay), 'datetime'),
     minutesUntilNextFire: Math.round(nextDelay / 60000),
     serverChanConfigured: !!process.env.SERVER_CHAN_KEY,
-    meterId: process.env.METER_ID || '18100071580'
+    meterId
   };
 }
 
@@ -623,6 +606,8 @@ module.exports = {
   testReport,
   getStatus,
   sendDailyReport,
+  fetchDailyData,
+  generateReportMessage,
   calculateNextReportDelay,
   calculateSmartRemainingDuration
 };

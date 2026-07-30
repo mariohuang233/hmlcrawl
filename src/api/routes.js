@@ -7,6 +7,7 @@ const logger = require('../utils/logger');
 const crawler = require('../crawler/crawler');
 const Format = require('../utils/crawler-format');
 const dailyReport = require('../services/dailyReport');
+const summaryReport = require('../services/summaryReport');
 const batteryAlertService = require('../services/batteryAlertService');
 const dataEvents = require('../services/dataEvents');
 const {
@@ -1348,9 +1349,9 @@ router.post('/report/batch', apiAuth, async (req, res) => {
 // ============ 每日报告调试端点 ============
 
 // 获取通知服务状态
-router.get('/daily-report/status', (req, res) => {
+router.get('/daily-report/status', async (req, res) => {
   try {
-    const status = dailyReport.getStatus();
+    const status = await dailyReport.getStatus();
     res.json({ success: true, ...status });
   } catch (err) {
     logger.error('获取报告状态失败:', err.message);
@@ -1385,6 +1386,45 @@ router.post('/daily-report/send-now', async (req, res) => {
     });
   } catch (err) {
     logger.error('手动发送报告失败:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 周报、月报状态及手动触发
+router.get('/summary-report/status', async (req, res) => {
+  try {
+    const status = await summaryReport.getStatus();
+    res.json({ success: true, ...status });
+  } catch (err) {
+    logger.error('获取周报月报状态失败:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/weekly-report/send-now', apiAuth, async (req, res) => {
+  try {
+    const result = await summaryReport.sendWeeklyReport();
+    res.json({
+      success: result.sent,
+      status: result.status,
+      message: result.sent ? '上周周报已发送' : '发送失败、已发送或正在发送'
+    });
+  } catch (err) {
+    logger.error('手动发送周报失败:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/monthly-report/send-now', apiAuth, async (req, res) => {
+  try {
+    const result = await summaryReport.sendMonthlyReport();
+    res.json({
+      success: result.sent,
+      status: result.status,
+      message: result.sent ? '上月月报已发送' : '发送失败、已发送或正在发送'
+    });
+  } catch (err) {
+    logger.error('手动发送月报失败:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

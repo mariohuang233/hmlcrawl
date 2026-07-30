@@ -11,6 +11,7 @@ const logger = require('./src/utils/logger');
 const crawler = require('./src/crawler/crawler');
 const apiRoutes = require('./src/api/routes');
 const dailyReport = require('./src/services/dailyReport');
+const summaryReport = require('./src/services/summaryReport');
 // 云端环境检测
 const IS_RAILWAY = !!process.env.RAILWAY_SERVICE_NAME || !!process.env.RAILWAY_STATIC_URL;
 const IS_ZEABUR = !!process.env.ZEABUR_SERVICE_NAME || !!process.env.ZEABUR_DOMAIN;
@@ -137,10 +138,6 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`健康检查端点: http://localhost:${PORT}/health`);
   logger.info(`环境: ${process.env.NODE_ENV || 'development'}`);
 
-  // 通知服务立即启动，不依赖 MongoDB 连接
-  // 这样即使 MongoDB 异常，报告仍会尝试发送（失败时会推送错误提示）
-  dailyReport.start();
-
   if (IS_CLOUD && ENABLE_CRAWLER) {
     const cloudName = IS_RENDER ? 'Render' : IS_RAILWAY ? 'Railway' : IS_ZEABUR ? 'Zeabur' : 'Vercel';
     logger.info(`==============================`);
@@ -156,7 +153,9 @@ mongoose.connect(MONGO_URI, mongooseOptions)
   logger.info('MongoDB连接成功');
   logger.info(`连接地址: ${MONGO_URI.replace(/\/\/.*@/, '//***@')}`);
 
-  logger.info('每日用电报告服务已在服务器启动时启动');
+  dailyReport.start();
+  summaryReport.start();
+  logger.info('日报、周报、月报通知服务已启动');
 
   if (IS_CLOUD && ENABLE_CRAWLER) {
     const cloudName = IS_RENDER ? 'Render' : IS_RAILWAY ? 'Railway' : IS_ZEABUR ? 'Zeabur' : 'Vercel';
@@ -193,6 +192,8 @@ const gracefulShutdown = (signal) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
   logger.info(`收到${signal}信号，正在关闭服务器...`);
+  dailyReport.stop();
+  summaryReport.stop();
   
   server.close(async () => {
     logger.info('HTTP服务器已关闭');
