@@ -805,6 +805,10 @@ select {
   font-size: 11px;
 }
 
+.summary-elapsed-prefix {
+  margin: 0 0 5px;
+}
+
 .recharge-timeline {
   display: grid;
   gap: 8px;
@@ -1118,6 +1122,7 @@ html[data-theme="dark"] {
   color-scheme: dark;
   --bg-page: #000000;
   --bg-card: #1c1c1e;
+  --bg-card-hover: #232326;
   --bg-surface: #2c2c2e;
   --bg-elevated: #1c1c1e;
   --bg-hover: #3a3a3c;

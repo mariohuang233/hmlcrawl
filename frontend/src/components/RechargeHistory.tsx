@@ -11,6 +11,16 @@ const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
+const formatElapsedSinceRecharge = (rechargeTime: string, nowMs: number) => {
+  const rechargeTimeMs = new Date(rechargeTime).getTime();
+  if (!Number.isFinite(rechargeTimeMs)) return null;
+
+  const totalHours = Math.max(0, Math.floor((nowMs - rechargeTimeMs) / HOUR_MS));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return `${days}天${hours}小时`;
+};
+
 const formatDuration = (durationMs: number, compact = false) => {
   const totalMinutes = Math.max(1, Math.round(durationMs / MINUTE_MS));
   const days = Math.floor(totalMinutes / (24 * 60));
@@ -30,6 +40,7 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
   const [data, setData] = useState<RechargeHistoryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const { elementRef, hasTriggered } = useIntersectionObserver({
     threshold: 0.01,
     rootMargin: '50px'
@@ -58,6 +69,11 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
   useEffect(() => {
     fetchData();
   }, [fetchData, refreshKey]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), MINUTE_MS);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const formatDateTime = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -117,7 +133,7 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
       : intervals[middle];
     const latestRechargeAt = new Date(records[0].time).getTime();
     const expectedNextAt = latestRechargeAt + medianInterval;
-    const remainingMs = expectedNextAt - Date.now();
+    const remainingMs = expectedNextAt - nowMs;
 
     return {
       medianInterval,
@@ -126,7 +142,11 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
         ? `${formatDate(new Date(expectedNextAt).toISOString())}左右`
         : `已超${formatDuration(Math.abs(remainingMs), true)}`
     };
-  }, [records]);
+  }, [records, nowMs]);
+
+  const elapsedSinceLatestRecharge = useMemo(() => (
+    records[0] ? formatElapsedSinceRecharge(records[0].time, nowMs) : null
+  ), [records, nowMs]);
 
   const getCycleInfo = (index: number) => {
     const record = records[index];
@@ -222,12 +242,12 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
               </div>
             </div>
             <div className="recharge-summary-item">
-              <div className="summary-code">间隔</div>
+              <div className="summary-code">距今</div>
               <div className="summary-content">
-                <div className="summary-value">{cadence?.typicalText ?? '—'}</div>
-                <div className="summary-label">
-                  {cadence ? '典型充值间隔 · 中位数' : '记录不足，继续积累'}
+                <div className="summary-label summary-elapsed-prefix">
+                  {elapsedSinceLatestRecharge ? '离上一次充值已经过了' : '暂无有效充值时间'}
                 </div>
+                <div className="summary-value">{elapsedSinceLatestRecharge ?? '—'}</div>
               </div>
             </div>
             <div className="recharge-summary-item">

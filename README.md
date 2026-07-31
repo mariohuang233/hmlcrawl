@@ -1,259 +1,82 @@
-# 家庭用电监控与可视化系统
+# 家庭用电监控系统
 
-一个基于Node.js + React的家庭用电监控系统，支持自动数据采集、存储和可视化展示。
-
-## 功能特性
-
-- 🔄 **自动采集**: 每10分钟自动从电力网站抓取电表数据
-- 📊 **数据存储**: 使用MongoDB存储历史用电数据，支持索引优化
-- 📈 **可视化**: React前端展示用电趋势和统计图表
-- 🎯 **智能预测**: 多窗口算法预测电量耗尽时间（短期/中期/长期分析）
-- 📉 **对比分析**: 支持今日vs昨日、本周vs上周、本月vs上月对比
-- ⚡ **性能优化**: 内存缓存机制，减少数据库查询
-- 🚀 **一键部署**: 支持Railway和Zeabur平台部署
-- 📱 **响应式**: 支持移动端和桌面端访问，适配暗夜模式
-- 🛡️ **健壮性**: 完善的错误处理和边界检查
-
-## 技术栈
-
-### 后端
-- Node.js + Express
-- MongoDB + Mongoose
-- 定时任务 (node-cron)
-- 网页爬虫 (axios + cheerio)
-- 日志系统 (winston)
-
-### 前端
-- React + TypeScript
-- ECharts 图表库
-- TailwindCSS 样式框架
-- Axios HTTP客户端
+这是一个用于采集、存储和展示家庭电表数据的全栈项目。后端基于 Node.js、Express 与 MongoDB，前端基于 React、TypeScript、Vite 和 ECharts；系统包含定时采集、用电趋势、充值记录、电量告警以及日/周/月报告通知。
 
 ## 项目结构
 
-```
+```text
+.
+├── api/                    # Vercel Serverless 入口与定时任务
+├── docs/                   # 移动端爬虫使用文档
+├── frontend/               # React 前端
+│   ├── public/             # 站点图标等静态资源
+│   └── src/                # 页面、组件、Hooks 与前端工具
+├── scripts/                # 本地/移动端爬虫、看门狗及恢复工具
 ├── src/
-│   ├── crawler/          # 爬虫模块
-│   ├── api/             # API接口
-│   ├── models/          # 数据模型
-│   └── utils/           # 工具函数
-├── frontend/            # React前端
-├── logs/               # 日志文件
-├── server.js           # 服务器入口
-└── package.json
+│   ├── api/                # Express API 路由
+│   ├── crawler/            # 数据采集逻辑
+│   ├── models/             # Mongoose 数据模型
+│   ├── services/           # 告警与报告服务
+│   └── utils/              # 日志、代理、时区与上传队列
+├── server.js               # Web 服务主入口
+├── package.json            # 后端依赖与命令
+└── frontend/package.json   # 前端依赖与命令
 ```
 
-## 快速开始
+## 本地运行
 
-### 1. 安装依赖
+项目要求 Node.js 24 或更高版本，以及可访问的 MongoDB 实例。
 
 ```bash
-# 安装后端依赖
-npm install
-
-# 安装前端依赖
-cd frontend && npm install
+npm ci
+cd frontend
+npm ci
+npm run build
+cd ..
 ```
 
-### 2. 环境配置
-
-复制环境变量模板：
-```bash
-cp env.example .env
-```
-
-编辑 `.env` 文件，配置MongoDB连接字符串：
-```
-MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/database
-PORT=3000
-```
-
-### 3. 构建前端
-
-```bash
-cd frontend && npm run build
-```
-
-### 4. 启动服务
+复制 `.env.local.template` 为 `.env.local`，至少填写 `MONGO_URI`、`METER_ID` 和 `METER_NAME`，然后启动服务：
 
 ```bash
 npm start
 ```
 
-访问 http://localhost:3000 查看应用。
+默认访问地址为 `http://localhost:3000`，健康检查为 `GET /health`。本地开发前端时，在 `frontend` 目录运行 `npm run dev`，Vite 会把 `/api` 请求代理到 `http://localhost:3000`。
 
-## 部署指南
-
-### Railway 部署
-
-1. 连接GitHub仓库到Railway
-2. 配置环境变量：
-   - `MONGO_URI`: MongoDB连接字符串
-   - `PORT`: 端口号（Railway会自动分配）
-3. 部署完成后，Railway会自动启动服务
-
-#### 本地爬虫 + Railway 服务
-
-如果你希望在本地电脑进行爬取，并把数据写入同一个 MongoDB，同时把 Web/API 部署到 Railway，请按以下步骤：
-
-- 在 Railway 环境变量中设置：`ENABLE_CRAWLER=false`，让线上实例不自动启动爬虫。
-- 在本地创建 `.env.local`（或直接使用系统环境变量）并配置：
-  - `MONGO_URI` 指向与 Railway 相同的数据库
-  - 可选：`USE_DIRECT_IP=true`（建议直连，不走 localtunnel）
-  - 可选：`PROXY_URL=http://localhost:3000`（如使用本地代理）
-- 本地启动爬虫：
-  ```bash
-  npm run crawler:local
-  ```
-- 验证数据：访问 Railway 的 `/api/latest`，应能看到数据随着本地爬虫周期性更新。
-
-#### 一键运行（本地）
-
-- 默认直连模式（推荐，避免 localtunnel 405）：
-  ```bash
-  npm run oneclick
-  ```
-- 代理模式（需要公网入口时使用）：
-  ```bash
-  ONECLICK_MODE=proxy npm run oneclick
-  ```
-- 可选：指定本地环境文件路径
-  ```bash
-  LOCAL_ENV_PATH=.env.local npm run oneclick
-  ```
-
-说明：代理模式会启动本地代理并尝试 LocalTunnel 暴露公网地址，失败时会提示使用 `ngrok http 3000`。Railway 如需走公网入口，可将 `PROXY_URL` 配置为脚本输出的公网地址。
-
-### Zeabur 部署
-
-项目已包含完整的Zeabur配置文件：
-
-1. **连接GitHub仓库**到Zeabur
-2. **配置环境变量**：
-   ```bash
-   PORT=3000
-   NODE_ENV=production
-   MONGO_URI=mongodb+srv://username:password@host/electricity
-   ```
-3. **Zeabur会自动识别**：
-   - ✅ Dockerfile进行容器化构建
-   - ✅ 端口3000自动暴露
-   - ✅ 健康检查 `/health` 端点
-4. **可选：关闭自动休眠**
-   - Settings → Auto Sleep → Disable
-   - 适合需要7×24小时运行的服务
-
-详细故障排查请查看 [ZEABUR_FIX.md](./ZEABUR_FIX.md)
-
-## API接口
-
-### 总览数据
-```
-GET /api/overview
-```
-返回当前剩余电量、今日/本周/本月用电、费用预估、智能预测、对比数据等
-
-### 24小时趋势
-```
-GET /api/trend/24h
-```
-返回过去24小时的用电趋势
-
-### 当天用电（按小时）
-```
-GET /api/trend/today
-```
-返回今日每小时用电量，包含与昨日同时段对比
-
-### 30天趋势
-```
-GET /api/trend/30d
-```
-返回最近30天每日用电量，包含与前一天对比
-
-### 月度趋势
-```
-GET /api/trend/monthly
-```
-返回最近12个月的用电量，包含与上月对比
-
-### 最新数据
-```
-GET /api/latest
-```
-获取最新采集的电表数据
-
-### 手动触发爬取
-```
-POST /api/crawl
-```
-手动触发一次数据采集
-
-## 核心算法
-
-### 智能预测算法
-采用多窗口分析法预测电量耗尽时间：
-- **短期窗口（6小时）**: 捕捉最新用电趋势，权重50%
-- **中期窗口（24小时）**: 分析日常用电规律，权重30%
-- **长期窗口（7天同时段）**: 考虑周期性用电模式，权重20%
-
-动态权重调整：
-- 短期用电量激增时，自动增加短期权重
-- 检测充值行为，自动过滤异常数据点
-
-### 性能优化
-- **数据库索引**: 复合索引优化查询性能
-- **内存缓存**: 2-10分钟缓存，减少重复查询
-- **并行查询**: Promise.all并行执行多个统计查询
-- **懒加载**: 图表组件采用懒更新策略
-
-## 数据模型
-
-### Usage 集合
-```javascript
-{
-  meter_id: String,        // 电表ID
-  meter_name: String,      // 电表名称
-  remaining_kwh: Number,    // 剩余电量(kWh)
-  collected_at: Date       // 采集时间
-}
-```
-
-## 爬虫配置
-
-系统会自动从指定URL抓取电表数据。如需修改爬取目标，请编辑 `src/crawler/crawler.js` 文件中的URL和解析逻辑。
-
-## 日志系统
-
-- 应用日志: `logs/app.log`
-- 错误日志: `logs/error.log`
-- 爬虫日志: `logs/fetch-YYYYMMDD.log`
-
-## 开发说明
-
-### 本地开发
+## 常用命令
 
 ```bash
-# 启动后端（开发模式）
-npm run dev
+npm start                 # 启动后端和生产前端
+npm run dev               # 使用 nodemon 启动后端
+npm run crawler:local     # 仅运行本地爬虫
+npm run oneclick          # 启动本地一键采集流程
+npm run pm2:start         # 使用 PM2 启动服务
 
-# 启动前端（开发模式）
-cd frontend && npm start
+cd frontend
+npm test                  # 运行前端测试
+npm run build             # 类型检查并构建前端
 ```
 
-### 测试爬虫
+Windows 开机启动和日志脚本说明见 [SCRIPTS_README.md](./SCRIPTS_README.md)，iPad 采集说明见 [docs/IPAD_CRAWLER_GUIDE.md](./docs/IPAD_CRAWLER_GUIDE.md)。
+
+## 主要接口
+
+仪表盘使用的读取接口包括 `/api/overview`、`/api/latest`、`/api/trend/24h`、`/api/trend/today`、`/api/trend/30d`、`/api/trend/monthly` 和 `/api/recharge-history`；采集与运维接口包括 `/api/crawl`、`/api/crawler/trigger`、`/api/crawler/status`、`/api/report` 与 `/api/report/batch`。
+
+若设置了 `API_TOKEN`，移动端上报接口需要通过 `Authorization: Bearer <token>` 或 `X-API-Token` 提交认证信息。不要把 `.env.local`、数据库连接字符串、通知密钥或 API Token 提交到 Git。
+
+## 部署
+
+仓库保留了仍可使用的正式部署入口：`railway.json` 与 `nixpacks.toml` 用于 Railway，`render.yaml` 用于 Render，`zeabur.json`、`zbpack.json` 与 `Dockerfile` 用于 Zeabur/容器部署，`vercel.json` 与 `api/` 用于 Vercel。所有平台都需要配置 `MONGO_URI`，生产环境还应按实际需要配置 `METER_ID`、`METER_NAME`、`ENABLE_CRAWLER`、`API_TOKEN` 和通知相关变量。
+
+## 验证
+
+提交前至少运行：
 
 ```bash
-# 手动触发爬取
-curl -X POST http://localhost:3000/api/crawl
+cd frontend
+npm test
+npm run build
 ```
 
-## 故障排除
-
-1. **MongoDB连接失败**: 检查连接字符串和网络访问权限
-2. **爬虫失败**: 检查目标网站是否可访问，可能需要调整User-Agent
-3. **前端构建失败**: 确保Node.js版本 >= 18.0.0
-
-## 许可证
-
-MIT License
+后端启动后可通过 `/health`、`/api/latest` 和 `/api/crawler/status` 验证数据库、数据读取与爬虫状态。

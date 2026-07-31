@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 frontend/node_modules/
+.pnpm-store/
 
 # Environment variables
 .env
@@ -22,6 +23,9 @@ pids
 *.pid
 *.seed
 *.pid.lock
+.daily_report_state.json
+backups/
+mobile_data/
 
 # Coverage directory used by tools like istanbul
 coverage/
@@ -51,11 +55,19 @@ jspm_packages/
 frontend/build/
 dist/
 
+# Python caches
+__pycache__/
+*.py[cod]
+
 # IDE
 .vscode/
 .idea/
+.trae/
 *.swp
 *.swo
+
+# Local shortcuts
+*.lnk
 
 # Vercel
 .vercel
