@@ -11,7 +11,7 @@ const TodayUsage = lazy(() => import('./components/TodayUsage'));
 const DailyTrend = lazy(() => import('./components/DailyTrend'));
 const MonthlyTrend = lazy(() => import('./components/MonthlyTrend'));
 const RechargeHistory = lazy(() => import('./components/RechargeHistory'));
-const DATA_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
+const DATA_REFRESH_INTERVAL_MS = 60 * 1000;
 
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = useState(false);
@@ -228,18 +228,22 @@ function App() {
   ].filter(Boolean).join('，');
 
   useEffect(() => {
-    const refreshVisiblePage = () => {
+    const refreshVisiblePage = (force = false) => {
       if (document.visibilityState !== 'visible') return;
-      if (Date.now() - lastRefreshAtRef.current < DATA_REFRESH_INTERVAL_MS) return;
+      if (!force && Date.now() - lastRefreshAtRef.current < DATA_REFRESH_INTERVAL_MS) return;
       fetchOverview(true);
       startTransition(() => setRefreshKey(prev => prev + 1));
     };
 
-    const interval = setInterval(refreshVisiblePage, DATA_REFRESH_INTERVAL_MS);
-    document.addEventListener('visibilitychange', refreshVisiblePage);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshVisiblePage(true);
+    };
+
+    const interval = setInterval(() => refreshVisiblePage(), DATA_REFRESH_INTERVAL_MS);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       clearInterval(interval);
-      document.removeEventListener('visibilitychange', refreshVisiblePage);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [fetchOverview]);
 

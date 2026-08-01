@@ -64,9 +64,10 @@ usageSchema.statics.getUsageInRange = function(meterId, startDate, endDate) {
 };
 
 // 静态方法：获取最新的用电数据
-usageSchema.statics.getLatestUsage = function(meterId) {
+usageSchema.statics.getLatestUsage = function(meterId, latestAllowedAt = new Date()) {
   return this.findOne({
-    meter_id: meterId
+    meter_id: meterId,
+    collected_at: { $lte: latestAllowedAt }
   })
     .select('meter_id meter_name remaining_kwh collected_at source crawl_id')
     .sort({ collected_at: -1 })

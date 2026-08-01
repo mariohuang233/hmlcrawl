@@ -10,6 +10,7 @@ const dailyReport = require('../services/dailyReport');
 const summaryReport = require('../services/summaryReport');
 const batteryAlertService = require('../services/batteryAlertService');
 const dataEvents = require('../services/dataEvents');
+const { parseCollectedAt } = require('../utils/collectedAt');
 const {
   getBeijingHour,
   getBeijingTodayStart,
@@ -1173,9 +1174,11 @@ router.post('/report', apiAuth, validateReportBody, async (req, res) => {
   try {
     const { meter_id, meter_name, remaining_kwh, collected_at, crawl_id, source, format_version } = req.body;
 
-    const collectedDate = collected_at ? new Date(collected_at) : new Date();
-    if (Number.isNaN(collectedDate.getTime())) {
-      return res.status(400).json({ error: 'collected_at 不是有效日期' });
+    let collectedDate;
+    try {
+      collectedDate = parseCollectedAt(collected_at);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
     }
 
     if (crawl_id) {
@@ -1265,11 +1268,7 @@ router.post('/report/batch', apiAuth, async (req, res) => {
           continue;
         }
 
-        const collectedDate = record.collected_at ? new Date(record.collected_at) : new Date();
-        if (isNaN(collectedDate.getTime())) {
-          errors.push({ index: i, error: '无效的 collected_at' });
-          continue;
-        }
+        const collectedDate = parseCollectedAt(record.collected_at);
 
         const meterId = record.meter_id || process.env.METER_ID || '18100071580';
         const identity = `${meterId}:${collectedDate.toISOString()}`;

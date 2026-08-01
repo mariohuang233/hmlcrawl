@@ -48,6 +48,7 @@ npm start
 ```bash
 npm start                 # 启动后端和生产前端
 npm run dev               # 使用 nodemon 启动后端
+npm test                  # 运行后端与前端测试
 npm run crawler:local     # 仅运行本地爬虫
 npm run oneclick          # 启动本地一键采集流程
 npm run pm2:start         # 使用 PM2 启动服务

@@ -16,6 +16,7 @@ iOS (iSH):
 参数:
     --daemon     守护恢复模式（默认开启，保留兼容）
     --no-daemon  调试模式（未捕获异常时退出）
+    --source     设备来源（Android/Termux 默认为 android，iOS 默认为 ipad）
 
 数据格式版本: 1.0 (与本地爬虫共享)
 """
@@ -59,6 +60,20 @@ current_ip_index = 0
 last_active_time = time.time()
 is_running = True
 
+def detect_default_source():
+    configured = os.environ.get("CRAWLER_SOURCE", "").strip()
+    if configured:
+        return configured
+    if os.environ.get("TERMUX_VERSION") or os.environ.get("ANDROID_ROOT"):
+        return "android"
+    return "ipad"
+
+def validate_source(value):
+    source = value.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}", source):
+        raise argparse.ArgumentTypeError("来源标识需为 1-32 位字母、数字、点、下划线或连字符")
+    return source
+
 def log(msg):
     line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}"
     print(line, flush=True)
@@ -92,7 +107,9 @@ def compute_checksum(record):
 def create_standard_record(meter_id, meter_name, remaining_kwh, collected_at, source="ipad"):
     collected_iso = collected_at
     if isinstance(collected_at, datetime):
-        collected_iso = collected_at.isoformat()
+        if collected_at.tzinfo is None:
+            collected_at = collected_at.astimezone()
+        collected_iso = collected_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     record = {
         "meter_id": meter_id,
         "meter_name": meter_name,
@@ -284,7 +301,7 @@ def replay_cached_data():
     
     log(f"补发完成: 成功 {total_replayed} 条，失败 {total_failed} 条")
 
-def crawl_and_report():
+def crawl_and_report(source):
     global last_active_time
     last_active_time = time.time()
     log("开始爬取...")
@@ -298,8 +315,8 @@ def crawl_and_report():
                     meter_id=METER_ID,
                     meter_name=METER_NAME,
                     remaining_kwh=remaining,
-                    collected_at=datetime.now(),
-                    source="ipad"
+                    collected_at=datetime.now(timezone.utc),
+                    source=source
                 )
 
                 upload_record(record)
@@ -365,7 +382,7 @@ def get_next_run_time(scheduled_time, finished_time, interval):
         next_run += missed_intervals * interval
     return next_run
 
-def main_loop(daemon=True):
+def main_loop(daemon=True, source="ipad"):
     global is_running
     
     signal.signal(signal.SIGINT, signal_handler)
@@ -376,7 +393,7 @@ def main_loop(daemon=True):
     log(f"电表: {METER_ID} ({METER_NAME})")
     log(f"间隔: {FETCH_INTERVAL // 60}分钟")
     log(f"心跳: {HEARTBEAT_INTERVAL}秒")
-    log(f"来源: ipad")
+    log(f"来源: {source}")
     log(f"后端: {BACKEND_URL if BACKEND_URL else '未配置'}")
     log(f"数据目录: {DATA_DIR}")
     log(f"守护恢复: {'开启' if daemon else '关闭'}")
@@ -403,7 +420,7 @@ def main_loop(daemon=True):
             log(f"定时任务触发: {format_run_time(started_at)}")
 
         try:
-            crawl_and_report()
+            crawl_and_report(source)
         except Exception as e:
             log(f"爬取异常: {e}")
             if daemon:
@@ -433,17 +450,23 @@ if __name__ == "__main__":
     )
     parser.set_defaults(daemon=True)
     parser.add_argument("--once", action="store_true", help="单次运行模式（执行一次后退出，适合快捷指令）")
+    parser.add_argument(
+        "--source",
+        type=validate_source,
+        default=validate_source(detect_default_source()),
+        help="设备来源，例如 android、android-pixel8、iphone 或 ipad"
+    )
     args = parser.parse_args()
 
     if args.once:
         log("单次运行模式")
         replay_cached_data()
-        crawl_and_report()
+        crawl_and_report(args.source)
         sys.exit(0)
 
     while True:
         try:
-            main_loop(daemon=args.daemon)
+            main_loop(daemon=args.daemon, source=args.source)
             break
         except KeyboardInterrupt:
             log("爬虫已手动停止")
