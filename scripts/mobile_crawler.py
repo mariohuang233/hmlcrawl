@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-iPad/手机端轻量爬虫 v5.2 - 可靠定时调度
+iPad/手机端轻量爬虫 v5.3 - 可靠上传与定时调度
 ==============================================
 支持持续定时运行，包含本地缓存补发、休眠恢复补偿、心跳检测和自动恢复机制
 
@@ -23,6 +23,8 @@ iOS (iSH):
 
 import urllib.request
 import urllib.error
+import ssl
+import socket
 import json
 import time
 import re
@@ -55,6 +57,8 @@ SUSPEND_RECOVERY_THRESHOLD = 30
 MAX_RETRIES = 3
 INITIAL_RETRY_DELAY = 5
 FORMAT_VERSION = 1
+UPLOAD_MAX_RETRIES = 4
+UPLOAD_RETRY_BASE_DELAY = 2
 
 current_ip_index = 0
 last_active_time = time.time()
@@ -121,6 +125,18 @@ def create_standard_record(meter_id, meter_name, remaining_kwh, collected_at, so
     }
     record["checksum"] = compute_checksum(record)
     return record
+
+def normalize_collected_at(value):
+    if isinstance(value, datetime):
+        collected_at = value
+    else:
+        raw = str(value).strip()
+        if raw.endswith("Z"):
+            raw = f"{raw[:-1]}+00:00"
+        collected_at = datetime.fromisoformat(raw)
+    if collected_at.tzinfo is None:
+        collected_at = collected_at.astimezone()
+    return collected_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 def _is_blocked(html):
     block_keywords = ['blocked', '安全威胁', '被阻断', 'Tunnel website ahead!', '405', '访问被拒绝']
@@ -202,56 +218,82 @@ def save_local(record):
     try:
         with open(filepath, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
         log(f"本地保存成功: {filepath}")
         return True
     except Exception as e:
         log(f"本地保存失败: {e}")
         return False
 
-def upload_to_api(record):
+def build_upload_payload(record):
+    return json.dumps({
+        "meter_id": record["meter_id"],
+        "meter_name": record["meter_name"],
+        "remaining_kwh": record["remaining_kwh"],
+        "collected_at": normalize_collected_at(record["collected_at"]),
+        "crawl_id": record["crawl_id"],
+        "source": record["source"],
+        "format_version": record["format_version"]
+    }).encode("utf-8")
+
+def describe_upload_error(error):
+    reason = error.reason if isinstance(error, urllib.error.URLError) else error
+    message = str(reason)
+    if isinstance(reason, ssl.SSLError) and "UNEXPECTED_EOF" in message.upper():
+        return "TLS 连接被提前关闭"
+    if isinstance(reason, socket.timeout) or isinstance(error, TimeoutError):
+        return "连接超时"
+    return message[:100]
+
+def upload_to_api(record, max_attempts=UPLOAD_MAX_RETRIES, sleep_fn=time.sleep, opener=urllib.request.urlopen):
     if not BACKEND_URL:
         log("后端地址未配置")
         return False
-    
-    try:
-        data = json.dumps({
-            "meter_id": record["meter_id"],
-            "meter_name": record["meter_name"],
-            "remaining_kwh": record["remaining_kwh"],
-            "collected_at": record["collected_at"],
-            "crawl_id": record["crawl_id"],
-            "source": record["source"],
-            "format_version": record["format_version"]
-        }).encode("utf-8")
-        
-        headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "hmlcrawl-mobile/5.2"
-        }
-        if API_TOKEN:
-            headers["X-API-Token"] = API_TOKEN
-        
+
+    data = build_upload_payload(record)
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "hmlcrawl-mobile/5.3",
+        "Connection": "close"
+    }
+    if API_TOKEN:
+        headers["X-API-Token"] = API_TOKEN
+
+    context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+
+    for attempt in range(1, max_attempts + 1):
         req = urllib.request.Request(BACKEND_URL, data=data, headers=headers)
-        
-        import ssl
-        context = ssl.create_default_context()
-        context.set_ciphers('DEFAULT@SECLEVEL=1')
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        
-        with urllib.request.urlopen(req, timeout=30, context=context) as resp:
-            result = resp.read().decode("utf-8")
-            log(f"API上传成功: {result[:50]}")
-            return True
-    except urllib.error.HTTPError as e:
-        if e.code == 409:
-            log(f"服务器返回409（重复数据），视为成功")
-            return True
-        log(f"API上传失败: HTTP {e.code}")
-        return False
-    except Exception as e:
-        log(f"API上传失败: {str(e)[:60]}")
-        return False
+        try:
+            with opener(req, timeout=30, context=context) as resp:
+                result = resp.read().decode("utf-8")
+                payload = json.loads(result)
+                if not isinstance(payload, dict) or not payload.get("success"):
+                    raise ValueError(f"服务器未确认成功: {result[:80]}")
+                log(f"API上传成功: {result[:80]}")
+                return True
+        except urllib.error.HTTPError as error:
+            if error.code == 409:
+                log("服务器返回 409（重复数据），视为成功")
+                return True
+            retryable = error.code in (408, 425, 429) or error.code >= 500
+            log(f"API上传失败 ({attempt}/{max_attempts}): HTTP {error.code}")
+            if not retryable:
+                return False
+        except (urllib.error.URLError, ssl.SSLError, socket.timeout, TimeoutError, ConnectionError) as error:
+            log(f"API上传失败 ({attempt}/{max_attempts}): {describe_upload_error(error)}")
+        except (ValueError, KeyError, TypeError, AttributeError) as error:
+            log(f"API响应无效: {str(error)[:100]}")
+            return False
+
+        if attempt < max_attempts:
+            delay = min(UPLOAD_RETRY_BASE_DELAY * (2 ** (attempt - 1)) + random.uniform(0, 0.8), 30)
+            log(f"{delay:.1f} 秒后重试上传")
+            sleep_fn(delay)
+
+    log(f"API 上传在 {max_attempts} 次尝试后仍失败")
+    return False
 
 def upload_record(record):
     if upload_to_api(record):
@@ -260,11 +302,28 @@ def upload_record(record):
     save_local(record)
     return False
 
+def write_cached_records(filepath, records):
+    if not records:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        return
+    temporary_path = f"{filepath}.tmp"
+    with open(temporary_path, "w", encoding="utf-8") as f:
+        for record in records:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(temporary_path, filepath)
+
 def replay_cached_data():
-    log("开始补发本地缓存数据...")
     cached_files = [f for f in os.listdir(DATA_DIR) if f.startswith("data_") and f.endswith(".jsonl")]
+    if not cached_files:
+        return True
+
+    log("开始补发本地缓存数据...")
     total_replayed = 0
     total_failed = 0
+    network_available = True
     
     for filename in sorted(cached_files):
         filepath = os.path.join(DATA_DIR, filename)
@@ -273,13 +332,23 @@ def replay_cached_data():
                 lines = f.readlines()
             
             records = []
+            invalid_lines = []
             for line in lines:
                 line = line.strip()
                 if line:
                     try:
                         records.append(json.loads(line))
                     except:
-                        continue
+                        invalid_lines.append(line)
+
+            if invalid_lines:
+                corrupt_path = f"{filepath}.corrupt"
+                with open(corrupt_path, "a", encoding="utf-8") as f:
+                    for line in invalid_lines:
+                        f.write(line + "\n")
+                    f.flush()
+                    os.fsync(f.fileno())
+                log(f"发现 {len(invalid_lines)} 条损坏缓存，已隔离到 {os.path.basename(corrupt_path)}")
             
             if not records:
                 os.remove(filepath)
@@ -287,19 +356,28 @@ def replay_cached_data():
             
             log(f"处理缓存文件: {filename} ({len(records)}条记录)")
             
-            for record in records:
+            remaining_records = []
+            for index, record in enumerate(records):
                 if upload_to_api(record):
                     total_replayed += 1
                 else:
                     total_failed += 1
-                    save_local(record)
-            
-            os.remove(filepath)
-            log(f"缓存文件 {filename} 已处理并删除")
+                    remaining_records = records[index:]
+                    network_available = False
+                    break
+
+            write_cached_records(filepath, remaining_records)
+            if remaining_records:
+                log(f"补发中断，{filename} 仍保留 {len(remaining_records)} 条")
+                break
+            log(f"缓存文件 {filename} 已全部补发")
         except Exception as e:
             log(f"处理缓存文件 {filename} 失败: {e}")
+            network_available = False
+            break
     
     log(f"补发完成: 成功 {total_replayed} 条，失败 {total_failed} 条")
+    return network_available
 
 def crawl_and_report(source):
     global last_active_time
@@ -389,7 +467,7 @@ def main_loop(daemon=True, source="ipad"):
     signal.signal(signal.SIGTERM, signal_handler)
 
     log("=" * 40)
-    log("iPad/手机端爬虫 v5.2 - 可靠定时调度")
+    log("iPad/手机端爬虫 v5.3 - 可靠上传与定时调度")
     log(f"电表: {METER_ID} ({METER_NAME})")
     log(f"间隔: {FETCH_INTERVAL // 60}分钟")
     log(f"心跳: {HEARTBEAT_INTERVAL}秒")
@@ -398,8 +476,6 @@ def main_loop(daemon=True, source="ipad"):
     log(f"数据目录: {DATA_DIR}")
     log(f"守护恢复: {'开启' if daemon else '关闭'}")
     log("=" * 40)
-
-    replay_cached_data()
 
     heartbeat_thread = threading.Thread(target=heartbeat_monitor, daemon=True)
     heartbeat_thread.start()
@@ -420,6 +496,7 @@ def main_loop(daemon=True, source="ipad"):
             log(f"定时任务触发: {format_run_time(started_at)}")
 
         try:
+            replay_cached_data()
             crawl_and_report(source)
         except Exception as e:
             log(f"爬取异常: {e}")

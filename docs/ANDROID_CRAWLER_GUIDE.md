@@ -8,7 +8,8 @@ Android 建议使用 Termux 运行 `scripts/mobile_crawler.py`。请从 F-Droid 
 
 ```sh
 pkg update
-pkg install python git tmux
+pkg upgrade
+pkg install python git tmux openssl ca-certificates
 git clone https://github.com/mariohuang233/hmlcrawl.git
 cd hmlcrawl
 python scripts/mobile_crawler.py --source android
@@ -45,3 +46,15 @@ python3 scripts/mobile_crawler.py --source ipad
 ```
 
 启动日志中的“来源”以及上传记录的 `source`、`crawl_id` 前缀应与指定标识一致；旧数据仍会保留原来的 `ipad` 标识，不会被自动改写。
+
+## 上传失败与自动补发
+
+脚本使用系统 CA 证书校验 Railway 的 HTTPS 连接。遇到移动网络切换、TLS 连接被提前关闭、超时、HTTP 429 或服务端 5xx 时，会自动执行最多 4 次指数退避重试。持续失败的记录会保存在 `mobile_data/data_YYYYMMDD.jsonl`，每个采集周期都会再次补发；补发中断时未成功的记录会原子化写回，不会被误删。
+
+如果持续出现证书错误，先执行：
+
+```sh
+pkg update
+pkg upgrade
+pkg reinstall python openssl ca-certificates
+```
