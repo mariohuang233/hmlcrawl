@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface UseAnimatedNumberOptions {
   duration?: number;
-  easing?: 'easeOut' | 'easeInOut' | 'easeOutBounce' | 'easeOutElastic';
+  easing?: 'easeOut' | 'easeInOut';
   delay?: number;
   precision?: number;
   autoStart?: boolean;
@@ -16,10 +16,9 @@ interface UseAnimatedNumberReturn {
 
 function smartDuration(value: number): number {
   const absValue = Math.abs(value);
-  if (absValue < 1) return 800;
-  if (absValue < 10) return 1200;
-  if (absValue < 100) return 1800;
-  return Math.min(2500, 1000 + absValue * 10);
+  if (absValue < 1) return 180;
+  if (absValue < 10) return 220;
+  return 280;
 }
 
 export const useAnimatedNumber = (
@@ -28,7 +27,7 @@ export const useAnimatedNumber = (
 ): UseAnimatedNumberReturn => {
   const {
     duration,
-    easing = 'easeOutBounce',
+    easing = 'easeOut',
     delay = 0,
     precision = 2,
     autoStart = true
@@ -47,18 +46,7 @@ export const useAnimatedNumber = (
 
   const easingFunctions = useMemo(() => ({
     easeOut: (t: number) => 1 - Math.pow(1 - t, 3),
-    easeInOut: (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t,
-    easeOutBounce: (t: number) => {
-      if (t < 1 / 2.75) return 7.5625 * t * t;
-      if (t < 2 / 2.75) return 7.5625 * (t -= 1.5 / 2.75) * t + 0.75;
-      if (t < 2.5 / 2.75) return 7.5625 * (t -= 2.25 / 2.75) * t + 0.9375;
-      return 7.5625 * (t -= 2.625 / 2.75) * t + 0.984375;
-    },
-    easeOutElastic: (t: number) => {
-      if (t === 0 || t === 1) return t;
-      const c4 = (2 * Math.PI) / 3;
-      return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
-    }
+    easeInOut: (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
   }), []);
 
   const cancelAnimation = useCallback(() => {

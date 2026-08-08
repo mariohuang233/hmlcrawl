@@ -1,7 +1,6 @@
 import React, { lazy, startTransition, useState, useEffect, useCallback, useRef } from 'react';
 import Overview from './components/Overview';
 import DeferredSection from './components/DeferredSection';
-import './premium.css';
 import { fetchAPI, retryRequest, formatErrorMessage } from './utils/api';
 import bubuIcon from './assets/bubu.png';
 import { ColorTheme } from './utils/chartTheme';
@@ -127,10 +126,12 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [theme, setTheme] = useState<ColorTheme>(() => {
     if (typeof window === 'undefined') return 'light';
@@ -213,6 +214,38 @@ function App() {
     }
     setShowLogs(!showLogs);
   }, [fetchLogs, showLogs]);
+
+  const handleMobileThemeToggle = useCallback(() => {
+    toggleTheme();
+    setShowMobileMenu(false);
+  }, [toggleTheme]);
+
+  const handleMobileLogsToggle = useCallback(() => {
+    handleShowLogs();
+    setShowMobileMenu(false);
+  }, [handleShowLogs]);
+
+  useEffect(() => {
+    if (!showMobileMenu) return undefined;
+
+    const closeOnPointerDown = (event: PointerEvent) => {
+      if (!mobileMenuRef.current?.contains(event.target as Node)) {
+        setShowMobileMenu(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowMobileMenu(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', closeOnPointerDown);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnPointerDown);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [showMobileMenu]);
 
   useEffect(() => {
     fetchOverview();
@@ -332,7 +365,7 @@ function App() {
             </div>
             <div className="header-actions">
               <div
-                className={`system-status is-${collectionStatus.level}`}
+                className={`system-status desktop-status is-${collectionStatus.level}`}
                 aria-label={`${collectionStatus.label}，${collectionStatusDetails}`}
                 title={collectionStatusDetails}
               >
@@ -341,7 +374,7 @@ function App() {
               </div>
               <button
                 onClick={toggleTheme}
-                className="btn btn-quiet theme-toggle"
+                className="btn btn-quiet theme-toggle desktop-action"
                 title={`切换到${theme === 'dark' ? '日间' : '夜间'}模式`}
                 aria-label={`切换到${theme === 'dark' ? '日间' : '夜间'}模式`}
               >
@@ -349,7 +382,7 @@ function App() {
               </button>
               <button
                 onClick={handleRefresh}
-                className={`btn btn-quiet ${isRefreshing ? 'refreshing' : ''}`}
+                className={`btn btn-quiet refresh-action ${isRefreshing ? 'refreshing' : ''}`}
                 title="刷新数据"
                 aria-label="刷新全部数据"
                 disabled={isRefreshing}
@@ -359,12 +392,49 @@ function App() {
               </button>
               <button
                 onClick={handleShowLogs}
-                className={`btn btn-quiet ${showLogs ? 'is-active' : ''}`}
+                className={`btn btn-quiet desktop-action ${showLogs ? 'is-active' : ''}`}
                 title={showLogs ? '隐藏日志' : '查看日志'}
+                aria-label={showLogs ? '隐藏本地爬虫日志' : '查看本地爬虫日志'}
                 aria-expanded={showLogs}
               >
                 <span>{showLogs ? '收起日志' : '本地日志'}</span>
               </button>
+              <div className="mobile-menu" ref={mobileMenuRef}>
+                <button
+                  type="button"
+                  className={`btn btn-quiet mobile-menu-trigger ${showMobileMenu ? 'is-active' : ''}`}
+                  aria-label={showMobileMenu ? '关闭更多操作' : '打开更多操作'}
+                  aria-expanded={showMobileMenu}
+                  aria-controls="mobile-actions-menu"
+                  onClick={() => setShowMobileMenu(current => !current)}
+                >
+                  <span className="more-mark" aria-hidden="true">•••</span>
+                  <span>更多</span>
+                </button>
+                {showMobileMenu && (
+                  <div id="mobile-actions-menu" className="mobile-menu-panel" role="menu">
+                    <button type="button" className="mobile-menu-item" role="menuitem" onClick={handleMobileThemeToggle}>
+                      <span>{theme === 'dark' ? '切换日间模式' : '切换夜间模式'}</span>
+                      <span className="mobile-menu-meta">{theme === 'dark' ? '深色' : '浅色'}</span>
+                    </button>
+                    <button type="button" className="mobile-menu-item" role="menuitem" onClick={handleMobileLogsToggle}>
+                      <span>{showLogs ? '收起本地日志' : '查看本地日志'}</span>
+                      <span className="mobile-menu-meta">最近 50 条</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="mobile-status-row">
+            <div
+              className={`system-status is-${collectionStatus.level}`}
+              aria-label={`${collectionStatus.label}，${collectionStatusDetails}`}
+              title={collectionStatusDetails}
+            >
+              <span className="system-status-mark" aria-hidden="true"></span>
+              <span>{collectionStatus.label}</span>
+              <span className="mobile-status-age">{collectionStatus.ageLabel}</span>
             </div>
           </div>
         </div>

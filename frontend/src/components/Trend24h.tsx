@@ -114,8 +114,8 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
   
   const chartOption = {
     animation: hasTriggered,
-    animationDuration: mobileState ? 260 : 420,
-    animationDurationUpdate: 180,
+    animationDuration: 220,
+    animationDurationUpdate: 160,
     animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'axis',
@@ -279,7 +279,7 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
           }
         },
         animationDelay: 0,
-        animationDuration: mobileState ? 260 : 420,
+        animationDuration: 220,
         animationEasing: 'cubicOut'
       }
     ],

@@ -59,8 +59,8 @@ const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false, refreshKe
   const currentMonthUsage = data.length > 0 ? data[data.length - 1].used_kwh : 0;
   const chartOption = {
     animation: hasTriggered,
-    animationDuration: isMobile ? 260 : 420,
-    animationDurationUpdate: 180,
+    animationDuration: 220,
+    animationDurationUpdate: 160,
     animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'axis',
@@ -198,7 +198,7 @@ const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false, refreshKe
           }
         },
         animationDelay: 0,
-        animationDuration: isMobile ? 260 : 420,
+        animationDuration: 220,
         animationEasing: 'cubicOut'
       }
     ],

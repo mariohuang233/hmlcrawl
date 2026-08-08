@@ -164,7 +164,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       unit: 'kWh',
       shortLabel: '今日',
       precision: 2,
-      delay: 100,
+      delay: 0,
       comparison: data.comparisons ? {
         text: `较昨日 ${formatComparison(data.comparisons.today_vs_yesterday)}`,
         color: getComparisonColor(data.comparisons.today_vs_yesterday),
@@ -180,7 +180,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       unit: 'kWh',
       shortLabel: '本周',
       precision: 2,
-      delay: 200,
+      delay: 40,
       warning: data.data_coverage && !data.data_coverage.week_data_complete,
       comparison: data.comparisons ? {
         text: `较上周 ${formatComparison(data.comparisons.week_vs_last_week)}`,
@@ -195,7 +195,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       unit: 'kWh',
       shortLabel: '本月',
       precision: 2,
-      delay: 300,
+      delay: 80,
       warning: data.data_coverage && !data.data_coverage.month_data_complete,
       comparison: data.comparisons ? {
         text: `较上月 ${formatComparison(data.comparisons.month_vs_last_month)}`,
@@ -209,7 +209,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
       prefix: '¥',
       shortLabel: '费用',
       precision: 2,
-      delay: 400,
+      delay: 120,
       comparison: data.comparisons ? {
         text: `较上月 ${formatComparison(data.comparisons.cost_vs_last_month)}`,
         color: getComparisonColor(data.comparisons.cost_vs_last_month)
@@ -243,7 +243,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
                     unit=""
                     precision={2}
                     delay={0}
-                    easing="easeOutBounce"
+                    easing="easeOut"
                     autoStart={hasTriggered}
                   />
                 </span>
@@ -256,7 +256,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
         {predictionInfo && (
           <div 
             className={`hero-card hero-card-prediction ${predictionInfo.status} ${hasTriggered ? 'animate-in' : ''}`}
-            style={{ animationDelay: '150ms' }}
+            style={{ animationDelay: '60ms' }}
           >
             <div className="hero-content">
               <div className="hero-info">
@@ -296,7 +296,7 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
                   unit={stat.unit}
                   precision={(stat as any).precision || 2}
                   delay={hasTriggered ? ((stat as any).delay || 0) : 0}
-                  easing="easeOutBounce"
+                  easing="easeOut"
                   autoStart={hasTriggered}
                 />
               </div>

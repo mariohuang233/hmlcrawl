@@ -8,7 +8,7 @@ interface AnimatedNumberProps {
   suffix?: string;
   precision?: number;
   duration?: number;
-  easing?: 'easeOut' | 'easeInOut' | 'easeOutBounce' | 'easeOutElastic';
+  easing?: 'easeOut' | 'easeInOut';
   delay?: number;
   autoStart?: boolean;
   className?: string;
@@ -23,8 +23,8 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
   prefix = '',
   suffix = '',
   precision = 2,
-  duration = 2000,
-  easing = 'easeOutBounce',
+  duration = 280,
+  easing = 'easeOut',
   delay = 0,
   autoStart = true,
   className = '',
@@ -82,8 +82,6 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
       className={`animated-number ${className} ${isAnimating ? 'animating' : ''} ${isUpdating ? 'updating' : ''}`}
       style={{
         display: 'inline-block',
-        transition: 'transform 0.2s ease-out',
-        transform: isAnimating ? 'scale(1.02)' : 'scale(1)',
         ...style
       }}
     >

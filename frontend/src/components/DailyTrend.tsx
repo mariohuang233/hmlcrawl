@@ -48,8 +48,8 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false, refreshKey = 
   const totalUsage = data.reduce((total, item) => total + (Number(item.used_kwh) || 0), 0);
   const chartOption = {
     animation: hasTriggered,
-    animationDuration: isMobile ? 260 : 420,
-    animationDurationUpdate: 180,
+    animationDuration: 220,
+    animationDurationUpdate: 160,
     animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'axis',
@@ -197,7 +197,7 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false, refreshKey = 
           }
         },
         animationDelay: 0,
-        animationDuration: isMobile ? 260 : 420,
+        animationDuration: 220,
         animationEasing: 'cubicOut'
       }
     ],

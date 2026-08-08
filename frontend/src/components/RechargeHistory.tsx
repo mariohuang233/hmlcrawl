@@ -247,14 +247,14 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
                 <div className="summary-label summary-elapsed-prefix">
                   {elapsedSinceLatestRecharge ? '离上一次充值已经过了' : '暂无有效充值时间'}
                 </div>
-                <div className="summary-value">{elapsedSinceLatestRecharge ?? '—'}</div>
+                <div className="summary-value">{elapsedSinceLatestRecharge ?? '暂无'}</div>
               </div>
             </div>
             <div className="recharge-summary-item">
               <div className="summary-code">预计</div>
               <div className="summary-content">
                 <div className={`summary-value ${cadence ? 'recent' : ''}`}>
-                  {cadence?.nextText ?? '—'}
+                  {cadence?.nextText ?? '暂无'}
                 </div>
                 <div className="summary-label">
                   {cadence ? '按历史充值节奏估算' : '至少需要两次充值'}

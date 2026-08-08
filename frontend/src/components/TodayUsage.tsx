@@ -61,8 +61,8 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
 
   const chartOption = useMemo(() => ({
     animation: hasTriggered,
-    animationDuration: isMobile ? 260 : 420,
-    animationDurationUpdate: 180,
+    animationDuration: 220,
+    animationDurationUpdate: 160,
     animationEasing: 'cubicOut',
     tooltip: {
       trigger: 'axis',
@@ -190,7 +190,7 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
           }
         },
         animationDelay: 0,
-        animationDuration: isMobile ? 260 : 420,
+        animationDuration: 220,
         animationEasing: 'cubicOut'
       }
     ],
