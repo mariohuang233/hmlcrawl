@@ -66,6 +66,12 @@ Windows 开机启动和日志脚本说明见 [SCRIPTS_README.md](./SCRIPTS_READM
 
 若设置了 `API_TOKEN`，移动端上报接口需要通过 `Authorization: Bearer <token>` 或 `X-API-Token` 提交认证信息。不要把 `.env.local`、数据库连接字符串、通知密钥或 API Token 提交到 Git。
 
+## 布布用电助手
+
+助手入口位于看板右下角，支持昨日摘要、今日用电、周期统计、同期对比、用电预测、时段解释和节电建议；桌面端使用浮层面板，移动端使用底部抽屉。`GET /api/assistant/briefing` 返回主动提醒和快捷问题，`POST /api/assistant/chat` 接收 `{ "message": "今天用了多少？" }` 并返回结构化答案、图表数据、统计范围和更新时间。
+
+助手采用三层分流：非用电问题直接拦截，余额、用量、费用、峰值与预测等事实问题由后端确定性计算，原因、规律、比较、总结与建议类问题才调用模型分析。部署环境可配置 `AI_API_KEY`、`AI_BASE_URL`、`AI_MODEL` 和可选的 `AI_FALLBACK_MODEL`；服务端按 OpenAI Chat Completions 兼容格式调用模型，密钥不会下发到浏览器。模型失败、超时或返回不完整内容时会自动切换备用模型，再降级到同口径的确定性数据分析。
+
 ## 部署
 
 仓库保留了仍可使用的正式部署入口：`railway.json` 与 `nixpacks.toml` 用于 Railway，`render.yaml` 用于 Render，`zeabur.json`、`zbpack.json` 与 `Dockerfile` 用于 Zeabur/容器部署，`vercel.json` 与 `api/` 用于 Vercel。所有平台都需要配置 `MONGO_URI`，生产环境还应按实际需要配置 `METER_ID`、`METER_NAME`、`ENABLE_CRAWLER`、`API_TOKEN` 和通知相关变量。

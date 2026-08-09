@@ -10,6 +10,7 @@ const dailyReport = require('../services/dailyReport');
 const summaryReport = require('../services/summaryReport');
 const batteryAlertService = require('../services/batteryAlertService');
 const dataEvents = require('../services/dataEvents');
+const electricityAssistant = require('../services/electricityAssistant');
 const { parseCollectedAt } = require('../utils/collectedAt');
 const {
   getBeijingHour,
@@ -970,6 +971,40 @@ router.get('/latest', asyncHandler(async (req, res) => {
     remaining_kwh: latest.remaining_kwh,
     collected_at: latest.collected_at
   });
+}));
+
+// 布布用电助手：主动提醒与首屏摘要
+router.get('/assistant/briefing', cacheMiddleware('assistant_briefing', 60000), asyncHandler(async (_req, res) => {
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      error: '数据库连接不可用',
+      message: '暂时无法读取用电数据，请稍后重试',
+      status: 'database_unavailable'
+    });
+  }
+  res.json(await electricityAssistant.getBriefing());
+}));
+
+// 布布用电助手：结构化问答；无 AI 密钥时仍支持核心用电问题
+router.post('/assistant/chat', asyncHandler(async (req, res) => {
+  const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+  if (!message) {
+    return res.status(400).json({ error: '请输入用电问题', status: 'invalid_message' });
+  }
+  if (message.length > 500) {
+    return res.status(400).json({ error: '问题不能超过 500 个字符', status: 'message_too_long' });
+  }
+
+  const intent = electricityAssistant.classifyIntent(message);
+  if (mongoose.connection.readyState !== 1 && !['out_of_scope', 'unknown'].includes(intent)) {
+    return res.status(503).json({
+      error: '数据库连接不可用',
+      message: '暂时无法读取用电数据，请稍后重试',
+      status: 'database_unavailable'
+    });
+  }
+
+  res.json(await electricityAssistant.answerQuestion(message));
 }));
 
 // 手动触发爬取

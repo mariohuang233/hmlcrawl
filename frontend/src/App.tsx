@@ -4,6 +4,7 @@ import DeferredSection from './components/DeferredSection';
 import { fetchAPI, retryRequest, formatErrorMessage } from './utils/api';
 import bubuIcon from './assets/bubu.png';
 import { ColorTheme } from './utils/chartTheme';
+import ElectricityAssistant from './components/ElectricityAssistant';
 
 const Trend24h = lazy(() => import('./components/Trend24h'));
 const TodayUsage = lazy(() => import('./components/TodayUsage'));
@@ -503,6 +504,7 @@ function App() {
           )}
         </div>
       </main>
+      <ElectricityAssistant />
     </div>
   );
 }

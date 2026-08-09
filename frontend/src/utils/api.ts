@@ -48,9 +48,9 @@ function messageForStatus(status: number): string {
   return `请求失败（HTTP ${status}）`;
 }
 
-export async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+export async function fetchAPI<T>(endpoint: string, options: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
   const timeoutController = new AbortController();
-  const timeout = window.setTimeout(() => timeoutController.abort(), DEFAULT_TIMEOUT_MS);
+  const timeout = window.setTimeout(() => timeoutController.abort(), timeoutMs);
   const externalSignal = options.signal;
   const abortFromExternal = () => timeoutController.abort();
   externalSignal?.addEventListener('abort', abortFromExternal, { once: true });

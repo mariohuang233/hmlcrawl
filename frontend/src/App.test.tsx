@@ -19,10 +19,28 @@ const overviewFixture = {
 
 beforeEach(() => {
   window.localStorage.clear();
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-    ok: true,
-    status: 200,
-    json: async () => overviewFixture,
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    let payload: unknown = overviewFixture;
+    if (url.includes('/api/assistant/briefing')) {
+      payload = {
+        available: true,
+        aiConfigured: false,
+        notification: {
+          id: 'daily-test', type: 'daily', severity: 'info', title: '布布提醒',
+          message: '昨日用电 6.42 kWh。', actionLabel: '查看详情', prompt: '今天用了多少？', source: '更新于 10:28'
+        },
+        welcome: {},
+        quickReplies: ['今天用了多少？', '为什么变高？']
+      };
+    } else if (url.includes('/api/assistant/chat') && init?.method === 'POST') {
+      payload = {
+        role: 'assistant', intent: 'today', headline: '截至 10:28，今日已用 2.18 kWh',
+        body: '较昨日同期高 6%。', source: '基于电表数据 · 更新于 10:28', mode: 'data',
+        quickReplies: ['为什么变高？']
+      };
+    }
+    return { ok: true, status: 200, json: async () => payload };
   }));
 });
 
@@ -48,4 +66,16 @@ test('groups secondary mobile actions in an accessible menu', async () => {
   await user.click(screen.getByRole('menuitem', { name: /切换夜间模式/ }));
   expect(document.documentElement.dataset.theme).toBe('dark');
   expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+});
+
+test('opens the assistant and answers a grounded quick question', async () => {
+  const user = userEvent.setup();
+  render(<App />);
+
+  const launcher = await screen.findByRole('button', { name: '打开布布用电助手' });
+  await user.click(launcher);
+  await user.click(screen.getByRole('button', { name: '今天用了多少？' }));
+
+  expect(await screen.findByText('截至 10:28，今日已用 2.18 kWh')).toBeInTheDocument();
+  expect(screen.getByText('基于电表数据 · 更新于 10:28')).toBeInTheDocument();
 });
