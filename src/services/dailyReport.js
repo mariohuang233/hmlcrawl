@@ -18,6 +18,8 @@ const {
   deliverReport
 } = require('./reportNotificationService');
 const { getDelivery } = require('./reportDeliveryService');
+const { getDevicePeriodBreakdown } = require('./deviceEnergyAnalytics');
+const xiaomiEnergySync = require('./xiaomiEnergySync');
 
 const CONFIG = {
   reportHour: 0,
@@ -176,12 +178,18 @@ async function fetchDailyData(meterId, now = new Date()) {
       : 0;
 
     const usageDiff = reportStats.totalUsage - comparisonStats.totalUsage;
+    const deviceBreakdown = await getDevicePeriodBreakdown(
+      reportRange.start,
+      reportRange.end,
+      reportStats.totalUsage
+    );
 
     return {
       success: true,
       todayUsage: reportStats.totalUsage,
       yesterdayUsage: comparisonStats.totalUsage,
       usageDiff: Math.round(usageDiff * 100) / 100,
+      deviceBreakdown,
       remainingKwh: reportStats.remainingKwh,
       remainingDuration: remaining,
       avgDailyUsage: Math.round(avgDailyUsage * 100) / 100,
@@ -238,6 +246,13 @@ function generateReportMessage(data) {
     compareText = `日均 ${data.avgDailyUsage.toFixed(2)} 度`;
   }
   message += ` 💡 昨日用电 ${data.todayUsage.toFixed(2)} 度 ｜ ${compareText.replace('昨天', '前一天')}\n`;
+  if (data.deviceBreakdown) {
+    const total = Number(data.todayUsage || 0);
+    const percent = value => total > 0 ? Math.round(Number(value || 0) / total * 100) : 0;
+    message += ` ❄️ 空调 ${Number(data.deviceBreakdown.air_conditioner_kwh || 0).toFixed(2)} 度（${percent(data.deviceBreakdown.air_conditioner_kwh)}%）\n`;
+    message += ` 🚿 热水器 ${Number(data.deviceBreakdown.water_heater_kwh || 0).toFixed(2)} 度（${percent(data.deviceBreakdown.water_heater_kwh)}%）\n`;
+    message += ` 🏠 其他电器 ${Number(data.deviceBreakdown.other_kwh || 0).toFixed(2)} 度（${percent(data.deviceBreakdown.other_kwh)}%）\n`;
+  }
   
   const predictedTime = duration.hours !== null ? new Date(data.timestamp.getTime() + duration.hours * 60 * 60 * 1000) : null;
   let timeText = '';
@@ -371,6 +386,9 @@ async function sendDailyReport() {
       meterId,
       periodKey: reportRange.periodKey,
       buildReport: async () => {
+        await xiaomiEnergySync.sync({ forceDays: 32 }).catch(error => {
+          crawlerLogger.warn(`日报生成前同步米家设备失败，将使用已有设备数据：${error.message}`);
+        });
         const data = await fetchDailyData(meterId, now);
         if (!data.success) {
           throw new ReportDataError(data.error, {

@@ -11,6 +11,16 @@ const summaryReport = require('../services/summaryReport');
 const batteryAlertService = require('../services/batteryAlertService');
 const dataEvents = require('../services/dataEvents');
 const electricityAssistant = require('../services/electricityAssistant');
+const DeviceEnergyReading = require('../models/DeviceEnergyReading');
+const xiaomiHistoryProbe = require('../services/xiaomiHistoryProbe');
+const xiaomiEnergySync = require('../services/xiaomiEnergySync');
+const {
+  getDeviceDailyMap,
+  getDeviceMonthlyMap,
+  getDevicePeriodBreakdown,
+  withOther
+} = require('../services/deviceEnergyAnalytics');
+const { getDevicePeriodUsage, getDeviceDailyPeriods, roundKwh } = require('../services/deviceEnergy');
 const { parseCollectedAt } = require('../utils/collectedAt');
 const {
   getBeijingHour,
@@ -100,12 +110,16 @@ class Cache {
 // 创建全局缓存实例
 const cache = new Cache(200, 2 * 60 * 1000);
 const CACHE_TTL = 2 * 60 * 1000; // 2分钟缓存
+const inFlightCacheLoads = new Map();
 
 dataEvents.on('reading:stored', () => {
   const cleared = cache.clear();
   if (cleared > 0) {
     logger.info(`新读数已写入，清除 ${cleared} 个接口缓存`);
   }
+});
+dataEvents.on('device-energy:stored', () => {
+  cache.clear();
 });
 
 /**
@@ -114,22 +128,45 @@ dataEvents.on('reading:stored', () => {
  * @param {number} ttl 过期时间（毫秒）
  */
 function cacheMiddleware(key, ttl = CACHE_TTL) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const cacheKey = `${key}_${req.url}`;
     const cachedData = cache.get(cacheKey);
     
     if (cachedData) {
       return res.json(cachedData);
     }
+
+    const pending = inFlightCacheLoads.get(cacheKey);
+    if (pending) {
+      const result = await pending;
+      if (result.ok) return res.json(result.data);
+      return next();
+    }
+
+    let finishLoad;
+    const load = new Promise(resolve => { finishLoad = resolve; });
+    inFlightCacheLoads.set(cacheKey, load);
+    let settled = false;
+    const settle = result => {
+      if (settled) return;
+      settled = true;
+      if (inFlightCacheLoads.get(cacheKey) === load) inFlightCacheLoads.delete(cacheKey);
+      finishLoad(result);
+    };
     
     // 重写res.json以缓存响应
     const originalJson = res.json;
     res.json = function(data) {
       if (this.statusCode >= 200 && this.statusCode < 300) {
         cache.set(cacheKey, data, ttl);
+        settle({ ok: true, data });
+      } else {
+        settle({ ok: false });
       }
       return originalJson.call(this, data);
     };
+    res.once('finish', () => settle({ ok: false }));
+    res.once('close', () => settle({ ok: false }));
     
     next();
   };
@@ -190,13 +227,21 @@ function asyncHandler(fn) {
  * @param {Date} currentTime 当前时间
  * @returns {Object} 预测结果
  */
-async function calculateElectricityPrediction(meterId, currentTime) {
+async function calculateElectricityPrediction(meterId, currentTime, preloadedLatest = null) {
   try {
     // 获取不同时间窗口的数据（优化：直接从数据库获取最近7天数据，避免重复查询）
     const days7Ago = new Date(currentTime.getTime() - 7 * 24 * 60 * 60 * 1000);
     
-    // 使用findOne获取最新数据，比getUsageInRange更高效
-    const latestData = await Usage.findOne({ meter_id: meterId }).sort({ collected_at: -1 });
+    // 获取7天内的所有数据（用于预测）
+    const data7Days = await Usage.find({
+      meter_id: meterId,
+      collected_at: {
+        $gte: days7Ago,
+        $lte: currentTime
+      }
+    }).select('remaining_kwh collected_at').sort({ collected_at: 1 }).lean(); // 仅传输预测需要的字段
+
+    const latestData = preloadedLatest || data7Days.at(-1) || await Usage.getLatestUsage(meterId);
     if (!latestData) {
       return {
         predicted_time: null,
@@ -207,17 +252,7 @@ async function calculateElectricityPrediction(meterId, currentTime) {
         data_points: 0
       };
     }
-    
     const currentRemaining = latestData.remaining_kwh;
-    
-    // 获取7天内的所有数据（用于预测）
-    const data7Days = await Usage.find({
-      meter_id: meterId,
-      collected_at: {
-        $gte: days7Ago,
-        $lte: currentTime
-      }
-    }).sort({ collected_at: 1 }).lean(); // 使用lean()提高查询性能
     
     if (data7Days.length < 2) {
       return {
@@ -624,15 +659,11 @@ router.get('/overview', cacheMiddleware('overview', 60000), asyncHandler(async (
     const meterId = process.env.METER_ID || '18100071580';
     
     const recentLogStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const [todayStats, weekStats, monthStats, latestUsage, yesterdayStats, lastWeekStats, lastMonthStats, lastWeekSameDayStats, recentCrawlResults] = await Promise.all([
-      Usage.calculateUsageStats(meterId, todayStart, now),
-      Usage.calculateUsageStats(meterId, weekStart, now),
-      Usage.calculateUsageStats(meterId, monthStart, now),
+    const overviewStart = new Date(Math.min(lastMonthStart.getTime(), lastWeekStart.getTime()));
+    const [hourlyBuckets, latestUsage, earliestData, recentCrawlResults] = await Promise.all([
+      Usage.getUsageBuckets(meterId, overviewStart, now, 'hour'),
       Usage.getLatestUsage(meterId),
-      Usage.calculateUsageStats(meterId, yesterdayStart, yesterdayEnd),
-      Usage.calculateUsageStats(meterId, lastWeekStart, lastWeekEnd),
-      Usage.calculateUsageStats(meterId, lastMonthStart, lastMonthEnd),
-      Usage.calculateUsageStats(meterId, lastWeekSameDayStart, lastWeekSameDayEnd),
+      Usage.findOne({ meter_id: meterId }).select('collected_at').sort({ collected_at: 1 }).lean(),
       CrawlerLog.find({
         timestamp: { $gte: recentLogStart },
         action: { $in: ['success', 'failed'] }
@@ -643,16 +674,21 @@ router.get('/overview', cacheMiddleware('overview', 60000), asyncHandler(async (
         .lean()
     ]);
 
+    const todayStats = usageStatsFromHourlyBuckets(hourlyBuckets, todayStart, now);
+    const weekStats = usageStatsFromHourlyBuckets(hourlyBuckets, weekStart, now);
+    const monthStats = usageStatsFromHourlyBuckets(hourlyBuckets, monthStart, now);
+    const yesterdayStats = usageStatsFromHourlyBuckets(hourlyBuckets, yesterdayStart, yesterdayEnd);
+    const lastWeekStats = usageStatsFromHourlyBuckets(hourlyBuckets, lastWeekStart, lastWeekEnd);
+    const lastMonthStats = usageStatsFromHourlyBuckets(hourlyBuckets, lastMonthStart, lastMonthEnd);
+    const lastWeekSameDayStats = usageStatsFromHourlyBuckets(hourlyBuckets, lastWeekSameDayStart, lastWeekSameDayEnd);
+    const prediction = calculatePredictionFromHourlyBuckets(latestUsage, hourlyBuckets, now);
+
     // 检查数据覆盖范围
-    const earliestData = await Usage.findOne({ meter_id: meterId }).sort({ collected_at: 1 });
     const dataStartDate = earliestData ? earliestData.collected_at : null;
     
     // 判断数据是否完整
     const weekDataComplete = dataStartDate ? dataStartDate <= weekStart : false;
     const monthDataComplete = dataStartDate ? dataStartDate <= monthStart : false;
-
-    // 计算预计用完时间
-    const prediction = await calculateElectricityPrediction(meterId, now);
 
     // 计算本月预计费用（智能预测）
     const monthPrediction = calculateMonthCostPrediction(monthStats, now, monthStart);
@@ -753,66 +789,26 @@ router.get('/trend/today', cacheMiddleware('today', 120000), asyncHandler(async 
     const now = new Date();
     const todayStart = getBeijingTodayStart(now);
     const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
-    const yesterdayEnd = new Date(todayStart.getTime() - 1);
     
     // 获取过去30天的数据用于计算历史平均
     const thirtyDaysAgo = new Date(todayStart.getTime() - 30 * 24 * 60 * 60 * 1000);
     
-    const [todayData, yesterdayData, historicalData] = await Promise.all([
-      Usage.getUsageInRange('18100071580', todayStart, now),
-      Usage.getUsageInRange('18100071580', yesterdayStart, yesterdayEnd),
-      Usage.getUsageInRange('18100071580', thirtyDaysAgo, yesterdayEnd)
-    ]);
-    
-    // 按小时统计今日用电
+    const hourlyBuckets = await Usage.getUsageBuckets('18100071580', thirtyDaysAgo, now, 'hour');
+    const todayKey = new Date(todayStart.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const yesterdayKey = new Date(yesterdayStart.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
     const hourlyUsage = new Array(24).fill(0);
-    for (let i = 1; i < todayData.length; i++) {
-      const prev = todayData[i - 1];
-      const curr = todayData[i];
-      const hour = getBeijingHour(curr.collected_at);
-      const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
-      hourlyUsage[hour] += usedKwh;
-    }
-    
-    // 按小时统计昨日用电
     const yesterdayHourlyUsage = new Array(24).fill(0);
-    for (let i = 1; i < yesterdayData.length; i++) {
-      const prev = yesterdayData[i - 1];
-      const curr = yesterdayData[i];
-      const hour = getBeijingHour(curr.collected_at);
-      const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
-      yesterdayHourlyUsage[hour] += usedKwh;
-    }
-    
-    // 计算历史平均（过去30天每个小时的平均用电）
     const historicalHourlyUsage = Array.from({ length: 24 }, () => ({ total: 0, count: 0 }));
-    
-    // 按天分组历史数据
-    const dailyData = {};
-    for (const record of historicalData) {
-      const dateStr = new Date(record.collected_at.getTime() + 8 * 60 * 60 * 1000).toISOString().split('T')[0];
-      if (!dailyData[dateStr]) dailyData[dateStr] = [];
-      dailyData[dateStr].push(record);
-    }
-    
-    // 计算每天每小时的用电量
-    for (const dateStr in dailyData) {
-      const dayData = dailyData[dateStr].sort((a, b) => a.collected_at - b.collected_at);
-      const dayHourlyUsage = new Array(24).fill(0);
-      
-      for (let i = 1; i < dayData.length; i++) {
-        const prev = dayData[i - 1];
-        const curr = dayData[i];
-        const hour = getBeijingHour(curr.collected_at);
-        const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
-        dayHourlyUsage[hour] += usedKwh;
-      }
-      
-      // 累加到历史统计
-      for (let hour = 0; hour < 24; hour++) {
-        if (dayHourlyUsage[hour] > 0) {
-          historicalHourlyUsage[hour].total += dayHourlyUsage[hour];
-          historicalHourlyUsage[hour].count++;
+    for (const bucket of hourlyBuckets) {
+      const hour = Number(bucket.hour);
+      const usage = Number(bucket.used_kwh || 0);
+      if (bucket.key === todayKey) hourlyUsage[hour] = usage;
+      else {
+        if (bucket.key === yesterdayKey) yesterdayHourlyUsage[hour] = usage;
+        if (usage > 0) {
+          historicalHourlyUsage[hour].total += usage;
+          historicalHourlyUsage[hour].count += 1;
         }
       }
     }
@@ -831,7 +827,9 @@ router.get('/trend/today', cacheMiddleware('today', 120000), asyncHandler(async 
       vs_avg: calculatePercentageChange(usage, avgHourlyUsage[hour])
     }));
     
-    res.json(result);
+    const todayTotal = result.reduce((sum, item) => sum + item.used_kwh, 0);
+    const deviceBreakdown = await getDevicePeriodBreakdown(todayStart, now, todayTotal);
+    res.json(result.map(item => ({ ...item, device_breakdown: deviceBreakdown })));
 }));
 
 // 获取最近30天每日用电
@@ -839,12 +837,10 @@ router.get('/trend/30d', cacheMiddleware('30d', 300000), asyncHandler(async (req
     const now = new Date();
     // 使用北京时间计算今天结束时间，确保包含今天的数据
     const todayEnd = getBeijingTodayEnd(now);
-    const startDate = new Date(todayEnd.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const startDate = new Date(getBeijingTodayStart(now).getTime() - 29 * 24 * 60 * 60 * 1000);
     
-    const data = await Usage.getUsageInRange('18100071580', startDate, todayEnd);
-    
-    // 按每一天的时间范围计算用电量（确保与总览today_usage保持一致的计算方法）
-    const dailyUsage = {};
+    const dailyBuckets = await Usage.getUsageBuckets('18100071580', startDate, todayEnd, 'day');
+    const dailyUsage = Object.fromEntries(dailyBuckets.map(item => [item.key, Number(item.used_kwh || 0)]));
     
     // 获取所有日期
     const dateSet = new Set();
@@ -857,23 +853,6 @@ router.get('/trend/30d', cacheMiddleware('30d', 300000), asyncHandler(async (req
       dateSet.add(dateStr);
       currentDate.setDate(currentDate.getDate() + 1);
     }
-    
-    // 为每一天计算用电量
-    Array.from(dateSet).forEach(dateStr => {
-      const dayStart = getBeijingTodayStart(new Date(dateStr + 'T12:00:00Z'));
-      const dayEnd = getBeijingTodayEnd(new Date(dateStr + 'T12:00:00Z'));
-      
-      // 获取这一天的数据
-      const dayData = data.filter(d => d.collected_at >= dayStart && d.collected_at <= dayEnd);
-      
-      let usage = 0;
-      for (let i = 1; i < dayData.length; i++) {
-        const usedKwh = Math.max(0, dayData[i - 1].remaining_kwh - dayData[i].remaining_kwh);
-        usage += usedKwh;
-      }
-      
-      dailyUsage[dateStr] = usage;
-    });
     
     // 生成完整的30天日期范围，添加昨日对比
     const result = [];
@@ -892,7 +871,11 @@ router.get('/trend/30d', cacheMiddleware('30d', 300000), asyncHandler(async (req
       });
     });
     
-    res.json(result);
+    const deviceDaily = await getDeviceDailyMap(startDate, todayEnd);
+    res.json(result.map(item => ({
+      ...item,
+      device_breakdown: withOther(deviceDaily.get(item.date), item.used_kwh)
+    })));
 }));
 
 // 获取最近12个月月用电
@@ -906,32 +889,8 @@ router.get('/trend/monthly', cacheMiddleware('monthly', 600000), asyncHandler(as
     ));
     const startDate = new Date(firstMonthUtc.getTime() - 8 * 60 * 60 * 1000);
     
-    const data = await Usage.getUsageInRange('18100071580', startDate, endDate);
-    
-    // 按北京时间的月份分组统计
-    const monthlyUsage = {};
-    
-    for (let i = 1; i < data.length; i++) {
-      const prev = data[i - 1];
-      const curr = data[i];
-      
-      const timeDiff = curr.collected_at.getTime() - prev.collected_at.getTime();
-      // 容忍每日采集任务的执行抖动，避免略超 24 小时的数据间隔被全部丢弃。
-      const maxGap = 36 * 60 * 60 * 1000;
-      
-      if (timeDiff > maxGap) {
-        continue;
-      }
-      
-      const beijingDate = new Date(curr.collected_at.getTime() + 8 * 60 * 60 * 1000);
-      const month = `${beijingDate.getUTCFullYear()}-${String(beijingDate.getUTCMonth() + 1).padStart(2, '0')}`;
-      const usedKwh = Math.max(0, prev.remaining_kwh - curr.remaining_kwh);
-      
-      if (!monthlyUsage[month]) {
-        monthlyUsage[month] = 0;
-      }
-      monthlyUsage[month] += usedKwh;
-    }
+    const monthlyBuckets = await Usage.getUsageBuckets('18100071580', startDate, endDate, 'month');
+    const monthlyUsage = Object.fromEntries(monthlyBuckets.map(item => [item.key, Number(item.used_kwh || 0)]));
     
     // 无论某月是否有采集记录，都稳定返回连续 12 个月，避免前端出现空坐标轴或缺月。
     const sortedMonths = Array.from({ length: 12 }, (_, index) => {
@@ -955,7 +914,11 @@ router.get('/trend/monthly', cacheMiddleware('monthly', 600000), asyncHandler(as
       };
     });
     
-    res.json(result);
+    const deviceMonthly = await getDeviceMonthlyMap(startDate, endDate);
+    res.json(result.map(item => ({
+      ...item,
+      device_breakdown: withOther(deviceMonthly.get(item.month), item.used_kwh)
+    })));
 }));
 
 // 获取最新数据
@@ -1146,6 +1109,310 @@ router.get('/crawler/status', async (req, res) => {
   }
 });
 
+// 米家设备日用电总览。这里只返回 kWh，不暴露实时功率。
+router.get('/device-energy/summary', asyncHandler(async (_req, res) => {
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ error: '数据库连接不可用' });
+  }
+
+  const now = new Date();
+  const todayStart = getBeijingTodayStart(now);
+  const monthStart = getBeijingMonthStart(now);
+  const meterId = process.env.METER_ID || '18100071580';
+  const deviceIds = await DeviceEnergyReading.distinct('device_id');
+
+  const [totalBuckets, devices] = await Promise.all([
+    Usage.getUsageBuckets(meterId, monthStart, now, 'day'),
+    Promise.all(deviceIds.map(async deviceId => {
+      const [latest, latestDaily] = await Promise.all([
+        DeviceEnergyReading.findOne({ device_id: deviceId }).sort({ collected_at: -1 }).lean(),
+        DeviceEnergyReading.findOne({ device_id: deviceId, reading_type: 'daily' }).sort({ collected_at: -1 }).lean()
+      ]);
+      let today;
+      let month;
+      if (latestDaily) {
+        ({ today, month } = await getDeviceDailyPeriods(deviceId, todayStart, monthStart, now));
+      } else {
+        [today, month] = await Promise.all([
+          getDevicePeriodUsage(deviceId, todayStart, now),
+          getDevicePeriodUsage(deviceId, monthStart, now)
+        ]);
+      }
+      const displayLatest = latestDaily || latest;
+      return {
+        device_id: deviceId,
+        device_name: displayLatest?.device_name || deviceId,
+        entity_id: displayLatest?.entity_id || null,
+        today_kwh: today.usageKwh,
+        month_kwh: month.usageKwh,
+        updated_at: displayLatest?.updatedAt || displayLatest?.collected_at || null,
+        coverage: {
+          today_complete: today.complete,
+          month_complete: month.complete
+        }
+      };
+    }))
+  ]);
+  const todayKey = new Date(todayStart.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const totalTodayUsage = roundKwh(totalBuckets.find(item => item.key === todayKey)?.used_kwh || 0);
+  const totalMonthUsage = roundKwh(totalBuckets.reduce((sum, item) => sum + Number(item.used_kwh || 0), 0));
+
+  devices.sort((a, b) => b.month_kwh - a.month_kwh);
+  const monitoredToday = roundKwh(devices.reduce((sum, item) => sum + item.today_kwh, 0));
+  const monitoredMonth = roundKwh(devices.reduce((sum, item) => sum + item.month_kwh, 0));
+  const price = Number(process.env.ELECTRICITY_PRICE_PER_KWH || 1);
+
+  return res.json({
+    success: true,
+    configured: deviceIds.length > 0,
+    updated_at: devices.reduce((latest, item) => {
+      if (!item.updated_at) return latest;
+      return !latest || new Date(item.updated_at) > new Date(latest) ? item.updated_at : latest;
+    }, null),
+    devices,
+    totals: {
+      today_kwh: totalTodayUsage,
+      month_kwh: totalMonthUsage,
+      monitored_today_kwh: monitoredToday,
+      monitored_month_kwh: monitoredMonth,
+      other_today_kwh: roundKwh(Math.max(0, totalTodayUsage - monitoredToday)),
+      other_month_kwh: roundKwh(Math.max(0, totalMonthUsage - monitoredMonth)),
+      monitored_month_cost: roundKwh(monitoredMonth * (Number.isFinite(price) ? price : 1))
+    }
+  });
+}));
+
+// 可选的受保护上报入口，便于诊断脚本补传累计读数。
+router.post('/device-energy/report', requiredApiAuth, asyncHandler(async (req, res) => {
+  const readings = Array.isArray(req.body.readings) ? req.body.readings : [req.body];
+  if (readings.length === 0 || readings.length > 50) {
+    return res.status(400).json({ error: 'readings 数量必须在 1 到 50 之间' });
+  }
+
+  const invalidIndex = readings.findIndex(reading => {
+    const collectedAt = reading.collected_at ? new Date(reading.collected_at) : new Date();
+    return !String(reading.device_id || '').trim()
+      || !String(reading.device_name || '').trim()
+      || !Number.isFinite(Number(reading.energy_kwh))
+      || Number(reading.energy_kwh) < 0
+      || Number.isNaN(collectedAt.getTime());
+  });
+  if (invalidIndex >= 0) {
+    return res.status(400).json({ error: `第 ${invalidIndex + 1} 条设备电量数据无效` });
+  }
+
+  const operations = readings.map(reading => {
+    const deviceId = String(reading.device_id || '').trim();
+    const deviceName = String(reading.device_name || '').trim();
+    const energyKwh = Number(reading.energy_kwh);
+    const collectedAt = reading.collected_at ? new Date(reading.collected_at) : new Date();
+    return {
+      updateOne: {
+        filter: { device_id: deviceId, collected_at: collectedAt },
+        update: {
+          $setOnInsert: {
+            device_id: deviceId,
+            device_name: deviceName,
+            entity_id: reading.entity_id ? String(reading.entity_id) : undefined,
+            energy_kwh: energyKwh,
+            collected_at: collectedAt,
+            source: reading.source || 'device-report'
+          }
+        },
+        upsert: true
+      }
+    };
+  });
+
+  const result = await DeviceEnergyReading.bulkWrite(operations, { ordered: false });
+  cache.clear();
+  return res.json({ success: true, stored: result.upsertedCount, received: readings.length });
+}));
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function usageStatsFromHourlyBuckets(buckets, startDate, endDate) {
+  const startMs = startDate.getTime();
+  const endMs = endDate.getTime();
+  let totalUsage = 0;
+  for (const bucket of buckets) {
+    const hour = String(Number(bucket.hour || 0)).padStart(2, '0');
+    const bucketMs = Date.parse(`${bucket.key}T${hour}:00:00+08:00`);
+    if (bucketMs >= startMs && bucketMs <= endMs) totalUsage += Number(bucket.used_kwh || 0);
+  }
+  return { totalUsage: Math.round(totalUsage * 100) / 100 };
+}
+
+function rateFromHourlyBuckets(buckets, startDate, endDate, hourFilter = null) {
+  const startMs = startDate.getTime();
+  const endMs = endDate.getTime();
+  const selected = buckets.filter(bucket => {
+    const hour = Number(bucket.hour || 0);
+    const bucketMs = Date.parse(`${bucket.key}T${String(hour).padStart(2, '0')}:00:00+08:00`);
+    return bucketMs >= startMs && bucketMs <= endMs && (!hourFilter || hourFilter(hour));
+  });
+  const consumption = selected.reduce((sum, item) => sum + Number(item.used_kwh || 0), 0);
+  const hours = hourFilter
+    ? Math.max(1, selected.length)
+    : Math.max(1, (endMs - startMs) / (60 * 60 * 1000));
+  return {
+    rate: consumption > 0 ? consumption / hours : 0,
+    dataPoints: selected.length,
+    valid: consumption > 0,
+    consumption,
+    hours
+  };
+}
+
+function calculatePredictionFromHourlyBuckets(latestUsage, buckets, currentTime) {
+  if (!latestUsage || buckets.length === 0) {
+    return {
+      predicted_time: null,
+      hours_remaining: null,
+      consumption_rate: null,
+      status: 'insufficient_data',
+      message: '数据不足，无法预测',
+      data_points: buckets.length
+    };
+  }
+  const nowMs = currentTime.getTime();
+  const shortTerm = rateFromHourlyBuckets(buckets, new Date(nowMs - 6 * 60 * 60 * 1000), currentTime);
+  const mediumTerm = rateFromHourlyBuckets(buckets, new Date(nowMs - 24 * 60 * 60 * 1000), currentTime);
+  const currentHour = getBeijingHour(currentTime);
+  const longTerm = rateFromHourlyBuckets(
+    buckets,
+    new Date(nowMs - 7 * 24 * 60 * 60 * 1000),
+    currentTime,
+    hour => Math.min((hour - currentHour + 24) % 24, (currentHour - hour + 24) % 24) <= 2
+  );
+  const weights = calculateDynamicWeights(shortTerm, mediumTerm, longTerm);
+  const weightedRate = weights.short * shortTerm.rate + weights.medium * mediumTerm.rate + weights.long * longTerm.rate;
+  const analysis = {
+    short_term: shortTerm,
+    medium_term: mediumTerm,
+    long_term: longTerm,
+    weights,
+    prediction_method: 'hourly_bucket_weighted'
+  };
+  if (weightedRate <= 0) {
+    return {
+      predicted_time: null,
+      hours_remaining: null,
+      consumption_rate: 0,
+      status: 'no_consumption',
+      message: '未检测到有效电量消耗',
+      data_points: buckets.length,
+      analysis
+    };
+  }
+  const hoursRemaining = Number(latestUsage.remaining_kwh || 0) / weightedRate;
+  return {
+    predicted_time: new Date(nowMs + hoursRemaining * 60 * 60 * 1000),
+    hours_remaining: Math.round(hoursRemaining * 10) / 10,
+    consumption_rate: Math.round(weightedRate * 1000) / 1000,
+    status: 'success',
+    message: getAnalysisMessage(weights, shortTerm, longTerm),
+    data_points: buckets.length,
+    has_recharge: false,
+    analysis
+  };
+}
+
+function probePage(title, content) {
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>body{margin:0;background:#f6f7f9;color:#17191c;font:16px/1.65 system-ui,-apple-system,sans-serif}.card{max-width:680px;margin:8vh auto;padding:28px;background:#fff;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 14px 36px rgba(0,0,0,.07)}h1{font-size:24px;margin:0 0 14px}p{margin:12px 0}.button{display:inline-block;margin-top:10px;padding:11px 18px;border-radius:10px;background:#17191c;color:#fff;text-decoration:none}.result{padding:13px 15px;margin:12px 0;background:#f4f6f8;border-radius:12px}.muted{color:#667085;font-size:14px}code{word-break:break-all}</style></head><body><main class="card">${content}</main></body></html>`;
+}
+
+function localOnly(req, res, next) {
+  const address = String(req.socket.remoteAddress || '');
+  if (address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1') return next();
+  return res.status(403).send(probePage('仅限本机访问', '<h1>仅限本机访问</h1><p>这个敏感测试页只能通过当前电脑的 <code>127.0.0.1</code> 打开。</p>'));
+}
+
+function historyProbeForm(message = '') {
+  return probePage('连接米家设备用电', `
+    <h1>连接米家设备用电</h1>
+    <p>这里只读取两个目标设备的云端日统计，不会控制设备；账号和密码只在本机内存中完成登录，成功后密码立即丢弃，仅将云端会话令牌加密保存，供现有 Web 定时同步。</p>
+    ${message ? `<div class="result">${escapeHtml(message)}</div>` : ''}
+    <form method="post" action="/api/xiaomi/history-probe/login" autocomplete="off">
+      <p><label>小米账号<br><input name="username" required autocomplete="username" style="box-sizing:border-box;width:100%;padding:11px;border:1px solid #ccd1d8;border-radius:9px;font-size:16px"></label></p>
+      <p><label>密码<br><input name="password" type="password" required autocomplete="current-password" style="box-sizing:border-box;width:100%;padding:11px;border:1px solid #ccd1d8;border-radius:9px;font-size:16px"></label></p>
+      <button class="button" type="submit" style="border:0;font-size:16px;cursor:pointer">连接并同步</button>
+    </form>
+    <p class="muted">请只在这个本机页面输入密码或验证码，不要把它们发到聊天中。</p>
+  `);
+}
+
+router.get('/xiaomi/history-probe', localOnly, (req, res) => {
+  res.set('Cache-Control', 'no-store').send(historyProbeForm());
+});
+
+router.post('/xiaomi/history-probe/login', localOnly, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const result = await xiaomiHistoryProbe.start(String(req.body.username || '').trim(), String(req.body.password || ''));
+    if (result.status === 'complete') {
+      xiaomiEnergySync.sync({ forceDays: 32 }).catch(error => logger.warn(`米家首次设备数据保存失败：${error.message}`));
+    }
+    return renderHistoryProbeResult(res, result);
+  } catch (error) {
+    return res.status(400).send(historyProbeForm(error.message));
+  }
+});
+
+router.post('/xiaomi/history-probe/continue', localOnly, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const result = await xiaomiHistoryProbe.advance(req.body.flowId, {
+      captcha: String(req.body.captcha || '').trim() || undefined,
+      verifyTicket: String(req.body.verifyTicket || '').trim() || undefined
+    });
+    if (result.status === 'complete') {
+      xiaomiEnergySync.sync({ forceDays: 32 }).catch(error => logger.warn(`米家首次设备数据保存失败：${error.message}`));
+    }
+    return renderHistoryProbeResult(res, result);
+  } catch (error) {
+    return res.status(400).send(historyProbeForm(error.message));
+  }
+});
+
+function renderHistoryProbeResult(res, result) {
+  if (result.status === 'verification') {
+    return res.status(202).send(probePage('需要完成小米账号验证', `
+      <h1>需要完成账号验证</h1><p>请先打开小米验证页，选择手机或邮箱接收验证码；收到后回到这里，把验证码填入下方再继续。</p>
+      <a class="button" href="${escapeHtml(result.verificationUrl)}" target="_blank" rel="noreferrer">打开小米验证页</a>
+      <form method="post" action="/api/xiaomi/history-probe/continue"><input type="hidden" name="flowId" value="${escapeHtml(result.flowId)}"><p><label>短信或邮件验证码<br><input name="verifyTicket" required inputmode="numeric" autocomplete="one-time-code" style="padding:11px;border:1px solid #ccd1d8;border-radius:9px;font-size:16px"></label></p><button class="button" type="submit" style="border:0;font-size:16px;cursor:pointer">提交验证码并读取</button></form>
+      <p class="muted">临时登录状态只在内存中保留 15 分钟。</p>
+    `));
+  }
+  if (result.status === 'captcha') {
+    return res.status(202).send(probePage('请输入小米验证码', `
+      <h1>请输入验证码</h1><p><img src="${escapeHtml(result.captchaImage)}" alt="小米登录验证码" style="max-width:240px;border:1px solid #ddd;border-radius:8px"></p>
+      <form method="post" action="/api/xiaomi/history-probe/continue"><input type="hidden" name="flowId" value="${escapeHtml(result.flowId)}"><p><input name="captcha" required autocomplete="off" style="padding:11px;border:1px solid #ccd1d8;border-radius:9px;font-size:16px"></p><button class="button" type="submit" style="border:0;font-size:16px;cursor:pointer">提交并继续</button></form>
+    `));
+  }
+  const cards = result.readings.map(item => {
+    const candidates = item.candidates.filter(candidate => Number.isFinite(candidate.kwh));
+    const details = candidates.length > 0
+      ? candidates.slice(0, 4).map(candidate => `<div class="muted">${escapeHtml(candidate.type)}：${escapeHtml(candidate.kwh)} kWh${candidate.time ? `，记录时间 ${escapeHtml(new Date(Number(candidate.time) * 1000).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }))}` : ''}</div>`).join('')
+      : `<div class="muted">${escapeHtml(item.candidates.map(candidate => candidate.error).filter(Boolean).join('；') || '接口没有返回可用记录')}</div>`;
+    return `<div class="result"><strong>${escapeHtml(item.label)}</strong><br>型号：<code>${escapeHtml(item.model)}</code><br>首选读数：<strong>${item.value === null ? '未读到' : `${escapeHtml(item.value)} kWh`}</strong>${details}</div>`;
+  }).join('');
+  const missing = result.missingModels.length ? `<p>未找到型号：<code>${result.missingModels.map(escapeHtml).join('</code>、<code>')}</code></p>` : '';
+  const inventory = `<p class="muted">本次共扫描到 ${escapeHtml(result.scannedCount ?? 0)} 台设备${result.scannedModels?.length ? `；可见型号：<code>${result.scannedModels.slice(0, 30).map(escapeHtml).join('</code>、<code>')}</code>` : '，但清单中没有返回型号信息'}。</p>`;
+  return res.status(result.success ? 200 : 422).send(probePage('米家用电量验证结果', `
+    <h1>${result.success ? '云端历史读取已完成' : '没有读到可用历史'}</h1>${missing}${inventory}${cards || '<div class="result">没有找到两个目标设备。</div>'}
+    <p>${result.stored ? '连接已经保存：密码和验证码已从内存中丢弃，加密后的云端会话及最近日用电统计已写入现有数据库，系统将在后台继续回填近 12 个月并每 15 分钟自动更新。' : '本次只完成读取，尚未保存连接。'}</p>
+    <a class="button" href="/">返回电量页面</a>
+  `));
+}
+
 // 全局错误处理中间件
 router.use((err, req, res, next) => {
   console.error('API错误:', err);
@@ -1183,6 +1450,21 @@ function apiAuth(req, res, next) {
     if (provided !== token) {
       return res.status(401).json({ error: '未授权，请提供有效的 API Token' });
     }
+  }
+  next();
+}
+
+// 设备遥测入口不允许在未配置 Token 时降级为匿名写入。
+function requiredApiAuth(req, res, next) {
+  const token = process.env.API_TOKEN;
+  if (!token) {
+    return res.status(503).json({ error: '设备上报接口尚未配置 API Token' });
+  }
+  const authorization = String(req.headers.authorization || '');
+  const bearerToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : null;
+  const provided = req.headers['x-api-token'] || bearerToken || req.query.token;
+  if (provided !== token) {
+    return res.status(401).json({ error: '未授权，请提供有效的 API Token' });
   }
   next();
 }

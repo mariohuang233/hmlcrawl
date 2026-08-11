@@ -2,7 +2,7 @@ import React, { FormEvent, lazy, Suspense, useEffect, useMemo, useRef, useState 
 import bubuIcon from '../assets/bubu.png';
 import { fetchAPI, formatErrorMessage } from '../utils/api';
 
-const ReactECharts = lazy(() => import('echarts-for-react'));
+const Chart = lazy(() => import('./Chart'));
 
 interface AssistantSeries {
   name: string;
@@ -108,7 +108,13 @@ function AssistantChart({ answer }: { answer: AssistantAnswer }) {
   if (!option) return null;
   return (
     <Suspense fallback={<div className="assistant-chart-placeholder">趋势图加载中…</div>}>
-      <ReactECharts option={option} className="assistant-chart" opts={{ renderer: 'canvas' }} />
+      <Chart
+        ariaLabel="用电助手分析趋势图"
+        summary="用电助手根据当前问题生成的趋势或对比图。"
+        option={option}
+        className="assistant-chart"
+        opts={{ renderer: 'canvas' }}
+      />
     </Suspense>
   );
 }

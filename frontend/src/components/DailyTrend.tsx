@@ -5,12 +5,14 @@ import { ColorTheme, getChartTheme } from '../utils/chartTheme';
 import { createSparseCategoryInterval } from '../utils/chartAxis';
 import ChartCardHeader from './ChartCardHeader';
 import { fetchAPI } from '../utils/api';
+import { DeviceBreakdown, deviceSeriesColors, deviceTooltipRows, normalizeDeviceBreakdown } from '../utils/deviceEnergy';
 
 interface DailyData {
   date: string;
   used_kwh: number;
   prev_day_used_kwh: number;
   vs_prev_day: number | null;
+  device_breakdown?: DeviceBreakdown;
 }
 
 interface DailyTrendProps {
@@ -94,8 +96,9 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false, refreshKey = 
           <div style="min-width:${isMobile ? 148 : 172}px">
             <div style="margin-bottom:7px;font-weight:700;color:${colors.textStrong}">${point.axisValue}</div>
             <div style="display:flex;justify-content:space-between;gap:16px;margin-bottom:4px;color:${colors.muted}">
-              <span>用电</span><strong style="color:${colors.textStrong}">${point.value} kWh</strong>
+              <span>总用电</span><strong style="color:${colors.textStrong}">${dataItem.used_kwh} kWh</strong>
             </div>
+            ${deviceTooltipRows(dataItem.device_breakdown)}
             ${comparisonHtml}
           </div>
         `;
@@ -166,46 +169,39 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false, refreshKey = 
         }
       }
     },
+    legend: {
+      data: ['总用电', '空调', '热水器', '其他'],
+      top: 0,
+      textStyle: { color: colors.muted, fontFamily: 'inherit', fontSize: isMobile ? 10 : 11 }
+    },
     series: [
       {
-        name: '每日用电',
-        type: 'line',
-        data: data.map(item => item.used_kwh),
-        smooth: true,
-        symbol: 'circle',
-        symbolSize: isMobile ? 4 : 5,
-        lineStyle: {
-          color: colors.series,
-          width: isMobile ? 2 : 2.5
-        },
-        itemStyle: {
-          color: colors.series,
-          borderColor: colors.pointBorder,
-          borderWidth: isMobile ? 1 : 2
-        },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: colors.areaTop },
-              { offset: 1, color: colors.areaBottom }
-            ]
-          }
-        },
-        animationDelay: 0,
-        animationDuration: 220,
-        animationEasing: 'cubicOut'
+        name: '空调', type: 'bar', stack: 'devices', barMaxWidth: isMobile ? 12 : 18,
+        data: data.map(item => normalizeDeviceBreakdown(item.device_breakdown).air_conditioner_kwh),
+        itemStyle: { color: deviceSeriesColors.airConditioner }
+      },
+      {
+        name: '热水器', type: 'bar', stack: 'devices', barMaxWidth: isMobile ? 12 : 18,
+        data: data.map(item => normalizeDeviceBreakdown(item.device_breakdown).water_heater_kwh),
+        itemStyle: { color: deviceSeriesColors.waterHeater }
+      },
+      {
+        name: '其他', type: 'bar', stack: 'devices', barMaxWidth: isMobile ? 12 : 18,
+        data: data.map(item => normalizeDeviceBreakdown(item.device_breakdown).other_kwh),
+        itemStyle: { color: deviceSeriesColors.other, borderRadius: [4, 4, 0, 0] }
+      },
+      {
+        name: '总用电', type: 'line', data: data.map(item => item.used_kwh), smooth: true,
+        symbol: 'circle', symbolSize: isMobile ? 3 : 4, z: 5,
+        lineStyle: { color: colors.series, width: isMobile ? 2 : 2.5 },
+        itemStyle: { color: colors.series, borderColor: colors.pointBorder, borderWidth: 1 }
       }
     ],
     grid: {
       left: isMobile ? 42 : 54,
       right: isMobile ? 12 : 20,
       bottom: isMobile ? 28 : 34,
-      top: 10,
+      top: 38,
       containLabel: true
     }
   };

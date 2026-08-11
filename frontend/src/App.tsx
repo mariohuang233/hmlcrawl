@@ -5,6 +5,7 @@ import { fetchAPI, retryRequest, formatErrorMessage } from './utils/api';
 import bubuIcon from './assets/bubu.png';
 import { ColorTheme } from './utils/chartTheme';
 import ElectricityAssistant from './components/ElectricityAssistant';
+import DeviceEnergy from './components/DeviceEnergy';
 
 const Trend24h = lazy(() => import('./components/Trend24h'));
 const TodayUsage = lazy(() => import('./components/TodayUsage'));
@@ -444,6 +445,8 @@ function App() {
       <main className="app-main">
         <div className="fade-in">
           {overview && <Overview data={overview} />}
+
+          <DeviceEnergy refreshKey={refreshKey} />
           
           <div className={isMobile ? 'charts-grid-mobile' : 'charts-grid'}>
             <DeferredSection label="24小时趋势">

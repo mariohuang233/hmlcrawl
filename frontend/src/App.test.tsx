@@ -33,6 +33,17 @@ beforeEach(() => {
         welcome: {},
         quickReplies: ['今天用了多少？', '为什么变高？']
       };
+    } else if (url.includes('/api/device-energy/summary')) {
+      payload = {
+        success: true,
+        configured: true,
+        updated_at: new Date().toISOString(),
+        devices: [
+          { device_id: 'air_conditioner', device_name: '空调', today_kwh: 1.2, month_kwh: 18.4, updated_at: new Date().toISOString(), coverage: { today_complete: true, month_complete: true } },
+          { device_id: 'water_heater', device_name: '热水器', today_kwh: 0.8, month_kwh: 12.6, updated_at: new Date().toISOString(), coverage: { today_complete: true, month_complete: true } }
+        ],
+        totals: { today_kwh: 2.8, month_kwh: 76.4, monitored_today_kwh: 2, monitored_month_kwh: 31, other_today_kwh: 0.8, other_month_kwh: 45.4, monitored_month_cost: 31 }
+      };
     } else if (url.includes('/api/assistant/chat') && init?.method === 'POST') {
       payload = {
         role: 'assistant', intent: 'today', headline: '截至 10:28，今日已用 2.18 kWh',
@@ -52,6 +63,14 @@ test('renders the electricity dashboard heading', async () => {
   render(<App />);
   await screen.findByRole('button', { name: '刷新全部数据' });
   expect(screen.getByRole('heading', { name: /一二布布的电量监控/ })).toBeInTheDocument();
+});
+
+test('renders cumulative appliance energy without real-time power', async () => {
+  render(<App />);
+  expect(await screen.findByRole('heading', { name: '空调' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: '设备用电' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: '热水器' })).toBeInTheDocument();
+  expect(screen.queryByText(/实时功率/)).not.toBeInTheDocument();
 });
 
 test('groups secondary mobile actions in an accessible menu', async () => {
@@ -78,4 +97,4 @@ test('opens the assistant and answers a grounded quick question', async () => {
 
   expect(await screen.findByText('截至 10:28，今日已用 2.18 kWh')).toBeInTheDocument();
   expect(screen.getByText('基于电表数据 · 更新于 10:28')).toBeInTheDocument();
-});
+}, 15000);

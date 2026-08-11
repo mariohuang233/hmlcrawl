@@ -12,6 +12,7 @@ const crawler = require('./src/crawler/crawler');
 const apiRoutes = require('./src/api/routes');
 const dailyReport = require('./src/services/dailyReport');
 const summaryReport = require('./src/services/summaryReport');
+const xiaomiEnergySync = require('./src/services/xiaomiEnergySync');
 // 云端环境检测
 const IS_RAILWAY = !!process.env.RAILWAY_SERVICE_NAME || !!process.env.RAILWAY_STATIC_URL;
 const IS_ZEABUR = !!process.env.ZEABUR_SERVICE_NAME || !!process.env.ZEABUR_DOMAIN;
@@ -44,7 +45,12 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
-app.use(morgan('combined', { 
+app.use(morgan('combined', {
+  skip: req => {
+    const url = String(req.originalUrl || '');
+    return url.startsWith('/assets/') || url === '/health' || url === '/ping' ||
+      url.startsWith('/api/webhook/') || url.startsWith('/api/xiaomi/history-probe');
+  },
   stream: { write: message => logger.info(message.trim()) }
 }));
 app.use(express.json({ limit: '1mb' }));
@@ -73,12 +79,19 @@ app.use(express.static(path.join(__dirname, 'frontend/build'), {
   maxAge: '1d',
   etag: true,
   lastModified: true,
-  cacheControl: true
+  cacheControl: true,
+  setHeaders: (res, filePath) => {
+    if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  }
 }));
 
 app.get('*', (req, res) => {
   const indexPath = path.join(__dirname, 'frontend/build', 'index.html');
-  res.sendFile(indexPath);
+  res.sendFile(indexPath, { headers: { 'Cache-Control': 'no-cache' } });
 });
 
 app.use((error, req, res, next) => {
@@ -128,9 +141,9 @@ const mongooseOptions = {
   socketTimeoutMS: 45000,
   connectTimeoutMS: 10000,
   heartbeatFrequencyMS: 10000,
-  maxPoolSize: 10,
-  minPoolSize: 2,
-  waitQueueTimeoutMS: 3000
+  maxPoolSize: 20,
+  minPoolSize: 1,
+  waitQueueTimeoutMS: 15000
 };
 
 const server = app.listen(PORT, '0.0.0.0', () => {
@@ -155,6 +168,7 @@ mongoose.connect(MONGO_URI, mongooseOptions)
 
   dailyReport.start();
   summaryReport.start();
+  xiaomiEnergySync.start();
   logger.info('日报、周报、月报通知服务已启动');
 
   if (IS_CLOUD && ENABLE_CRAWLER) {
@@ -194,6 +208,7 @@ const gracefulShutdown = (signal) => {
   logger.info(`收到${signal}信号，正在关闭服务器...`);
   dailyReport.stop();
   summaryReport.stop();
+  xiaomiEnergySync.stop();
   
   server.close(async () => {
     logger.info('HTTP服务器已关闭');

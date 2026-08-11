@@ -89,6 +89,11 @@ function makeSummary(start, end) {
     start,
     end,
     totalUsage: 21,
+    deviceBreakdown: {
+      air_conditioner_kwh: 6.4,
+      water_heater_kwh: 4.2,
+      other_kwh: 10.4
+    },
     dailyUsage: [
       { date: '2026-07-20', usageKwh: 2 },
       { date: '2026-07-21', usageKwh: 4 }
@@ -120,6 +125,8 @@ test('weekly and monthly templates contain the agreed sections', () => {
   assert.match(weekly.title, /用电周报/);
   assert.match(weekly.message, /本周概览/);
   assert.match(weekly.message, /余额与充值/);
+  assert.match(weekly.message, /设备用电/);
+  assert.match(weekly.message, /空调：6.40 度/);
   assert.match(weekly.message, /数据完整率：96%/);
 
   const monthly = buildMonthlyMessage(current, previous);
@@ -128,4 +135,5 @@ test('weekly and monthly templates contain the agreed sections', () => {
   assert.match(monthly.message, /用电最高周/);
   assert.match(monthly.message, /平均充值间隔/);
   assert.match(monthly.message, /月度建议/);
+  assert.match(monthly.message, /热水器：4.20 度/);
 });

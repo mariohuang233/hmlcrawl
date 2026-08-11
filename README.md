@@ -60,6 +60,8 @@ npm run build             # 类型检查并构建前端
 
 Windows 开机启动和日志脚本说明见 [SCRIPTS_README.md](./SCRIPTS_README.md)，iPad 采集说明见 [docs/IPAD_CRAWLER_GUIDE.md](./docs/IPAD_CRAWLER_GUIDE.md)。
 
+米家空调伴侣 2 与米家智能插座 3 现在可直接读取米家云端日用电量，不需要部署 Home Assistant 或其他服务；本机连接与 Railway 使用说明见 [docs/XIAOMI_ENERGY.md](./docs/XIAOMI_ENERGY.md)。该链路只保存和展示 kWh，不采集实时功率，也不会控制设备。
+
 ## 主要接口
 
 仪表盘使用的读取接口包括 `/api/overview`、`/api/latest`、`/api/trend/24h`、`/api/trend/today`、`/api/trend/30d`、`/api/trend/monthly` 和 `/api/recharge-history`；采集与运维接口包括 `/api/crawl`、`/api/crawler/trigger`、`/api/crawler/status`、`/api/report` 与 `/api/report/batch`。

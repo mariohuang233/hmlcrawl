@@ -63,6 +63,61 @@ usageSchema.statics.getUsageInRange = function(meterId, startDate, endDate) {
     .lean();
 };
 
+// 在 MongoDB 内完成相邻读数差值和时间分桶，避免把数万条原始记录传回 Railway。
+usageSchema.statics.getUsageBuckets = function(meterId, startDate, endDate, granularity = 'day') {
+  const dateFormat = granularity === 'month' ? '%Y-%m' : '%Y-%m-%d';
+  const groupId = granularity === 'hour'
+    ? {
+        key: { $dateToString: { date: '$collected_at', format: dateFormat, timezone: 'Asia/Shanghai' } },
+        hour: { $hour: { date: '$collected_at', timezone: 'Asia/Shanghai' } }
+      }
+    : { key: { $dateToString: { date: '$collected_at', format: dateFormat, timezone: 'Asia/Shanghai' } } };
+
+  return this.aggregate([
+    {
+      $match: {
+        meter_id: meterId,
+        collected_at: { $gte: startDate, $lte: endDate }
+      }
+    },
+    {
+      $setWindowFields: {
+        partitionBy: '$meter_id',
+        sortBy: { collected_at: 1 },
+        output: {
+          previousRemainingKwh: { $shift: { output: '$remaining_kwh', by: -1, default: null } },
+          previousCollectedAt: { $shift: { output: '$collected_at', by: -1, default: null } }
+        }
+      }
+    },
+    {
+      $project: {
+        collected_at: 1,
+        previousRemainingKwh: 1,
+        usedKwh: { $subtract: ['$previousRemainingKwh', '$remaining_kwh'] },
+        gapMs: { $subtract: ['$collected_at', '$previousCollectedAt'] }
+      }
+    },
+    {
+      $match: {
+        previousRemainingKwh: { $ne: null },
+        usedKwh: { $gte: 0 },
+        gapMs: { $gte: 0, $lte: 36 * 60 * 60 * 1000 }
+      }
+    },
+    { $group: { _id: groupId, used_kwh: { $sum: '$usedKwh' } } },
+    {
+      $project: {
+        _id: 0,
+        key: '$_id.key',
+        ...(granularity === 'hour' ? { hour: '$_id.hour' } : {}),
+        used_kwh: { $round: ['$used_kwh', 3] }
+      }
+    },
+    { $sort: granularity === 'hour' ? { key: 1, hour: 1 } : { key: 1 } }
+  ]).option({ allowDiskUse: true });
+};
+
 // 静态方法：获取最新的用电数据
 usageSchema.statics.getLatestUsage = function(meterId, latestAllowedAt = new Date()) {
   return this.findOne({

@@ -12,6 +12,8 @@ const {
 } = require('./reportAnalytics');
 const { ReportDataError, deliverReport } = require('./reportNotificationService');
 const { getDelivery } = require('./reportDeliveryService');
+const { getDevicePeriodBreakdown } = require('./deviceEnergyAnalytics');
+const xiaomiEnergySync = require('./xiaomiEnergySync');
 
 const CONFIG = {
   weeklyHour: 8,
@@ -204,7 +206,23 @@ async function fetchSummaryData(meterId, range, comparisonMode) {
     calculatePeriodSummary(meterId, previousRange)
   ]);
   assertValidSummary(current);
+  [current.deviceBreakdown, previous.deviceBreakdown] = await Promise.all([
+    getDevicePeriodBreakdown(current.start, current.end, current.totalUsage),
+    getDevicePeriodBreakdown(previous.start, previous.end, previous.totalUsage)
+  ]);
   return { current, previous };
+}
+
+function deviceReportLines(breakdown, totalUsage) {
+  if (!breakdown) return [];
+  const percent = value => totalUsage > 0 ? Math.round(Number(value || 0) / totalUsage * 100) : 0;
+  return [
+    '',
+    '⚡ 设备用电',
+    `空调：${formatKwh(breakdown.air_conditioner_kwh)} 度（${percent(breakdown.air_conditioner_kwh)}%）`,
+    `热水器：${formatKwh(breakdown.water_heater_kwh)} 度（${percent(breakdown.water_heater_kwh)}%）`,
+    `其他电器：${formatKwh(breakdown.other_kwh)} 度（${percent(breakdown.other_kwh)}%）`
+  ];
 }
 
 function buildWeeklyMessage(current, previous) {
@@ -224,6 +242,7 @@ function buildWeeklyMessage(current, previous) {
     message: [
       `本周共用电 ${formatKwh(current.totalUsage)} 度，日均 ${formatKwh(estimate.dailyAverage)} 度，`,
       `${comparison.sentence}。`,
+      ...deviceReportLines(current.deviceBreakdown, current.totalUsage),
       '',
       '📈 本周概览',
       `最高：${extremes.max.date}，${formatKwh(extremes.max.usageKwh)} 度`,
@@ -271,7 +290,8 @@ function buildMonthlyMessage(current, previous) {
 
   const lines = [
     `本月共用电 ${formatKwh(current.totalUsage)} 度，日均 ${formatKwh(estimate.dailyAverage)} 度，`,
-    `${comparison.sentence}。`
+    `${comparison.sentence}。`,
+    ...deviceReportLines(current.deviceBreakdown, current.totalUsage)
   ];
   if (costLine) lines.push(costLine);
   lines.push(
@@ -313,6 +333,9 @@ async function sendWeeklyReport(now = new Date()) {
     meterId,
     periodKey: range.periodKey,
     buildReport: async () => {
+      await xiaomiEnergySync.sync({ forceDays: 32 }).catch(error => {
+        crawlerLogger.warn(`周报生成前同步米家设备失败，将使用已有设备数据：${error.message}`);
+      });
       const { current, previous } = await fetchSummaryData(meterId, range, 'week');
       return buildWeeklyMessage(current, previous);
     }
@@ -327,6 +350,9 @@ async function sendMonthlyReport(now = new Date()) {
     meterId,
     periodKey: range.periodKey,
     buildReport: async () => {
+      await xiaomiEnergySync.sync({ forceDays: 32 }).catch(error => {
+        crawlerLogger.warn(`月报生成前同步米家设备失败，将使用已有设备数据：${error.message}`);
+      });
       const { current, previous } = await fetchSummaryData(meterId, range, 'month');
       return buildMonthlyMessage(current, previous);
     }
