@@ -446,8 +446,6 @@ function App() {
         <div className="fade-in">
           {overview && <Overview data={overview} />}
 
-          <DeviceEnergy refreshKey={refreshKey} />
-          
           <div className={isMobile ? 'charts-grid-mobile' : 'charts-grid'}>
             <DeferredSection label="24小时趋势">
               <Trend24h isMobile={isMobile} refreshKey={refreshKey} theme={theme} />
@@ -455,6 +453,11 @@ function App() {
             <DeferredSection label="今日用电分布">
               <TodayUsage isMobile={isMobile} refreshKey={refreshKey} theme={theme} />
             </DeferredSection>
+          </div>
+
+          <DeviceEnergy refreshKey={refreshKey} />
+
+          <div className={isMobile ? 'charts-grid-mobile' : 'charts-grid'}>
             <DeferredSection label="30天用电趋势">
               <DailyTrend isMobile={isMobile} refreshKey={refreshKey} theme={theme} />
             </DeferredSection>

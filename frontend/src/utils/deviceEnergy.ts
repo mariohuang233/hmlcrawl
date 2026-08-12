@@ -19,16 +19,16 @@ export function normalizeDeviceBreakdown(value?: Partial<DeviceBreakdown> | null
 }
 
 export const deviceSeriesColors = {
-  airConditioner: '#3b82f6',
-  waterHeater: '#f59e0b',
-  other: '#94a3b8'
+  airConditioner: '#32ade6',
+  waterHeater: '#ff9f0a',
+  other: '#c7c7cc'
 };
 
 export function deviceTooltipRows(value?: Partial<DeviceBreakdown> | null) {
   const item = normalizeDeviceBreakdown(value);
   return `
-    <div style="display:flex;justify-content:space-between;gap:16px;color:#3b82f6"><span>空调</span><strong>${item.air_conditioner_kwh.toFixed(2)} kWh</strong></div>
-    <div style="display:flex;justify-content:space-between;gap:16px;color:#f59e0b"><span>热水器</span><strong>${item.water_heater_kwh.toFixed(2)} kWh</strong></div>
-    <div style="display:flex;justify-content:space-between;gap:16px;color:#94a3b8"><span>其他</span><strong>${item.other_kwh.toFixed(2)} kWh</strong></div>
+    <div style="display:flex;justify-content:space-between;gap:16px;color:#32ade6"><span>空调</span><strong>${item.air_conditioner_kwh.toFixed(2)} kWh</strong></div>
+    <div style="display:flex;justify-content:space-between;gap:16px;color:#ff9f0a"><span>热水器</span><strong>${item.water_heater_kwh.toFixed(2)} kWh</strong></div>
+    <div style="display:flex;justify-content:space-between;gap:16px;color:#8e8e93"><span>其他</span><strong>${item.other_kwh.toFixed(2)} kWh</strong></div>
   `;
 }

@@ -92,14 +92,14 @@ const DeviceEnergy: React.FC<DeviceEnergyProps> = ({ refreshKey = 0 }) => {
 
   return (
     <section
-      className={`card device-energy-card ${hasTriggered ? 'animate-in' : ''}`}
+      className={`device-energy-card ${hasTriggered ? 'animate-in' : ''}`}
       ref={elementRef as React.RefObject<HTMLElement>}
       aria-labelledby="device-energy-title"
     >
       <div className="device-energy-heading">
         <div>
-          <div className="device-energy-kicker">米家设备</div>
-          <h2 id="device-energy-title" className="card-title">设备用电</h2>
+          <h2 id="device-energy-title">设备用电</h2>
+          <p>米家设备今日与本月累计</p>
         </div>
         {updatedLabel && <span className="device-energy-updated">更新于 {updatedLabel}</span>}
       </div>
@@ -129,24 +129,26 @@ const DeviceEnergy: React.FC<DeviceEnergyProps> = ({ refreshKey = 0 }) => {
             {cards.map(card => (
               <article className={`device-energy-item tone-${card.tone}`} key={card.id}>
                 <div className="device-energy-name-row">
-                  <span className="device-energy-dot" aria-hidden="true"></span>
+                  <span className="device-energy-mark" aria-hidden="true"></span>
                   <h3>{card.name}</h3>
                   {card.incomplete && <span className="device-energy-partial">数据积累中</span>}
                 </div>
-                <div className="device-energy-primary">
-                  <strong>{formatKwh(card.month)}</strong>
-                  <span>kWh</span>
-                </div>
-                <div className="device-energy-period">本月用电</div>
-                <div className="device-energy-today">
-                  <span>今日</span>
-                  <strong>{formatKwh(card.today)} kWh</strong>
+                <div className="device-energy-values">
+                  <div className="device-energy-primary">
+                    <span>今日</span>
+                    <strong>{formatKwh(card.today)}</strong>
+                    <small>kWh</small>
+                  </div>
+                  <div className="device-energy-month">
+                    <span>本月</span>
+                    <strong>{formatKwh(card.month)} kWh</strong>
+                  </div>
                 </div>
               </article>
             ))}
           </div>
           <p className="device-energy-note">
-            “其他未监测电器”由全屋总表减去空调和热水器得出，受采样时间差影响，仅作参考。
+            “其他”由全屋总表减去空调和热水器得出，仅作参考。
           </p>
         </>
       )}

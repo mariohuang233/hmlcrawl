@@ -183,28 +183,32 @@ const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false, refreshKe
     legend: {
       data: ['总用电', '空调', '热水器', '其他'],
       top: 0,
+      itemWidth: 10,
+      itemHeight: 6,
+      itemGap: isMobile ? 10 : 16,
+      icon: 'roundRect',
       textStyle: { color: colors.muted, fontFamily: 'inherit', fontSize: isMobile ? 10 : 11 }
     },
     series: [
       {
         name: '空调', type: 'bar', stack: 'devices', barMaxWidth: isMobile ? 12 : 18,
         data: data.map(item => normalizeDeviceBreakdown(item.device_breakdown).air_conditioner_kwh),
-        itemStyle: { color: deviceSeriesColors.airConditioner }
+        itemStyle: { color: deviceSeriesColors.airConditioner, opacity: 0.82 }
       },
       {
         name: '热水器', type: 'bar', stack: 'devices', barMaxWidth: isMobile ? 12 : 18,
         data: data.map(item => normalizeDeviceBreakdown(item.device_breakdown).water_heater_kwh),
-        itemStyle: { color: deviceSeriesColors.waterHeater }
+        itemStyle: { color: deviceSeriesColors.waterHeater, opacity: 0.82 }
       },
       {
         name: '其他', type: 'bar', stack: 'devices', barMaxWidth: isMobile ? 12 : 18,
         data: data.map(item => normalizeDeviceBreakdown(item.device_breakdown).other_kwh),
-        itemStyle: { color: deviceSeriesColors.other, borderRadius: [4, 4, 0, 0] }
+        itemStyle: { color: deviceSeriesColors.other, opacity: 0.78, borderRadius: [4, 4, 0, 0] }
       },
       {
         name: '总用电', type: 'line', data: data.map(item => item.used_kwh), smooth: true,
-        symbol: 'circle', symbolSize: isMobile ? 3 : 4, z: 5,
-        lineStyle: { color: colors.series, width: isMobile ? 2 : 2.5 },
+        symbol: 'none', z: 5,
+        lineStyle: { color: colors.series, width: isMobile ? 2 : 2.25 },
         itemStyle: { color: colors.series, borderColor: colors.pointBorder, borderWidth: 1 }
       }
     ],

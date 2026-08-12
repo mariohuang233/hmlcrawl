@@ -5,7 +5,7 @@ import { ColorTheme, getChartTheme } from '../utils/chartTheme';
 import { createSparseCategoryInterval } from '../utils/chartAxis';
 import ChartCardHeader from './ChartCardHeader';
 import { fetchAPI, formatErrorMessage } from '../utils/api';
-import { DeviceBreakdown, deviceSeriesColors, normalizeDeviceBreakdown } from '../utils/deviceEnergy';
+import { DeviceBreakdown, normalizeDeviceBreakdown } from '../utils/deviceEnergy';
 
 interface TodayData {
   hour: number;
@@ -64,37 +64,6 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
     () => normalizeDeviceBreakdown(data.find(item => item.device_breakdown)?.device_breakdown),
     [data]
   );
-
-  const compositionOption = useMemo(() => ({
-    animation: hasTriggered,
-    tooltip: {
-      trigger: 'item',
-      confine: true,
-      backgroundColor: colors.tooltipBackground,
-      borderColor: colors.tooltipBorder,
-      textStyle: { color: colors.text, fontFamily: 'inherit' },
-      formatter: '{b}<br/><strong>{c} kWh</strong>（{d}%）'
-    },
-    legend: {
-      orient: 'vertical',
-      right: isMobile ? 8 : '12%',
-      top: 'center',
-      textStyle: { color: colors.muted, fontFamily: 'inherit', fontSize: isMobile ? 10 : 12 }
-    },
-    series: [{
-      name: '今日设备用电',
-      type: 'pie',
-      radius: ['48%', '72%'],
-      center: [isMobile ? '34%' : '38%', '50%'],
-      avoidLabelOverlap: true,
-      label: { show: false },
-      data: [
-        { name: '空调', value: deviceBreakdown.air_conditioner_kwh, itemStyle: { color: deviceSeriesColors.airConditioner } },
-        { name: '热水器', value: deviceBreakdown.water_heater_kwh, itemStyle: { color: deviceSeriesColors.waterHeater } },
-        { name: '其他', value: deviceBreakdown.other_kwh, itemStyle: { color: deviceSeriesColors.other } }
-      ]
-    }]
-  }), [colors, deviceBreakdown, hasTriggered, isMobile]);
 
   const chartOption = useMemo(() => ({
     animation: hasTriggered,
@@ -278,18 +247,11 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
         notMerge={false}
         lazyUpdate={true}
       />
-      <div style={{ color: colors.textStrong, fontSize: isMobile ? '13px' : '14px', fontWeight: 700, marginTop: '4px' }}>
-        今日设备构成
+      <div className="today-device-strip" aria-label="今日设备用电构成">
+        <span className="tone-cool"><small>空调</small><strong>{deviceBreakdown.air_conditioner_kwh.toFixed(2)}</strong><em>kWh</em></span>
+        <span className="tone-warm"><small>热水器</small><strong>{deviceBreakdown.water_heater_kwh.toFixed(2)}</strong><em>kWh</em></span>
+        <span className="tone-neutral"><small>其他</small><strong>{deviceBreakdown.other_kwh.toFixed(2)}</strong><em>kWh</em></span>
       </div>
-      <Chart
-        ariaLabel="今日空调、热水器和其他用电构成图"
-        summary={`空调 ${deviceBreakdown.air_conditioner_kwh.toFixed(2)} kWh，热水器 ${deviceBreakdown.water_heater_kwh.toFixed(2)} kWh，其他 ${deviceBreakdown.other_kwh.toFixed(2)} kWh。`}
-        option={compositionOption}
-        style={{ height: isMobile ? '150px' : '170px' }}
-        className="chart-container"
-        notMerge={true}
-        lazyUpdate={true}
-      />
     </div>
   );
 });
