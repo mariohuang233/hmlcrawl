@@ -1,4 +1,5 @@
 const Usage = require('../models/Usage');
+const { getDeviceDailyMap, withOther } = require('./deviceEnergyAnalytics');
 const {
   formatBeijingTime,
   getBeijingHour,
@@ -70,6 +71,44 @@ function dailyUsageFromRecords(records, todayStart, daysCount = 8) {
   });
 }
 
+function summarizeDevices(deviceDaily, todayStart, todayUsage, monthUsage, now) {
+  const dateKey = date => new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const todayKey = dateKey(todayStart);
+  const today = withOther(deviceDaily.get(todayKey), todayUsage);
+  const monthMeasured = { air_conditioner_kwh: 0, water_heater_kwh: 0 };
+  for (const value of deviceDaily.values()) {
+    monthMeasured.air_conditioner_kwh += Number(value.air_conditioner_kwh || 0);
+    monthMeasured.water_heater_kwh += Number(value.water_heater_kwh || 0);
+  }
+  const month = withOther(monthMeasured, monthUsage);
+  const beijingNow = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  const elapsedDays = Math.max(1, beijingNow.getUTCDate());
+  const completeDays = Math.max(1, elapsedDays - 1);
+  const definitions = [
+    ['air_conditioner', '空调', 'air_conditioner_kwh', false],
+    ['water_heater', '热水器', 'water_heater_kwh', false],
+    ['other', '其他电器', 'other_kwh', true]
+  ];
+  const devices = definitions.map(([id, name, key, estimated]) => {
+    const todayKwh = round(today[key]);
+    const monthKwh = round(month[key]);
+    const completedMonthKwh = Math.max(0, monthKwh - todayKwh);
+    const dailyAverageKwh = round(completedMonthKwh / completeDays);
+    return {
+      id,
+      name,
+      todayKwh,
+      monthKwh,
+      dailyAverageKwh,
+      todayShare: todayUsage > 0 ? round((todayKwh / todayUsage) * 100, 1) : 0,
+      versusDailyAverage: dailyAverageKwh > 0 ? percentageChange(todayKwh, dailyAverageKwh) : null,
+      estimated
+    };
+  });
+  const dominant = devices.reduce((best, item) => item.todayKwh > (best?.todayKwh || 0) ? item : best, null);
+  return { configured: deviceDaily.size > 0, today, month, devices, dominant };
+}
+
 async function loadContext(now = new Date()) {
   const meterId = process.env.METER_ID || DEFAULT_METER_ID;
   const todayStart = getBeijingTodayStart(now);
@@ -87,7 +126,10 @@ async function loadContext(now = new Date()) {
   // One indexed range read replaces nine concurrent queries. This avoids exhausting
   // the small remote MongoDB connection pool when the dashboard loads in parallel.
   const queryStart = new Date(Math.min(monthStart.getTime(), sevenDaysStart.getTime(), yesterdayStart.getTime(), previousWeekStart.getTime()));
-  const records = await Usage.getUsageInRange(meterId, queryStart, now);
+  const [records, deviceDaily] = await Promise.all([
+    Usage.getUsageInRange(meterId, queryStart, now),
+    getDeviceDailyMap(monthStart, now).catch(() => new Map())
+  ]);
   const latest = records.at(-1) || await Usage.getLatestUsage(meterId);
   const todayStats = statsFromRecords(records, todayStart, now);
   const yesterdaySameStats = statsFromRecords(records, yesterdayStart, yesterdaySameTime);
@@ -112,6 +154,7 @@ async function loadContext(now = new Date()) {
   const activeHours = todayHourly.filter(item => item.kwh > 0);
   const peak = activeHours.reduce((best, item) => item.kwh > (best?.kwh || 0) ? item : best, null);
   const sevenDayPeak = dailyUsage.reduce((best, item) => item.usageKwh > (best?.usageKwh || 0) ? item : best, null);
+  const deviceEnergy = summarizeDevices(deviceDaily, todayStart, todayStats.totalUsage, monthStats.totalUsage, now);
 
   return {
     meterId,
@@ -135,6 +178,7 @@ async function loadContext(now = new Date()) {
     peakHourUsage: peak?.kwh ?? null,
     sevenDayUsage: dailyUsage.slice(-7),
     sevenDayPeak,
+    deviceEnergy,
     dataComplete: todayStats.dataPoints >= 2
   };
 }
@@ -142,6 +186,11 @@ async function loadContext(now = new Date()) {
 let contextCache = null;
 let contextCacheExpiresAt = 0;
 let contextLoadPromise = null;
+
+function invalidateContextCache() {
+  contextCache = null;
+  contextCacheExpiresAt = 0;
+}
 
 async function buildContext(now) {
   // Explicit timestamps are used by tests and should never reuse live cache data.
@@ -176,6 +225,7 @@ function classifyIntent(message) {
     return 'out_of_scope';
   }
   if (/余额|剩余|还能用|用完|续航/.test(normalized)) return 'balance';
+  if (/空调|热水器|米家|设备|电器/.test(normalized) && /用电|耗电|多少|最高|最多|占比|本月|今天|今日|比较|分析/.test(normalized)) return 'devices';
   if ((/最近一周|近一周/.test(normalized) && hasPowerContext) || /哪天用电最高|用电最高的一天|^哪天最高[？?]?$/.test(normalized)) return 'week_peak';
   if ((/为什么|原因|变高|变多|异常|高峰/.test(normalized) && hasPowerContext) || /^为什么(变高|变多)?[？?]?$/.test(normalized)) return 'explain';
   if ((/分析|总结|规律|趋势|比较|对比|判断/.test(normalized) && hasPowerContext) || /比较.*(本周|上周)|本周.*上周/.test(normalized)) return 'analysis';
@@ -247,7 +297,8 @@ function projectMonthUsage(context) {
 }
 
 function buildDeterministicAnswer(intent, context) {
-  const source = `基于电表采集数据 · 更新于 ${context.updatedLabel}`;
+  const hasDevices = Boolean(context.deviceEnergy?.configured);
+  const source = `${hasDevices ? '基于电表与米家设备数据' : '基于电表采集数据'} · 更新于 ${context.updatedLabel}`;
   const common = { role: 'assistant', intent, source, updatedAt: context.updatedAt, mode: 'data' };
 
   if (!context.dataComplete) {
@@ -260,6 +311,33 @@ function buildDeterministicAnswer(intent, context) {
   }
 
   switch (intent) {
+    case 'devices': {
+      if (!hasDevices) {
+        return {
+          ...common,
+          headline: '设备用电数据暂不可用',
+          body: '米家设备数据尚未完成同步，目前只能查看全屋总用电。',
+          quickReplies: ['今天用了多少电？', '本月用了多少电？']
+        };
+      }
+      const measured = context.deviceEnergy.devices.filter(item => !item.estimated);
+      const top = measured.reduce((best, item) => item.todayKwh > (best?.todayKwh || 0) ? item : best, null);
+      return {
+        ...common,
+        headline: top ? `今日设备中${top.name}用电较多` : '设备用电已接入',
+        body: `空调今日 ${measured[0]?.todayKwh || 0} kWh，热水器今日 ${measured[1]?.todayKwh || 0} kWh。“其他电器”是全屋总表减去两台米家设备后的估算值。`,
+        chart: {
+          kind: 'bar',
+          labels: context.deviceEnergy.devices.map(item => item.name),
+          series: [{ name: '今日用电', values: context.deviceEnergy.devices.map(item => item.todayKwh) }]
+        },
+        evidence: context.deviceEnergy.devices.map(item => ({
+          label: item.name,
+          value: `今日 ${item.todayKwh} kWh · 本月 ${item.monthKwh} kWh${item.estimated ? '（估算）' : ''}`
+        })),
+        quickReplies: ['哪个设备本月最耗电？', '结合设备数据给我节电建议', '为什么今天用电变高？']
+      };
+    }
     case 'balance':
       return {
         ...common,
@@ -290,7 +368,7 @@ function buildDeterministicAnswer(intent, context) {
       return {
         ...common,
         headline: `本月已用 ${context.monthUsage} kWh`,
-        body: `按 1 元/kWh 的当前系统口径，对应已发生用电成本约 ¥${context.monthUsage}。`,
+        body: `按 1 元/kWh 的当前系统口径，对应已发生用电成本约 ¥${context.monthUsage}。${hasDevices ? `其中空调 ${context.deviceEnergy.devices[0].monthKwh} kWh，热水器 ${context.deviceEnergy.devices[1].monthKwh} kWh。` : ''}`,
         metric: { value: context.monthUsage, unit: 'kWh', label: '本月用电' },
         quickReplies: ['预计本月费用？', '本周用了多少？']
       };
@@ -343,12 +421,15 @@ function buildDeterministicAnswer(intent, context) {
       return {
         ...common,
         headline: delta > 0 ? `今日同期用电高 ${delta}%` : delta < 0 ? `今日同期用电低 ${Math.abs(delta)}%` : '今日同期用电基本持平',
-        body: `变化最明显的已采集时段是 ${peakLabel}。当前只有电表总量数据，无法确认具体是哪台设备造成。`,
+        body: hasDevices
+          ? `变化最明显的已采集时段是 ${peakLabel}。米家设备中，空调今日 ${context.deviceEnergy.devices[0].todayKwh} kWh，热水器今日 ${context.deviceEnergy.devices[1].todayKwh} kWh；可据此判断设备贡献，但“其他电器”仍是总表差值估算。`
+          : `变化最明显的已采集时段是 ${peakLabel}。当前只有电表总量数据，无法确认具体是哪台设备造成。`,
         chart: chartForToday(context),
         evidence: [
           { label: '今日截至当前', value: `${context.todayUsage} kWh` },
           { label: '昨日同期', value: `${context.yesterdaySameUsage} kWh` },
-          { label: '今日峰值时段', value: peakLabel }
+          { label: '今日峰值时段', value: peakLabel },
+          ...(hasDevices ? context.deviceEnergy.devices.slice(0, 2).map(item => ({ label: `${item.name}今日`, value: `${item.todayKwh} kWh` })) : [])
         ],
         quickReplies: ['预计今天用多少？', '给我节电建议']
       };
@@ -359,7 +440,7 @@ function buildDeterministicAnswer(intent, context) {
       return {
         ...common,
         headline: weeklyDelta > 0 ? `本周较上周同期高 ${weeklyDelta}%` : weeklyDelta < 0 ? `本周较上周同期低 ${Math.abs(weeklyDelta)}%` : '本周与上周同期基本持平',
-        body: `本周截至当前已用 ${context.weekUsage} kWh，上周相同进度为 ${context.previousWeekSameUsage} kWh，相差 ${Math.abs(weeklyDifference)} kWh。最近七天最高用电日为 ${context.sevenDayPeak?.date || '暂无数据'}。当前只有总表数据，可以定位变化时段，但不能确认具体设备原因。`,
+        body: `本周截至当前已用 ${context.weekUsage} kWh，上周相同进度为 ${context.previousWeekSameUsage} kWh，相差 ${Math.abs(weeklyDifference)} kWh。最近七天最高用电日为 ${context.sevenDayPeak?.date || '暂无数据'}。${hasDevices ? `今日米家设备中空调 ${context.deviceEnergy.devices[0].todayKwh} kWh、热水器 ${context.deviceEnergy.devices[1].todayKwh} kWh，可辅助解释设备贡献。` : '当前只能定位变化时段，不能确认具体设备原因。'}`,
         evidence: [
           { label: '本周截至当前', value: `${context.weekUsage} kWh` },
           { label: '上周同期', value: `${context.previousWeekSameUsage} kWh` },
@@ -370,30 +451,34 @@ function buildDeterministicAnswer(intent, context) {
           labels: context.sevenDayUsage.map(item => item.date.slice(5)),
           series: [{ name: '每日用电', values: context.sevenDayUsage.map(item => item.usageKwh) }]
         },
-        disclaimer: '当前未接入设备级数据，不能把变化归因到具体电器。',
+        disclaimer: hasDevices ? '空调和热水器来自米家日用电数据；其他电器为总表差值估算。' : '当前未接入设备级数据，不能把变化归因到具体电器。',
         quickReplies: ['分析变化集中在哪些时段', '给我三个具体节电建议']
       };
     }
-    case 'saving':
+    case 'saving': {
+      const topDevice = hasDevices
+        ? context.deviceEnergy.devices.filter(item => !item.estimated).reduce((best, item) => item.todayKwh > (best?.todayKwh || 0) ? item : best, null)
+        : null;
       return {
         ...common,
         headline: '先优化用电最高的时段',
         body: context.peakHour === null
           ? '当前分时数据不足，暂时无法给出针对性建议。'
-          : `今天用电较集中的时段是 ${String(context.peakHour).padStart(2, '0')}:00–${String((context.peakHour + 1) % 24).padStart(2, '0')}:00。可以优先检查这一时段是否有可错峰或缩短运行时间的高功率设备。`,
+          : `今天用电较集中的时段是 ${String(context.peakHour).padStart(2, '0')}:00–${String((context.peakHour + 1) % 24).padStart(2, '0')}:00。${topDevice ? `${topDevice.name}今日已用 ${topDevice.todayKwh} kWh，可以先检查其运行时长和设定。` : '可以优先检查这一时段是否有可错峰或缩短运行时间的高功率设备。'}`,
         chart: chartForToday(context),
-        disclaimer: '当前未接入设备级数据，建议基于分时变化生成。',
+        disclaimer: hasDevices ? '建议结合米家设备日用电与总表分时数据生成。' : '当前未接入设备级数据，建议基于分时变化生成。',
         quickReplies: ['设置高峰提醒', '最近一周哪天最高？']
       };
+    }
     case 'today':
     default:
       return {
         ...common,
         headline: `截至 ${context.updatedLabel}，今日已用 ${context.todayUsage} kWh`,
-        body: `${formatDelta(context.samePeriodDelta)}。`,
+        body: `${formatDelta(context.samePeriodDelta)}。${hasDevices ? `米家设备中，空调 ${context.deviceEnergy.devices[0].todayKwh} kWh，热水器 ${context.deviceEnergy.devices[1].todayKwh} kWh。` : ''}`,
         metric: { value: context.todayUsage, unit: 'kWh', label: '今日用电', comparison: context.samePeriodDelta },
         chart: chartForToday(context),
-        quickReplies: ['为什么变高？', '预计今天用多少？', '给我节电建议']
+        quickReplies: hasDevices ? ['查看设备用电详情', '为什么变高？', '结合设备数据给我节电建议'] : ['为什么变高？', '预计今天用多少？', '给我节电建议']
       };
   }
 }
@@ -418,7 +503,7 @@ async function askConfiguredModel(message, context, requestedModel) {
         messages: [
           {
             role: 'system',
-            content: '你是家庭用电助手布布，负责分析和表达，不负责猜测或计算原始数值。只回答与当前家庭用电数据有关的问题。输出必须是简洁纯文本并严格分成四段，每段依次以“结论：”“数据依据：”“可解释范围：”“建议：”开头，不要使用 Markdown。比较尚未结束的本周与上周时，必须使用上周相同进度数据 previousWeekSameUsage，不能拿本周累计与上周整周比较。不得修改输入数值，不得猜测或暗示某台设备、某类电器的使用变化；只有总表数据时必须明确说无法判断具体设备原因。不得输出自我纠正、反问、推理过程或前后矛盾的表述。数据不足时要明确说明。'
+            content: '你是家庭用电助手布布，负责分析和表达，不负责猜测或计算原始数值。只回答与当前家庭用电数据有关的问题。输出必须是简洁纯文本并严格分成四段，每段依次以“结论：”“数据依据：”“可解释范围：”“建议：”开头，不要使用 Markdown。比较尚未结束的本周与上周时，必须使用上周相同进度数据 previousWeekSameUsage，不能拿本周累计与上周整周比较。只有 deviceEnergy.configured 为 true 时才可以引用具体设备；空调和热水器来自米家日用电数据，其他电器是全屋总表减去两台设备后的估算值，必须明确区分实测与估算。不得修改输入数值，不得猜测输入中没有的设备状态、运行时长或原因。不得输出自我纠正、反问、推理过程或前后矛盾的表述。数据不足时要明确说明。'
           },
           {
             role: 'user',
@@ -434,6 +519,7 @@ async function askConfiguredModel(message, context, requestedModel) {
               projectedTodayUsage: context.projectedTodayUsage,
               peakHour: context.peakHour,
               sevenDayUsage: context.sevenDayUsage,
+              deviceEnergy: context.deviceEnergy,
               updatedLabel: context.updatedLabel
             })}`
           }
@@ -457,6 +543,7 @@ function isUsableAIText(text) {
 
 function buildNotification(context) {
   const base = { updatedAt: context.updatedAt, source: `数据更新于 ${context.updatedLabel}` };
+  const beijingHour = getBeijingHour(new Date(context.generatedAt));
   const lowBalanceThreshold = Number(process.env.ASSISTANT_LOW_BALANCE_KWH || 10);
   if (context.remainingKwh > 0 && context.remainingKwh <= lowBalanceThreshold) {
     return {
@@ -465,9 +552,28 @@ function buildNotification(context) {
       type: 'balance',
       severity: 'critical',
       title: '布布提醒',
+      proactive: true,
       message: `当前仅剩 ${context.remainingKwh} kWh，建议尽快关注余额。`,
       actionLabel: '查看详情',
       prompt: '当前余额还能用多久？'
+    };
+  }
+  const deviceCandidate = context.deviceEnergy?.configured
+    ? context.deviceEnergy.devices
+      .filter(item => !item.estimated && item.todayKwh >= 0.5 && item.dailyAverageKwh > 0)
+      .sort((a, b) => (b.versusDailyAverage || 0) - (a.versusDailyAverage || 0))[0]
+    : null;
+  if (deviceCandidate && deviceCandidate.versusDailyAverage >= 50) {
+    return {
+      ...base,
+      id: `device-anomaly-${deviceCandidate.id}-${new Date(context.generatedAt).toISOString().slice(0, 10)}`,
+      type: 'device',
+      severity: 'warning',
+      title: `${deviceCandidate.name}今日用电偏高`,
+      proactive: true,
+      message: `今日已用 ${deviceCandidate.todayKwh} kWh，较本月此前日均高 ${deviceCandidate.versusDailyAverage}%。`,
+      actionLabel: '查看设备分析',
+      prompt: `分析${deviceCandidate.name}今天的用电`
     };
   }
   if (context.dataComplete && context.samePeriodDelta >= 20) {
@@ -476,7 +582,8 @@ function buildNotification(context) {
       id: `usage-anomaly-${new Date(context.generatedAt).toISOString().slice(0, 10)}`,
       type: 'anomaly',
       severity: 'warning',
-      title: '布布提醒',
+      title: '今日用电增长较快',
+      proactive: true,
       message: `今日用电较昨日同期高 ${context.samePeriodDelta}%，要看看变化集中在哪个时段吗？`,
       actionLabel: '查看原因',
       prompt: '为什么今天用电更高？'
@@ -487,7 +594,8 @@ function buildNotification(context) {
     id: `daily-summary-${new Date(context.generatedAt).toISOString().slice(0, 10)}`,
     type: 'daily',
     severity: 'info',
-    title: '布布提醒',
+    title: '今日用电小结',
+    proactive: beijingHour >= 18,
     message: `昨日用电 ${context.yesterdayUsage} kWh，今日截至 ${context.updatedLabel} 已用 ${context.todayUsage} kWh。`,
     actionLabel: '查看详情',
     prompt: '今天到现在用了多少电？'
@@ -501,7 +609,7 @@ async function getBriefing() {
     aiConfigured: Boolean(process.env.AI_API_KEY && process.env.AI_MODEL),
     notification: buildNotification(context),
     welcome: buildDeterministicAnswer('today', context),
-    quickReplies: ['今天用了多少电？', '分析最近七天用电规律', '预计本月用多少？', '给我三个具体节电建议']
+    quickReplies: ['查看空调和热水器用电', '分析最近七天用电规律', '预计本月用多少？', '结合设备数据给我节电建议']
   };
 }
 
@@ -524,7 +632,7 @@ async function answerQuestion(message) {
         ...deterministic,
         headline: '布布的 AI 分析',
         body: aiText,
-        source: `基于电表数据，由 DeepSeek 分析 · 更新于 ${context.updatedLabel}`,
+        source: `基于电表与米家设备数据，由 AI 分析 · 更新于 ${context.updatedLabel}`,
         mode: 'ai',
         disclaimer: 'AI 只负责解释与建议，所有用电数值均来自电表数据。',
         quickReplies: ['比较本周和上周', '预计本月用多少？']
@@ -548,5 +656,6 @@ module.exports = {
   classifyIntent,
   isUsableAIText,
   needsAIAnalysis,
+  invalidateContextCache,
   getBriefing
 };

@@ -13,6 +13,7 @@ const DailyTrend = lazy(() => import('./components/DailyTrend'));
 const MonthlyTrend = lazy(() => import('./components/MonthlyTrend'));
 const RechargeHistory = lazy(() => import('./components/RechargeHistory'));
 const DATA_REFRESH_INTERVAL_MS = 60 * 1000;
+const DETAIL_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = useState(false);
@@ -124,6 +125,7 @@ function getCollectionStatus(data: OverviewData | null) {
 
 function App() {
   const lastRefreshAtRef = useRef(0);
+  const lastDetailRefreshAtRef = useRef(Date.now());
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +133,7 @@ function App() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -190,19 +193,21 @@ function App() {
           source: log.source
         }));
         setLogs(formattedLogs);
+        setLogsError(null);
       } else {
         setLogs([]);
       }
     } catch (err) {
       const errorMessage = formatErrorMessage(err);
       console.error('Error fetching logs:', err);
-      alert(`获取日志失败：${errorMessage}`);
+      setLogsError(errorMessage);
     } finally {
       setLogsLoading(false);
     }
   }, []);
 
   const handleRefresh = useCallback(() => {
+    lastDetailRefreshAtRef.current = Date.now();
     startTransition(() => setRefreshKey(prev => prev + 1));
     fetchOverview(true);
     if (showLogs) {
@@ -263,15 +268,18 @@ function App() {
   ].filter(Boolean).join('，');
 
   useEffect(() => {
-    const refreshVisiblePage = (force = false) => {
+    const refreshVisiblePage = () => {
       if (document.visibilityState !== 'visible') return;
-      if (!force && Date.now() - lastRefreshAtRef.current < DATA_REFRESH_INTERVAL_MS) return;
-      fetchOverview(true);
-      startTransition(() => setRefreshKey(prev => prev + 1));
+      const now = Date.now();
+      if (now - lastRefreshAtRef.current >= DATA_REFRESH_INTERVAL_MS) fetchOverview(true);
+      if (now - lastDetailRefreshAtRef.current >= DETAIL_REFRESH_INTERVAL_MS) {
+        lastDetailRefreshAtRef.current = now;
+        startTransition(() => setRefreshKey(prev => prev + 1));
+      }
     };
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') refreshVisiblePage(true);
+      if (document.visibilityState === 'visible') refreshVisiblePage();
     };
 
     const interval = setInterval(() => refreshVisiblePage(), DATA_REFRESH_INTERVAL_MS);
@@ -481,6 +489,12 @@ function App() {
               </div>
               {logsLoading ? (
                 <div className="logs-loading">加载中...</div>
+              ) : logsError ? (
+                <div className="logs-empty is-error" role="status">
+                  <strong>日志暂时无法加载</strong>
+                  <span>{logsError}</span>
+                  <button type="button" className="btn btn-quiet" onClick={fetchLogs}>重试</button>
+                </div>
               ) : logs.length === 0 ? (
                 <div className="logs-empty">
                   <strong>暂无本地爬虫日志</strong>

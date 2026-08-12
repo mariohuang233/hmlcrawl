@@ -2133,6 +2133,32 @@ body {
   font-size: 14px;
 }
 
+.assistant-reminder-kicker {
+  display: block;
+  margin-bottom: 5px;
+  padding-right: 50px;
+  color: var(--assistant-accent);
+  font-size: 9px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+}
+
+.assistant-reminder.is-warning {
+  border-color: color-mix(in srgb, #ff9f0a 34%, var(--assistant-border));
+}
+
+.assistant-reminder.is-warning .assistant-reminder-kicker {
+  color: #ffb340;
+}
+
+.assistant-reminder.is-critical {
+  border-color: color-mix(in srgb, #ff453a 42%, var(--assistant-border));
+}
+
+.assistant-reminder.is-critical .assistant-reminder-kicker {
+  color: #ff6961;
+}
+
 .assistant-reminder p {
   margin: 8px 0 14px;
   color: #d5d5d0;
@@ -4867,6 +4893,28 @@ html[data-theme="dark"] .recharge-error {
   color: var(--text-tertiary);
   font-size: 10px;
   line-height: 1.35;
+}
+
+.device-energy-inline-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: -2px 0 8px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, #ff9f0a 9%, transparent);
+  font-size: 10px;
+}
+
+.device-energy-inline-error button {
+  padding: 2px 0;
+  border: 0;
+  color: var(--accent-blue);
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .device-energy-grid {

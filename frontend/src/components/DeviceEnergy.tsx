@@ -44,7 +44,6 @@ const DeviceEnergy: React.FC<DeviceEnergyProps> = ({ refreshKey = 0 }) => {
 
   const load = useCallback(async () => {
     try {
-      setLoading(true);
       const result = await retryRequest(
         () => fetchAPI<DeviceEnergySummary>('/api/device-energy/summary'),
         2,
@@ -108,10 +107,11 @@ const DeviceEnergy: React.FC<DeviceEnergyProps> = ({ refreshKey = 0 }) => {
         <div className="device-energy-grid" aria-label="设备用电加载中">
           {[0, 1, 2].map(item => <div className="device-energy-skeleton skeleton" key={item}></div>)}
         </div>
-      ) : error ? (
+      ) : error && !data ? (
         <div className="device-energy-state is-error">
           <strong>设备用电暂时无法加载</strong>
           <span>{error}</span>
+          <button type="button" className="btn btn-quiet" onClick={() => void load()}>重试</button>
         </div>
       ) : !data?.configured ? (
         <div className="device-energy-state">
@@ -125,6 +125,11 @@ const DeviceEnergy: React.FC<DeviceEnergyProps> = ({ refreshKey = 0 }) => {
         </div>
       ) : (
         <>
+          {error && (
+            <div className="device-energy-inline-error" role="status">
+              当前显示上次数据，刷新失败。<button type="button" onClick={() => void load()}>重试</button>
+            </div>
+          )}
           <div className="device-energy-grid">
             {cards.map(card => (
               <article className={`device-energy-item tone-${card.tone}`} key={card.id}>

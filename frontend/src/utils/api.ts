@@ -8,6 +8,7 @@ export function apiUrl(endpoint: string): string {
 }
 
 const DEFAULT_TIMEOUT_MS = 12_000;
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
 
 export interface RechargeRecord {
   time: string;
@@ -48,7 +49,7 @@ function messageForStatus(status: number): string {
   return `请求失败（HTTP ${status}）`;
 }
 
-export async function fetchAPI<T>(endpoint: string, options: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+async function executeRequest<T>(endpoint: string, options: RequestInit, timeoutMs: number): Promise<T> {
   const timeoutController = new AbortController();
   const timeout = window.setTimeout(() => timeoutController.abort(), timeoutMs);
   const externalSignal = options.signal;
@@ -83,6 +84,23 @@ export async function fetchAPI<T>(endpoint: string, options: RequestInit = {}, t
     window.clearTimeout(timeout);
     externalSignal?.removeEventListener('abort', abortFromExternal);
   }
+}
+
+export function fetchAPI<T>(endpoint: string, options: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+  const method = String(options.method || 'GET').toUpperCase();
+  const canShareRequest = method === 'GET' && !options.signal && !options.body;
+  const requestKey = canShareRequest ? apiUrl(endpoint) : '';
+  const pending = canShareRequest ? inFlightGetRequests.get(requestKey) : undefined;
+  if (pending) return pending as Promise<T>;
+
+  const request = executeRequest<T>(endpoint, options, timeoutMs);
+  if (!canShareRequest) return request;
+
+  inFlightGetRequests.set(requestKey, request);
+  request.finally(() => {
+    if (inFlightGetRequests.get(requestKey) === request) inFlightGetRequests.delete(requestKey);
+  }).catch(() => undefined);
+  return request;
 }
 
 export function formatErrorMessage(error: unknown): string {

@@ -17,7 +17,6 @@ const xiaomiEnergySync = require('../services/xiaomiEnergySync');
 const {
   getDeviceDailyMap,
   getDeviceMonthlyMap,
-  getDevicePeriodBreakdown,
   withOther
 } = require('../services/deviceEnergyAnalytics');
 const { getDevicePeriodUsage, getDeviceDailyPeriods, roundKwh } = require('../services/deviceEnergy');
@@ -114,12 +113,14 @@ const inFlightCacheLoads = new Map();
 
 dataEvents.on('reading:stored', () => {
   const cleared = cache.clear();
+  electricityAssistant.invalidateContextCache();
   if (cleared > 0) {
     logger.info(`新读数已写入，清除 ${cleared} 个接口缓存`);
   }
 });
 dataEvents.on('device-energy:stored', () => {
   cache.clear();
+  electricityAssistant.invalidateContextCache();
 });
 
 /**
@@ -793,7 +794,10 @@ router.get('/trend/today', cacheMiddleware('today', 120000), asyncHandler(async 
     // 获取过去30天的数据用于计算历史平均
     const thirtyDaysAgo = new Date(todayStart.getTime() - 30 * 24 * 60 * 60 * 1000);
     
-    const hourlyBuckets = await Usage.getUsageBuckets('18100071580', thirtyDaysAgo, now, 'hour');
+    const [hourlyBuckets, deviceDaily] = await Promise.all([
+      Usage.getUsageBuckets('18100071580', thirtyDaysAgo, now, 'hour'),
+      getDeviceDailyMap(todayStart, now)
+    ]);
     const todayKey = new Date(todayStart.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const yesterdayKey = new Date(yesterdayStart.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
@@ -828,7 +832,11 @@ router.get('/trend/today', cacheMiddleware('today', 120000), asyncHandler(async 
     }));
     
     const todayTotal = result.reduce((sum, item) => sum + item.used_kwh, 0);
-    const deviceBreakdown = await getDevicePeriodBreakdown(todayStart, now, todayTotal);
+    const deviceTotals = [...deviceDaily.values()].reduce((total, item) => ({
+      air_conditioner_kwh: total.air_conditioner_kwh + Number(item.air_conditioner_kwh || 0),
+      water_heater_kwh: total.water_heater_kwh + Number(item.water_heater_kwh || 0)
+    }), { air_conditioner_kwh: 0, water_heater_kwh: 0 });
+    const deviceBreakdown = withOther(deviceTotals, todayTotal);
     res.json(result.map(item => ({ ...item, device_breakdown: deviceBreakdown })));
 }));
 
@@ -839,7 +847,10 @@ router.get('/trend/30d', cacheMiddleware('30d', 300000), asyncHandler(async (req
     const todayEnd = getBeijingTodayEnd(now);
     const startDate = new Date(getBeijingTodayStart(now).getTime() - 29 * 24 * 60 * 60 * 1000);
     
-    const dailyBuckets = await Usage.getUsageBuckets('18100071580', startDate, todayEnd, 'day');
+    const [dailyBuckets, deviceDaily] = await Promise.all([
+      Usage.getUsageBuckets('18100071580', startDate, todayEnd, 'day'),
+      getDeviceDailyMap(startDate, todayEnd)
+    ]);
     const dailyUsage = Object.fromEntries(dailyBuckets.map(item => [item.key, Number(item.used_kwh || 0)]));
     
     // 获取所有日期
@@ -871,7 +882,6 @@ router.get('/trend/30d', cacheMiddleware('30d', 300000), asyncHandler(async (req
       });
     });
     
-    const deviceDaily = await getDeviceDailyMap(startDate, todayEnd);
     res.json(result.map(item => ({
       ...item,
       device_breakdown: withOther(deviceDaily.get(item.date), item.used_kwh)
@@ -889,7 +899,10 @@ router.get('/trend/monthly', cacheMiddleware('monthly', 600000), asyncHandler(as
     ));
     const startDate = new Date(firstMonthUtc.getTime() - 8 * 60 * 60 * 1000);
     
-    const monthlyBuckets = await Usage.getUsageBuckets('18100071580', startDate, endDate, 'month');
+    const [monthlyBuckets, deviceMonthly] = await Promise.all([
+      Usage.getUsageBuckets('18100071580', startDate, endDate, 'month'),
+      getDeviceMonthlyMap(startDate, endDate)
+    ]);
     const monthlyUsage = Object.fromEntries(monthlyBuckets.map(item => [item.key, Number(item.used_kwh || 0)]));
     
     // 无论某月是否有采集记录，都稳定返回连续 12 个月，避免前端出现空坐标轴或缺月。
@@ -914,7 +927,6 @@ router.get('/trend/monthly', cacheMiddleware('monthly', 600000), asyncHandler(as
       };
     });
     
-    const deviceMonthly = await getDeviceMonthlyMap(startDate, endDate);
     res.json(result.map(item => ({
       ...item,
       device_breakdown: withOther(deviceMonthly.get(item.month), item.used_kwh)
@@ -1110,7 +1122,7 @@ router.get('/crawler/status', async (req, res) => {
 });
 
 // 米家设备日用电总览。这里只返回 kWh，不暴露实时功率。
-router.get('/device-energy/summary', asyncHandler(async (_req, res) => {
+router.get('/device-energy/summary', cacheMiddleware('device_energy_summary', 120000), asyncHandler(async (_req, res) => {
   if (mongoose.connection.readyState !== 1) {
     return res.status(503).json({ error: '数据库连接不可用' });
   }

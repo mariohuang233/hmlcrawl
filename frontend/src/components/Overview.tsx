@@ -84,12 +84,14 @@ const Overview: React.FC<OverviewProps> = ({ data }) => {
   };
 
   const formatComparison = (percentage: number) => {
+    if (!Number.isFinite(percentage)) return '暂无对比';
     if (percentage === 0) return '持平';
     const sign = percentage > 0 ? '+' : '';
     return `${sign}${percentage}%`;
   };
 
   const getComparisonColor = (percentage: number) => {
+    if (!Number.isFinite(percentage)) return 'var(--text-tertiary)';
     if (percentage === 0) return 'var(--text-tertiary)';
     if (percentage > 0) return 'var(--accent)';
     return 'var(--text-secondary)';

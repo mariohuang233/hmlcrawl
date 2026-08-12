@@ -4,6 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, vi } from 'vitest';
 import App from './App';
 
+vi.mock('./components/Chart', () => ({
+  default: ({ ariaLabel }: { ariaLabel: string }) => <div role="img" aria-label={ariaLabel} />
+}));
+
 const overviewFixture = {
   current_remaining: 8.6,
   latest_collected_at: new Date().toISOString(),
@@ -27,12 +31,16 @@ beforeEach(() => {
         available: true,
         aiConfigured: false,
         notification: {
-          id: 'daily-test', type: 'daily', severity: 'info', title: '布布提醒',
-          message: '昨日用电 6.42 kWh。', actionLabel: '查看详情', prompt: '今天用了多少？', source: '更新于 10:28'
+          id: 'device-test', type: 'device', severity: 'warning', title: '空调今日用电偏高',
+          message: '今日已用 1.2 kWh。', actionLabel: '查看设备分析', prompt: '分析空调今天的用电', source: '更新于 10:28', proactive: true
         },
         welcome: {},
         quickReplies: ['今天用了多少？', '为什么变高？']
       };
+    } else if (url.includes('/api/trend/')) {
+      payload = [];
+    } else if (url.includes('/api/recharge-history')) {
+      payload = { success: true, records: [] };
     } else if (url.includes('/api/device-energy/summary')) {
       payload = {
         success: true,
@@ -63,6 +71,7 @@ test('renders the electricity dashboard heading', async () => {
   render(<App />);
   await screen.findByRole('button', { name: '刷新全部数据' });
   expect(screen.getByRole('heading', { name: /一二布布的电量监控/ })).toBeInTheDocument();
+  expect(screen.queryByText(/undefined%/)).not.toBeInTheDocument();
 });
 
 test('renders cumulative appliance energy without real-time power', async () => {
@@ -97,4 +106,19 @@ test('opens the assistant and answers a grounded quick question', async () => {
 
   expect(await screen.findByText('截至 10:28，今日已用 2.18 kWh')).toBeInTheDocument();
   expect(screen.getByText('基于电表数据 · 更新于 10:28')).toBeInTheDocument();
+}, 15000);
+
+test('opens a Xiaomi-aware smart reminder and applies global reminder cooldown', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-08-12T04:00:00.000Z'));
+  const user = userEvent.setup();
+  render(<App />);
+
+  expect(await screen.findByText('智能提醒 · 米家设备')).toBeInTheDocument();
+  expect(screen.getByText('空调今日用电偏高')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: '查看设备分析' }));
+  expect(await screen.findByText('分析空调今天的用电')).toBeInTheDocument();
+  expect(screen.queryByText('智能提醒 · 米家设备')).not.toBeInTheDocument();
+  expect(Number(window.localStorage.getItem('electricity-assistant-last-reminder'))).toBeGreaterThan(0);
+  vi.useRealTimers();
 }, 15000);

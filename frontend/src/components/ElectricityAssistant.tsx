@@ -26,13 +26,14 @@ interface AssistantAnswer {
 
 interface AssistantNotification {
   id: string;
-  type: 'daily' | 'anomaly' | 'balance';
+  type: 'daily' | 'anomaly' | 'balance' | 'device';
   severity: 'info' | 'warning' | 'critical';
   title: string;
   message: string;
   actionLabel: string;
   prompt: string;
   source: string;
+  proactive?: boolean;
 }
 
 interface BriefingResponse {
@@ -50,9 +51,11 @@ interface ConversationItem {
   answer?: AssistantAnswer;
 }
 
-const DEFAULT_QUESTIONS = ['今天用了多少电？', '分析最近七天用电规律', '预计本月用多少？', '给我三个具体节电建议'];
+const DEFAULT_QUESTIONS = ['查看空调和热水器用电', '分析最近七天用电规律', '预计本月用多少？', '结合设备数据给我节电建议'];
 const DISMISS_KEY = 'electricity-assistant-dismissed';
 const SETTINGS_KEY = 'electricity-assistant-settings';
+const LAST_REMINDER_KEY = 'electricity-assistant-last-reminder';
+const REMINDER_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 function readSettings() {
   try {
@@ -60,6 +63,19 @@ function readSettings() {
   } catch {
     return { remindersEnabled: true };
   }
+}
+
+function canShowReminder(notification: AssistantNotification, remindersEnabled: boolean) {
+  if (!remindersEnabled || notification.proactive === false) return false;
+  const now = new Date();
+  const dismissed = Number(window.localStorage.getItem(`${DISMISS_KEY}:${notification.id}`) || 0);
+  if (dismissed >= Date.now()) return false;
+  const lastShown = Number(window.localStorage.getItem(LAST_REMINDER_KEY) || 0);
+  if (notification.severity !== 'critical' && Date.now() - lastShown < REMINDER_COOLDOWN_MS) return false;
+  const beijingHour = Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Shanghai', hour: '2-digit', hour12: false
+  }).format(now));
+  return notification.severity === 'critical' || (beijingHour >= 8 && beijingHour < 22);
 }
 
 function AssistantChart({ answer }: { answer: AssistantAnswer }) {
@@ -91,17 +107,28 @@ function AssistantChart({ answer }: { answer: AssistantAnswer }) {
         axisLabel: { color: '#777771', fontSize: 9 },
         splitLine: { lineStyle: { color: 'rgba(244,244,240,.07)' } }
       },
-      series: answer.chart.series.map((series, index) => ({
+      series: answer.chart.series.map((series, index) => {
+        const seriesColor = series.name.includes('空调') ? '#32ade6'
+          : series.name.includes('热水器') ? '#ff9f0a'
+          : series.name.includes('其他') ? '#8e8e93'
+          : index === 0 ? '#0a84ff' : '#686864';
+        const data = isBar && series.name === '今日用电' && answer.chart?.labels.length === series.values.length
+          ? series.values.map((value, dataIndex) => ({
+              value,
+              itemStyle: { color: ['#32ade6', '#ff9f0a', '#8e8e93'][dataIndex] || seriesColor, borderRadius: [4, 4, 0, 0] }
+            }))
+          : series.values;
+        return ({
         name: series.name,
         type: isBar ? 'bar' : 'line',
-        data: series.values,
+        data,
         smooth: !isBar,
         symbol: 'none',
         barMaxWidth: 18,
-        itemStyle: { color: index === 0 ? '#ff385c' : '#686864', borderRadius: isBar ? [4, 4, 0, 0] : 0 },
+        itemStyle: { color: seriesColor, borderRadius: isBar ? [4, 4, 0, 0] : 0 },
         lineStyle: { width: index === 0 ? 2 : 1.5, type: index === 0 ? 'solid' : 'dashed' },
-        areaStyle: !isBar && index === 0 ? { color: 'rgba(255,56,92,.08)' } : undefined
-      }))
+        areaStyle: !isBar && index === 0 ? { color: 'rgba(10,132,255,.08)' } : undefined
+      });})
     };
   }, [answer]);
 
@@ -199,8 +226,9 @@ export default function ElectricityAssistant() {
       .then(data => {
         if (!active) return;
         setBriefing(data);
-        const dismissed = Number(window.localStorage.getItem(`${DISMISS_KEY}:${data.notification.id}`) || 0);
-        setReminderVisible(remindersEnabled && dismissed < Date.now());
+        const shouldShow = canShowReminder(data.notification, remindersEnabled);
+        setReminderVisible(shouldShow);
+        if (shouldShow) window.localStorage.setItem(LAST_REMINDER_KEY, String(Date.now()));
       })
       .catch(() => {
         if (active) setReminderVisible(false);
@@ -216,7 +244,19 @@ export default function ElectricityAssistant() {
   }, [conversation, isSending]);
 
   useEffect(() => {
-    if (isOpen) window.setTimeout(() => inputRef.current?.focus(), 180);
+    if (!isOpen) return undefined;
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 180);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowSettings(false);
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
   }, [isOpen]);
 
   const dismissReminder = (delayMs: number) => {
@@ -227,6 +267,7 @@ export default function ElectricityAssistant() {
   };
 
   const openWithQuestion = (question?: string) => {
+    dismissReminder(24 * 60 * 60 * 1000);
     setIsOpen(true);
     setShowSettings(false);
     if (question) void sendQuestion(question);
@@ -271,6 +312,7 @@ export default function ElectricityAssistant() {
       {reminderVisible && briefing?.notification && (
         <aside className={`assistant-reminder is-${briefing.notification.severity}`} aria-live="polite">
           <button className="assistant-reminder-close" type="button" onClick={() => dismissReminder(24 * 60 * 60 * 1000)} aria-label="关闭本次提醒">关闭</button>
+          <span className="assistant-reminder-kicker">智能提醒 · {briefing.notification.type === 'device' ? '米家设备' : briefing.notification.type === 'balance' ? '余额风险' : '全屋用电'}</span>
           <strong>{briefing.notification.title}</strong>
           <p>{briefing.notification.message}</p>
           <div>
@@ -281,7 +323,7 @@ export default function ElectricityAssistant() {
       )}
 
       {isOpen && (
-        <aside className="assistant-panel" aria-label="布布用电助手">
+        <aside className="assistant-panel" role="dialog" aria-modal="false" aria-label="布布用电助手">
           <div className="assistant-drag-handle" aria-hidden="true" />
           <header className="assistant-panel-header">
             <div className="assistant-identity">
@@ -298,7 +340,7 @@ export default function ElectricityAssistant() {
             <div className="assistant-settings">
               <h3>提醒设置</h3>
               <label>
-                <span><strong>主动用电提醒</strong><small>日报、异常增长和低余额提醒</small></span>
+                <span><strong>主动用电提醒</strong><small>设备异常、全屋增长和低余额提醒</small></span>
                 <input type="checkbox" checked={remindersEnabled} onChange={event => saveReminderSetting(event.target.checked)} />
               </label>
               <div className="assistant-settings-note">默认免打扰时间为 22:00–08:00；同一提醒关闭后当天不会重复出现。</div>
@@ -311,9 +353,9 @@ export default function ElectricityAssistant() {
                   <div className="assistant-welcome">
                     <img src={bubuIcon} alt="" />
                     <strong>想了解哪段用电？</strong>
-                    <span>简单问题直接查询电表，复杂问题由 AI 基于真实数据分析。</span>
+                    <span>直接读取全屋电表与米家设备数据，复杂问题再由 AI 解释。</span>
                     <div className="assistant-mode-entry">
-                      <button type="button" onClick={() => void sendQuestion('今天用了多少电？')}><strong>查用电数据</strong><span>余额、用量、费用与峰值</span></button>
+                      <button type="button" onClick={() => void sendQuestion('查看空调和热水器用电')}><strong>查设备用电</strong><span>空调、热水器与其他电器</span></button>
                       <button type="button" onClick={() => void sendQuestion('分析最近七天的用电规律')}><strong>让 AI 分析</strong><span>原因、规律、比较与建议</span></button>
                     </div>
                     <div className="assistant-starter-grid">
