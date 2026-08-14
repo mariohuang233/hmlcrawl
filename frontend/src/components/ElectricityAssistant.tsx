@@ -216,9 +216,12 @@ export default function ElectricityAssistant() {
   const [conversation, setConversation] = useState<ConversationItem[]>([]);
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isSlow, setIsSlow] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastFailedQuestion, setLastFailedQuestion] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const slowTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -259,6 +262,10 @@ export default function ElectricityAssistant() {
     };
   }, [isOpen]);
 
+  useEffect(() => () => {
+    if (slowTimerRef.current !== null) window.clearTimeout(slowTimerRef.current);
+  }, []);
+
   const dismissReminder = (delayMs: number) => {
     if (briefing?.notification) {
       window.localStorage.setItem(`${DISMISS_KEY}:${briefing.notification.id}`, String(Date.now() + delayMs));
@@ -273,23 +280,32 @@ export default function ElectricityAssistant() {
     if (question) void sendQuestion(question);
   };
 
-  const sendQuestion = async (rawQuestion: string) => {
+  const sendQuestion = async (rawQuestion: string, appendUser = true) => {
     const question = rawQuestion.trim();
     if (!question || isSending) return;
     setError(null);
+    setIsSlow(false);
     setInput('');
     setIsOpen(true);
-    setConversation(items => [...items, { id: `u-${Date.now()}`, role: 'user', text: question }]);
+    if (appendUser) {
+      setConversation(items => [...items, { id: `u-${Date.now()}`, role: 'user', text: question }]);
+    }
     setIsSending(true);
+    slowTimerRef.current = window.setTimeout(() => setIsSlow(true), 8000);
     try {
       const answer = await fetchAPI<AssistantAnswer>('/api/assistant/chat', {
         method: 'POST',
         body: JSON.stringify({ message: question })
       }, 60_000);
       setConversation(items => [...items, { id: `a-${Date.now()}`, role: 'assistant', answer }]);
+      setLastFailedQuestion('');
     } catch (requestError) {
       setError(formatErrorMessage(requestError));
+      setLastFailedQuestion(question);
     } finally {
+      if (slowTimerRef.current !== null) window.clearTimeout(slowTimerRef.current);
+      slowTimerRef.current = null;
+      setIsSlow(false);
       setIsSending(false);
     }
   };
@@ -371,8 +387,18 @@ export default function ElectricityAssistant() {
                     <AnswerCard answer={item.answer} onQuestion={question => void sendQuestion(question)} />
                   </div>
                 ) : null)}
-                {isSending && <div className="assistant-loading">布布正在读取最新用电数据…</div>}
-                {error && <div className="assistant-error">{error}<button type="button" onClick={() => setError(null)}>知道了</button></div>}
+                {isSending && (
+                  <div className="assistant-loading" role="status">
+                    {isSlow ? 'AI 响应稍慢，正在进行一次受控重试…' : '布布正在读取最新用电数据…'}
+                  </div>
+                )}
+                {error && (
+                  <div className="assistant-error" role="alert">
+                    <span>{error}</span>
+                    {lastFailedQuestion && <button type="button" onClick={() => void sendQuestion(lastFailedQuestion, false)}>重试</button>}
+                    <button type="button" onClick={() => setError(null)}>关闭</button>
+                  </div>
+                )}
               </div>
               <form className="assistant-input" onSubmit={handleSubmit}>
                 <input ref={inputRef} value={input} onChange={event => setInput(event.target.value)} placeholder="继续问用电问题…" maxLength={500} aria-label="输入用电问题" />

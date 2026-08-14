@@ -10,6 +10,19 @@ const {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_METER_ID = '18100071580';
+const DEFAULT_AI_TIMEOUT_MS = 18000;
+const DEFAULT_AI_RETRY_TIMEOUT_MS = 8000;
+
+function boundedPositiveInteger(value, fallback, maximum = 60000) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0
+    ? Math.min(Math.round(parsed), maximum)
+    : fallback;
+}
+
+function logAIWarning(message, metadata, silent = false) {
+  if (!silent) require('../utils/logger').warn(message, metadata);
+}
 
 function round(value, precision = 2) {
   const factor = 10 ** precision;
@@ -483,14 +496,42 @@ function buildDeterministicAnswer(intent, context) {
   }
 }
 
-async function askConfiguredModel(message, context, requestedModel) {
+function extractAIText(payload) {
+  const choice = payload?.choices?.[0];
+  const content = choice?.message?.content ?? choice?.text;
+  if (typeof content === 'string') return content.trim();
+  if (Array.isArray(content)) {
+    return content
+      .map(part => typeof part === 'string' ? part : part?.text)
+      .filter(Boolean)
+      .join('')
+      .trim();
+  }
+  return null;
+}
+
+function retryDelayFromResponse(response) {
+  const raw = response?.headers?.get?.('retry-after');
+  if (!raw) return response?.status === 429 ? 1000 : 300;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds)) return Math.min(3000, Math.max(300, Math.round(seconds * 1000)));
+  const retryAt = new Date(raw).getTime();
+  return Number.isFinite(retryAt) ? Math.min(3000, Math.max(300, retryAt - Date.now())) : 300;
+}
+
+async function askConfiguredModel(message, context, requestedModel, options = {}) {
   const apiKey = process.env.AI_API_KEY;
   const model = requestedModel || process.env.AI_MODEL;
-  if (!apiKey || !model) return null;
+  if (!apiKey || !model) {
+    return { text: null, reason: 'not_configured', retryable: false, model: model || null };
+  }
 
   const baseUrl = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const timeoutMs = boundedPositiveInteger(options.timeoutMs, DEFAULT_AI_TIMEOUT_MS);
+  const maxTokens = boundedPositiveInteger(options.maxTokens, 900, 2000);
+  const startedAt = Date.now();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
@@ -499,7 +540,7 @@ async function askConfiguredModel(message, context, requestedModel) {
       body: JSON.stringify({
         model,
         temperature: 0.2,
-        max_tokens: 700,
+        max_tokens: maxTokens,
         messages: [
           {
             role: 'system',
@@ -526,11 +567,54 @@ async function askConfiguredModel(message, context, requestedModel) {
         ]
       })
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      const retryable = response.status === 408 || response.status === 409 ||
+        response.status === 425 || response.status === 429 || response.status >= 500;
+      logAIWarning('AI model request failed', {
+        model,
+        status: response.status,
+        duration_ms: Date.now() - startedAt,
+        retryable
+      }, options.silent);
+      return {
+        text: null,
+        reason: `http_${response.status}`,
+        retryable,
+        retryAfterMs: retryDelayFromResponse(response),
+        model
+      };
+    }
     const payload = await response.json();
-    return payload?.choices?.[0]?.message?.content?.trim() || null;
-  } catch (_error) {
-    return null;
+    const finishReason = payload?.choices?.[0]?.finish_reason || null;
+    const text = extractAIText(payload);
+    if (!text || finishReason === 'length') {
+      logAIWarning('AI model returned an incomplete response', {
+        model,
+        finish_reason: finishReason,
+        duration_ms: Date.now() - startedAt
+      }, options.silent);
+      return {
+        text,
+        reason: finishReason === 'length' ? 'truncated' : 'empty_response',
+        retryable: finishReason === 'length',
+        finishReason,
+        model
+      };
+    }
+    return { text, reason: null, retryable: false, finishReason, model };
+  } catch (error) {
+    const timedOut = error?.name === 'AbortError';
+    logAIWarning('AI model request unavailable', {
+      model,
+      reason: timedOut ? 'timeout' : 'network_error',
+      duration_ms: Date.now() - startedAt
+    }, options.silent);
+    return {
+      text: null,
+      reason: timedOut ? 'timeout' : 'network_error',
+      retryable: true,
+      model
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -538,7 +622,7 @@ async function askConfiguredModel(message, context, requestedModel) {
 
 function isUsableAIText(text) {
   const normalized = String(text || '').trim();
-  return normalized.length >= 30 && /[。！？.!?]$/.test(normalized);
+  return normalized.length >= 20 && /[。！？.!?）)】]$/.test(normalized);
 }
 
 function buildNotification(context) {
@@ -621,12 +705,29 @@ async function answerQuestion(message) {
   const context = await buildContext();
   const deterministic = buildDeterministicAnswer(intent, context);
   if (needsAIAnalysis(message, intent)) {
-    let aiText = await askConfiguredModel(message, context);
-    if (!isUsableAIText(aiText)) {
-      await new Promise(resolve => setTimeout(resolve, 250));
-      const fallbackModel = process.env.AI_FALLBACK_MODEL || process.env.AI_MODEL;
-      aiText = await askConfiguredModel(message, context, fallbackModel);
+    const primaryModel = process.env.AI_MODEL;
+    const fallbackModel = process.env.AI_FALLBACK_MODEL;
+    let completion = await askConfiguredModel(message, context, primaryModel, {
+      timeoutMs: boundedPositiveInteger(process.env.AI_TIMEOUT_MS, DEFAULT_AI_TIMEOUT_MS)
+    });
+    const hasDifferentFallback = Boolean(fallbackModel && fallbackModel !== primaryModel);
+    const fallbackCanHelp = hasDifferentFallback && (
+      !completion.reason ||
+      ['empty_response', 'truncated', 'http_404'].includes(completion.reason)
+    );
+    if (!isUsableAIText(completion.text) && (completion.retryable || fallbackCanHelp)) {
+      await new Promise(resolve => setTimeout(resolve, completion.retryAfterMs || 300));
+      completion = await askConfiguredModel(
+        message,
+        context,
+        hasDifferentFallback ? fallbackModel : primaryModel,
+        {
+          timeoutMs: boundedPositiveInteger(process.env.AI_RETRY_TIMEOUT_MS, DEFAULT_AI_RETRY_TIMEOUT_MS),
+          maxTokens: completion.reason === 'truncated' ? 1300 : 900
+        }
+      );
     }
+    const aiText = completion.text;
     if (isUsableAIText(aiText)) {
       return {
         ...deterministic,
@@ -647,6 +748,7 @@ async function answerQuestion(message) {
 }
 
 module.exports = {
+  askConfiguredModel,
   answerQuestion,
   buildContext,
   buildClarificationAnswer,
@@ -654,7 +756,9 @@ module.exports = {
   buildOutOfScopeAnswer,
   buildNotification,
   classifyIntent,
+  extractAIText,
   isUsableAIText,
+  retryDelayFromResponse,
   needsAIAnalysis,
   invalidateContextCache,
   getBriefing

@@ -1,12 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  askConfiguredModel,
   buildDeterministicAnswer,
   buildClarificationAnswer,
   buildNotification,
   buildOutOfScopeAnswer,
   classifyIntent,
-  isUsableAIText
+  extractAIText,
+  isUsableAIText,
+  retryDelayFromResponse
 } = require('./electricityAssistant');
 
 const context = {
@@ -100,6 +103,40 @@ test('compares this week with the same point last week', () => {
 test('rejects visibly truncated AI responses', () => {
   assert.equal(isUsableAIText('最近七天整体用电呈工作日高、周末'), false);
   assert.equal(isUsableAIText('结论：本周用电低于上周同期。数据依据充分，建议继续观察晚间高峰是否持续下降。'), true);
+});
+
+test('accepts compatible providers that return segmented content', () => {
+  assert.equal(extractAIText({
+    choices: [{ message: { content: [{ type: 'text', text: '结论：正常。' }, { type: 'text', text: '建议：继续观察。' }] } }]
+  }), '结论：正常。建议：继续观察。');
+  assert.equal(isUsableAIText('结论：当前用电正常。建议：继续观察今晚的变化。'), true);
+});
+
+test('marks rate limits as retryable without exposing provider payloads', async t => {
+  const originalFetch = global.fetch;
+  const originalKey = process.env.AI_API_KEY;
+  const originalModel = process.env.AI_MODEL;
+  t.after(() => {
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.AI_API_KEY;
+    else process.env.AI_API_KEY = originalKey;
+    if (originalModel === undefined) delete process.env.AI_MODEL;
+    else process.env.AI_MODEL = originalModel;
+  });
+  process.env.AI_API_KEY = 'test-key';
+  process.env.AI_MODEL = 'test-model';
+  global.fetch = async () => ({ ok: false, status: 429, headers: { get: () => '0.5' } });
+
+  const result = await askConfiguredModel('分析用电', context, undefined, { timeoutMs: 100, silent: true });
+  assert.equal(result.reason, 'http_429');
+  assert.equal(result.retryable, true);
+  assert.equal(result.retryAfterMs, 500);
+  assert.equal(result.text, null);
+});
+
+test('caps provider retry-after delays to keep the assistant responsive', () => {
+  assert.equal(retryDelayFromResponse({ status: 429, headers: { get: () => '30' } }), 3000);
+  assert.equal(retryDelayFromResponse({ status: 429, headers: { get: () => null } }), 1000);
 });
 
 test('uses a low balance reminder before routine summaries', () => {
