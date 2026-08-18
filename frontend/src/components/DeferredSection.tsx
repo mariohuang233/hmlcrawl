@@ -5,20 +5,22 @@ interface DeferredSectionProps {
   label: string;
   minHeight?: number;
   rootMargin?: string;
+  eager?: boolean;
 }
 
 const DeferredSection: React.FC<DeferredSectionProps> = ({
   children,
   label,
   minHeight = 380,
-  rootMargin = '350px 0px'
+  rootMargin = '700px 0px',
+  eager = false
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [shouldRender, setShouldRender] = useState(false);
+  const [shouldRender, setShouldRender] = useState(eager);
 
   useEffect(() => {
     const element = containerRef.current;
-    if (!element || shouldRender) return;
+    if (!element || shouldRender || eager) return;
 
     if (typeof IntersectionObserver === 'undefined') {
       setShouldRender(true);
@@ -34,7 +36,7 @@ const DeferredSection: React.FC<DeferredSectionProps> = ({
 
     observer.observe(element);
     return () => observer.disconnect();
-  }, [rootMargin, shouldRender]);
+  }, [eager, rootMargin, shouldRender]);
 
   const fallback = (
     <div className="card deferred-card" style={{ minHeight }} aria-label={`${label}加载中`}>

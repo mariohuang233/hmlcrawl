@@ -8,11 +8,16 @@ import ElectricityAssistant from './components/ElectricityAssistant';
 import DeviceEnergy from './components/DeviceEnergy';
 import type { DashboardSnapshot } from './types/dashboard';
 
-const Trend24h = lazy(() => import('./components/Trend24h'));
-const TodayUsage = lazy(() => import('./components/TodayUsage'));
-const DailyTrend = lazy(() => import('./components/DailyTrend'));
-const MonthlyTrend = lazy(() => import('./components/MonthlyTrend'));
-const RechargeHistory = lazy(() => import('./components/RechargeHistory'));
+const loadTrend24h = () => import('./components/Trend24h');
+const loadTodayUsage = () => import('./components/TodayUsage');
+const loadDailyTrend = () => import('./components/DailyTrend');
+const loadMonthlyTrend = () => import('./components/MonthlyTrend');
+const loadRechargeHistory = () => import('./components/RechargeHistory');
+const Trend24h = lazy(loadTrend24h);
+const TodayUsage = lazy(loadTodayUsage);
+const DailyTrend = lazy(loadDailyTrend);
+const MonthlyTrend = lazy(loadMonthlyTrend);
+const RechargeHistory = lazy(loadRechargeHistory);
 const DEFAULT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const SNAPSHOT_CACHE_KEY = 'electricity-dashboard-snapshot-v1';
 const SNAPSHOT_MAX_AGE_MS = 30 * 60 * 1000;
@@ -272,8 +277,27 @@ function App() {
   }, [showMobileMenu]);
 
   useEffect(() => {
+    // Start the shared ECharts download while the snapshot request is in flight,
+    // so the first visible charts do not wait for data and code sequentially.
+    void Promise.all([loadTrend24h(), loadTodayUsage()]);
     fetchSnapshot(Boolean(cachedSnapshotRef.current));
   }, [fetchSnapshot]);
+
+  useEffect(() => {
+    const preloadSecondaryCharts = () => {
+      void Promise.all([loadDailyTrend(), loadMonthlyTrend(), loadRechargeHistory()]);
+    };
+    const idleWindow = window as unknown as {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (idleWindow.requestIdleCallback) {
+      const idleId = idleWindow.requestIdleCallback(preloadSecondaryCharts, { timeout: 2500 });
+      return () => idleWindow.cancelIdleCallback?.(idleId);
+    }
+    const timer = window.setTimeout(preloadSecondaryCharts, 800);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const collectionStatus = getCollectionStatus(overview);
   const collectionStatusDetails = [
@@ -469,10 +493,10 @@ function App() {
           {overview && <Overview data={overview} />}
 
           <div className={isMobile ? 'charts-grid-mobile' : 'charts-grid'}>
-            <DeferredSection label="24小时趋势">
+            <DeferredSection label="24小时趋势" eager>
               <Trend24h isMobile={isMobile} refreshKey={refreshKey} theme={theme} initialData={snapshot?.trends?.last24h} />
             </DeferredSection>
-            <DeferredSection label="今日用电分布">
+            <DeferredSection label="今日用电分布" eager>
               <TodayUsage isMobile={isMobile} refreshKey={refreshKey} theme={theme} initialData={snapshot?.trends?.today} />
             </DeferredSection>
           </div>
