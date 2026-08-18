@@ -56,7 +56,7 @@ const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
       setPrevValue(value);
       const timer = setTimeout(() => {
         setIsUpdating(false);
-      }, 600);
+      }, 180);
       return () => clearTimeout(timer);
     }
   }, [value, prevValue, flashOnUpdate]);

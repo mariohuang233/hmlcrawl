@@ -270,14 +270,16 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
             </div>
           </div>
 
-          <div className="recharge-timeline">
+          <div className={`recharge-timeline ${hasTriggered ? 'is-visible' : ''}`}>
             {records.map((record, index) => {
               const cycleInfo = getCycleInfo(index);
               return (
                 <div
                   key={`${record.time}-${index}`}
                   className="timeline-item"
-                  style={{ animationDelay: `${index * 40}ms` }}
+                  style={index < 5
+                    ? ({ '--timeline-delay': `${index * 30}ms` } as React.CSSProperties)
+                    : undefined}
                 >
                   <div className="timeline-dot" style={{ backgroundColor: getAmountColor(record.amountKwh) }}>
                     {index === 0 && <div className="timeline-pulse"></div>}

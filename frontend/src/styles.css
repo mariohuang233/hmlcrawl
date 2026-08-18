@@ -528,36 +528,6 @@ body {
   transform: translateY(0);
 }
 
-.hero-card.animate-in:nth-child(1) {
-  animation: slideInLeft 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-}
-
-.hero-card.animate-in:nth-child(2) {
-  animation: slideInRight 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.15s forwards;
-}
-
-@keyframes slideInLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-20px) translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0) translateY(0);
-  }
-}
-
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(20px) translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0) translateY(0);
-  }
-}
-
 .hero-card:hover {
   box-shadow: var(--shadow-xl);
   transform: translateY(-4px);
@@ -1130,28 +1100,17 @@ body {
   font-feature-settings: 'tnum';
 }
 
-.stat-value.updating {
-  animation: numberFlash 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+.stat-value.updating,
+.stat-value .animated-number.updating,
+.animated-number.updating {
+  animation: numberFlash 180ms var(--ease-out, ease-out);
 }
 
 @keyframes numberFlash {
-  0% { 
-    color: var(--primary-700);
-    transform: scale(1);
-  }
-  30% { 
+  0% {
     color: var(--primary-500);
-    transform: scale(1.12);
-    text-shadow: 0 0 16px rgba(184, 134, 90, 0.3);
-  }
-  60% {
-    color: var(--accent-amber-500);
-    transform: scale(1.06);
-  }
-  100% { 
-    color: var(--primary-800);
-    transform: scale(1);
-    text-shadow: none;
+    opacity: 0.72;
+    transform: translateY(2px);
   }
 }
 
@@ -2066,7 +2025,7 @@ body {
   background: var(--assistant-panel);
   box-shadow: 0 18px 42px rgba(8, 9, 10, 0.28);
   cursor: pointer;
-  transition: transform 180ms var(--ease-out), border-color 180ms ease;
+  transition: transform 140ms var(--ease-out), border-color 140ms ease;
 }
 
 .assistant-launcher img {
@@ -2074,11 +2033,6 @@ body {
   height: 100%;
   border-radius: 50%;
   object-fit: cover;
-}
-
-.assistant-launcher:hover {
-  border-color: rgba(255, 56, 92, 0.55);
-  transform: translateY(-2px);
 }
 
 .assistant-launcher:focus-visible,
@@ -2111,7 +2065,8 @@ body {
   color: var(--assistant-text);
   background: var(--assistant-panel);
   box-shadow: 0 20px 54px rgba(0, 0, 0, 0.42);
-  animation: assistant-pop 220ms var(--ease-out) both;
+  transform-origin: bottom right;
+  animation: assistant-reminder-in 180ms var(--ease-out) both;
 }
 
 .assistant-reminder::after {
@@ -2207,6 +2162,7 @@ body {
   color: var(--assistant-text);
   background: var(--assistant-panel);
   box-shadow: 0 26px 80px rgba(8, 9, 10, 0.38);
+  transform-origin: top right;
   animation: assistant-panel-in 220ms var(--ease-out) both;
 }
 
@@ -2365,13 +2321,7 @@ body {
   background: transparent;
   font-size: 12px;
   cursor: pointer;
-  transition: background-color 150ms ease, border-color 150ms ease;
-}
-
-.assistant-starter-grid button:hover,
-.assistant-quick-replies button:hover {
-  border-color: rgba(255, 56, 92, 0.36);
-  background: rgba(255, 56, 92, 0.08);
+  transition: transform 140ms var(--ease-out), background-color 140ms ease, border-color 140ms ease;
 }
 
 .assistant-user-message {
@@ -2384,6 +2334,7 @@ body {
   background: var(--assistant-surface-strong);
   font-size: 13px;
   line-height: 1.5;
+  animation: assistant-row-in 180ms var(--ease-out) both;
 }
 
 .assistant-response-row {
@@ -2392,6 +2343,7 @@ body {
   margin-bottom: 22px;
   grid-template-columns: 26px minmax(0, 1fr);
   gap: 8px;
+  animation: assistant-row-in 180ms var(--ease-out) both;
 }
 
 .assistant-response-row > img {
@@ -2560,6 +2512,7 @@ body {
   flex-wrap: wrap;
   margin-top: 13px;
   gap: 7px;
+  animation: assistant-row-in 180ms var(--ease-out) both;
 }
 
 .assistant-quick-replies button {
@@ -2756,14 +2709,24 @@ html[data-theme="light"] .assistant-panel-actions button {
   color: #5e6063;
 }
 
-@keyframes assistant-pop {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes assistant-reminder-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
 }
 
 @keyframes assistant-panel-in {
-  from { opacity: 0; transform: translateY(12px) scale(0.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateX(8px) scale(0.99); }
+}
+
+@keyframes assistant-row-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+@keyframes assistant-sheet-in {
+  from { opacity: 0; transform: translateY(20px); }
+}
+
+@keyframes assistant-fade-in {
+  from { opacity: 0; }
 }
 
 /* Desktop assistant: a focused side workspace with room for charts and analysis. */
@@ -2825,20 +2788,6 @@ html[data-theme="light"] .assistant-panel-actions button {
     transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
   }
 
-  .assistant-panel-actions button:hover {
-    border-color: color-mix(in srgb, var(--assistant-text) 20%, transparent);
-    color: var(--assistant-text);
-    background: var(--assistant-surface);
-  }
-
-  .assistant-panel-actions button:active,
-  .assistant-mode-entry button:active,
-  .assistant-starter-grid button:active,
-  .assistant-quick-replies button:active,
-  .assistant-input button:active {
-    transform: scale(0.97);
-  }
-
   .assistant-conversation {
     padding: 24px 22px 16px;
     scrollbar-gutter: stable;
@@ -2877,16 +2826,6 @@ html[data-theme="light"] .assistant-panel-actions button {
     padding: 15px 16px;
     border-radius: 16px;
     transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
-  }
-
-  .assistant-mode-entry button:hover {
-    border-color: color-mix(in srgb, var(--assistant-text) 20%, transparent);
-    background: var(--assistant-surface-strong);
-  }
-
-  .assistant-mode-entry button:last-child:hover {
-    border-color: rgba(255, 56, 92, 0.42);
-    background: rgba(255, 56, 92, 0.11);
   }
 
   .assistant-mode-entry strong {
@@ -3014,10 +2953,6 @@ html[data-theme="light"] .assistant-panel-actions button {
     transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
   }
 
-  .assistant-input input:hover {
-    border-color: color-mix(in srgb, var(--assistant-text) 20%, transparent);
-  }
-
   .assistant-input input:focus {
     border-color: rgba(255, 56, 92, 0.5);
     background: var(--assistant-surface-strong);
@@ -3032,12 +2967,56 @@ html[data-theme="light"] .assistant-panel-actions button {
     transition: filter 150ms ease, transform 150ms ease;
   }
 
-  .assistant-input button:not(:disabled):hover {
-    filter: brightness(1.08);
-  }
-
   .assistant-settings {
     padding: 30px;
+  }
+}
+
+.assistant-launcher:active,
+.assistant-panel-actions button:active,
+.assistant-mode-entry button:active,
+.assistant-starter-grid button:active,
+.assistant-quick-replies button:active,
+.assistant-input button:active {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .assistant-launcher:hover {
+    border-color: rgba(255, 56, 92, 0.55);
+    transform: translateY(-2px);
+  }
+
+  .assistant-starter-grid button:hover,
+  .assistant-quick-replies button:hover {
+    border-color: rgba(255, 56, 92, 0.36);
+    background: rgba(255, 56, 92, 0.08);
+  }
+}
+
+@media (min-width: 769px) and (hover: hover) and (pointer: fine) {
+  .assistant-panel-actions button:hover {
+    border-color: color-mix(in srgb, var(--assistant-text) 20%, transparent);
+    color: var(--assistant-text);
+    background: var(--assistant-surface);
+  }
+
+  .assistant-mode-entry button:hover {
+    border-color: color-mix(in srgb, var(--assistant-text) 20%, transparent);
+    background: var(--assistant-surface-strong);
+  }
+
+  .assistant-mode-entry button:last-child:hover {
+    border-color: rgba(255, 56, 92, 0.42);
+    background: rgba(255, 56, 92, 0.11);
+  }
+
+  .assistant-input input:hover {
+    border-color: color-mix(in srgb, var(--assistant-text) 20%, transparent);
+  }
+
+  .assistant-input button:not(:disabled):hover {
+    filter: brightness(1.08);
   }
 }
 
@@ -3082,6 +3061,10 @@ html[data-theme="light"] .assistant-panel-actions button {
     border-bottom: 0;
     border-left: 0;
     border-radius: 26px 26px 0 0;
+    transform-origin: bottom center;
+    animation-name: assistant-sheet-in;
+    animation-duration: 280ms;
+    animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
   }
 
   .assistant-drag-handle {
@@ -3145,12 +3128,22 @@ html[data-theme="light"] .assistant-panel-actions button {
 
 @media (prefers-reduced-motion: reduce) {
   .assistant-panel,
-  .assistant-reminder {
-    animation: none;
+  .assistant-reminder,
+  .assistant-user-message,
+  .assistant-response-row,
+  .assistant-quick-replies {
+    animation: assistant-fade-in 160ms ease both;
+    transform: none;
   }
 
-  .assistant-launcher {
-    transition: none;
+  .assistant-launcher,
+  .assistant-launcher:active,
+  .assistant-panel-actions button:active,
+  .assistant-mode-entry button:active,
+  .assistant-starter-grid button:active,
+  .assistant-quick-replies button:active,
+  .assistant-input button:active {
+    transform: none;
   }
 }
 
@@ -3427,6 +3420,7 @@ html[data-theme="light"] .assistant-panel-actions button {
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --duration-press: 140ms;
   --duration-state: 180ms;
+  --duration-enter: 220ms;
 }
 
 html {
@@ -4270,6 +4264,11 @@ select {
   display: block;
   padding: 0 0 0 24px;
   opacity: 1;
+  animation: none;
+}
+
+.recharge-timeline.is-visible .timeline-item:nth-child(-n + 5) {
+  animation: item-enter 180ms var(--ease-out) var(--timeline-delay, 0ms) both;
 }
 
 .timeline-dot {
@@ -4574,9 +4573,9 @@ select {
 }
 
 .animate-in {
-  opacity: 1 !important;
-  transform: none !important;
-  animation: item-enter 220ms var(--ease-out) both;
+  opacity: 1;
+  transform: none;
+  animation: item-enter var(--duration-enter) var(--ease-out) both;
 }
 
 html[data-theme="dark"] {
@@ -5152,7 +5151,7 @@ html[data-theme="dark"] .recharge-error {
 @keyframes item-enter {
   from {
     opacity: 0.001;
-    transform: translateY(4px);
+    transform: translateY(6px);
   }
 }
 
@@ -5469,4 +5468,28 @@ html[data-theme="dark"] .recharge-error {
 html[data-theme="dark"] .device-energy-item.tone-neutral,
 html[data-theme="dark"] .today-device-strip .tone-neutral {
   --device-tone: #a1a1a6;
+}
+
+.device-energy-card.animate-in .device-energy-item {
+  animation: item-enter 200ms var(--ease-out) both;
+}
+
+.device-energy-card.animate-in .device-energy-item:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.device-energy-card.animate-in .device-energy-item:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .device-energy-card.animate-in .device-energy-item,
+  .recharge-timeline.is-visible .timeline-item:nth-child(-n + 5),
+  .stat-value.updating,
+  .stat-value .animated-number.updating,
+  .animated-number.updating {
+    animation: reduced-fade 160ms ease both;
+    animation-delay: 0ms;
+    transform: none;
+  }
 }
