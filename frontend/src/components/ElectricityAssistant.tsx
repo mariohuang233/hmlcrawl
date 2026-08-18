@@ -1,48 +1,9 @@
 import React, { FormEvent, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import bubuIcon from '../assets/bubu.png';
-import { fetchAPI, formatErrorMessage } from '../utils/api';
+import { fetchAPI, formatErrorMessage, streamAPI } from '../utils/api';
+import type { AssistantAnswer, AssistantBriefing, AssistantNotification } from '../types/dashboard';
 
 const Chart = lazy(() => import('./Chart'));
-
-interface AssistantSeries {
-  name: string;
-  values: number[];
-}
-
-interface AssistantAnswer {
-  role: 'assistant';
-  intent: string;
-  headline: string;
-  body: string;
-  source: string;
-  updatedAt?: string | null;
-  mode: 'data' | 'ai' | 'prediction';
-  metric?: { value: number; unit: string; label: string; comparison?: number };
-  chart?: { kind: 'line' | 'bar'; labels: string[]; series: AssistantSeries[] };
-  evidence?: Array<{ label: string; value: string }>;
-  disclaimer?: string;
-  quickReplies?: string[];
-}
-
-interface AssistantNotification {
-  id: string;
-  type: 'daily' | 'anomaly' | 'balance' | 'device';
-  severity: 'info' | 'warning' | 'critical';
-  title: string;
-  message: string;
-  actionLabel: string;
-  prompt: string;
-  source: string;
-  proactive?: boolean;
-}
-
-interface BriefingResponse {
-  available: boolean;
-  aiConfigured: boolean;
-  notification: AssistantNotification;
-  welcome: AssistantAnswer;
-  quickReplies: string[];
-}
 
 interface ConversationItem {
   id: string;
@@ -55,13 +16,25 @@ const DEFAULT_QUESTIONS = ['查看空调和热水器用电', '分析最近七天
 const DISMISS_KEY = 'electricity-assistant-dismissed';
 const SETTINGS_KEY = 'electricity-assistant-settings';
 const LAST_REMINDER_KEY = 'electricity-assistant-last-reminder';
+const CONVERSATION_KEY = 'electricity-assistant-conversation-v1';
 const REMINDER_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const MAX_SAVED_MESSAGES = 30;
 
 function readSettings() {
   try {
     return JSON.parse(window.localStorage.getItem(SETTINGS_KEY) || '') as { remindersEnabled: boolean };
   } catch {
     return { remindersEnabled: true };
+  }
+}
+
+function readConversation(): ConversationItem[] {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(CONVERSATION_KEY) || '[]');
+    if (!Array.isArray(value)) return [];
+    return value.filter(item => item && typeof item.id === 'string' && (item.role === 'user' || item.role === 'assistant')).slice(-MAX_SAVED_MESSAGES);
+  } catch {
+    return [];
   }
 }
 
@@ -193,7 +166,10 @@ function AnswerCard({ answer, onQuestion }: { answer: AssistantAnswer; onQuestio
             ))}
           </div>
         )}
-        <div className="assistant-source">{answer.source}</div>
+        <div className="assistant-source">
+          <span>{answer.source}</span>
+          {typeof answer.elapsedMs === 'number' && <span>用时 {(answer.elapsedMs / 1000).toFixed(1)} 秒</span>}
+        </div>
         {answer.disclaimer && <div className="assistant-disclaimer">{answer.disclaimer}</div>}
       </div>
       {!!answer.quickReplies?.length && (
@@ -207,25 +183,34 @@ function AnswerCard({ answer, onQuestion }: { answer: AssistantAnswer; onQuestio
   );
 }
 
-export default function ElectricityAssistant() {
-  const [briefing, setBriefing] = useState<BriefingResponse | null>(null);
+export default function ElectricityAssistant({ initialBriefing }: { initialBriefing?: AssistantBriefing }) {
+  const [briefing, setBriefing] = useState<AssistantBriefing | null>(initialBriefing || null);
   const [isOpen, setIsOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [reminderVisible, setReminderVisible] = useState(false);
   const [remindersEnabled, setRemindersEnabled] = useState(() => readSettings().remindersEnabled);
-  const [conversation, setConversation] = useState<ConversationItem[]>([]);
+  const [conversation, setConversation] = useState<ConversationItem[]>(readConversation);
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isSlow, setIsSlow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFailedQuestion, setLastFailedQuestion] = useState('');
+  const [streamingText, setStreamingText] = useState('');
+  const [elapsedMs, setElapsedMs] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const slowTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (initialBriefing) {
+      setBriefing(initialBriefing);
+      const shouldShow = canShowReminder(initialBriefing.notification, remindersEnabled);
+      setReminderVisible(shouldShow);
+      if (shouldShow) window.localStorage.setItem(LAST_REMINDER_KEY, String(Date.now()));
+      return undefined;
+    }
     let active = true;
-    fetchAPI<BriefingResponse>('/api/assistant/briefing', {}, 60_000)
+    fetchAPI<AssistantBriefing>('/api/assistant/briefing', {}, 60_000)
       .then(data => {
         if (!active) return;
         setBriefing(data);
@@ -237,7 +222,19 @@ export default function ElectricityAssistant() {
         if (active) setReminderVisible(false);
       });
     return () => { active = false; };
-  }, [remindersEnabled]);
+  }, [initialBriefing, remindersEnabled]);
+
+  useEffect(() => {
+    window.localStorage.setItem(CONVERSATION_KEY, JSON.stringify(conversation.slice(-MAX_SAVED_MESSAGES)));
+  }, [conversation]);
+
+  useEffect(() => {
+    if (!isSending) return undefined;
+    const startedAt = performance.now();
+    setElapsedMs(0);
+    const timer = window.setInterval(() => setElapsedMs(performance.now() - startedAt), 250);
+    return () => window.clearInterval(timer);
+  }, [isSending]);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -285,6 +282,7 @@ export default function ElectricityAssistant() {
     if (!question || isSending) return;
     setError(null);
     setIsSlow(false);
+    setStreamingText('');
     setInput('');
     setIsOpen(true);
     if (appendUser) {
@@ -293,11 +291,31 @@ export default function ElectricityAssistant() {
     setIsSending(true);
     slowTimerRef.current = window.setTimeout(() => setIsSlow(true), 8000);
     try {
-      const answer = await fetchAPI<AssistantAnswer>('/api/assistant/chat', {
-        method: 'POST',
-        body: JSON.stringify({ message: question })
-      }, 60_000);
-      setConversation(items => [...items, { id: `a-${Date.now()}`, role: 'assistant', answer }]);
+      let completedAnswer: AssistantAnswer | null = null;
+      let receivedDelta = false;
+      try {
+        await streamAPI<{ text?: string; answer?: AssistantAnswer }>(
+          '/api/assistant/chat/stream',
+          { message: question },
+          event => {
+            if (event.event === 'delta' && event.data.text) {
+              receivedDelta = true;
+              setStreamingText(text => text + event.data.text);
+            }
+            if (event.event === 'done' && event.data.answer) completedAnswer = event.data.answer;
+            if (event.event === 'error') throw new Error('AI 服务暂时不可用');
+          },
+          60_000
+        );
+      } catch (streamError) {
+        if (receivedDelta) throw streamError;
+        completedAnswer = await fetchAPI<AssistantAnswer>('/api/assistant/chat', {
+          method: 'POST',
+          body: JSON.stringify({ message: question })
+        }, 60_000);
+      }
+      if (!completedAnswer) throw new Error('AI 返回内容不完整');
+      setConversation(items => [...items, { id: `a-${Date.now()}`, role: 'assistant', answer: completedAnswer as AssistantAnswer }]);
       setLastFailedQuestion('');
     } catch (requestError) {
       setError(formatErrorMessage(requestError));
@@ -307,6 +325,7 @@ export default function ElectricityAssistant() {
       slowTimerRef.current = null;
       setIsSlow(false);
       setIsSending(false);
+      setStreamingText('');
     }
   };
 
@@ -347,6 +366,7 @@ export default function ElectricityAssistant() {
               <div><strong>布布用电助手</strong><span>{briefing?.aiConfigured ? 'AI 已连接' : '数据查询模式'}</span></div>
             </div>
             <div className="assistant-panel-actions">
+              {conversation.length > 0 && <button type="button" onClick={() => setConversation([])}>清空对话</button>}
               <button type="button" onClick={() => setShowSettings(value => !value)} aria-expanded={showSettings}>提醒设置</button>
               <button type="button" onClick={() => setIsOpen(false)}>关闭</button>
             </div>
@@ -387,9 +407,16 @@ export default function ElectricityAssistant() {
                     <AnswerCard answer={item.answer} onQuestion={question => void sendQuestion(question)} />
                   </div>
                 ) : null)}
+                {streamingText && (
+                  <div className="assistant-response-row is-streaming" aria-live="polite">
+                    <img src={bubuIcon} alt="" />
+                    <div className="assistant-streaming-copy"><AssistantBody text={streamingText} /></div>
+                  </div>
+                )}
                 {isSending && (
                   <div className="assistant-loading" role="status">
-                    {isSlow ? 'AI 响应稍慢，正在进行一次受控重试…' : '布布正在读取最新用电数据…'}
+                    <span>{streamingText ? '正在生成完整回答' : isSlow ? '首次连接较慢，正在自动重试' : '布布正在读取最新用电数据'}</span>
+                    <strong>{(elapsedMs / 1000).toFixed(1)} 秒</strong>
                   </div>
                 )}
                 {error && (

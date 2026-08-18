@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiUrl, fetchAPI } from './api';
+import { apiUrl, fetchAPI, streamAPI } from './api';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -41,5 +41,28 @@ describe('fetchAPI', () => {
       fetchAPI('/api/assistant/chat', { method: 'POST', body: JSON.stringify({ message: 'a' }) })
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('streamAPI', () => {
+  it('delivers SSE text deltas and the final answer', async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: delta\ndata: {"text":"结论："}\n\n'));
+        controller.enqueue(encoder.encode('event: done\ndata: {"answer":{"headline":"完成"}}\n\n'));
+        controller.close();
+      }
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(stream, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' }
+    })));
+    const events: string[] = [];
+    await streamAPI<{ text?: string; answer?: { headline: string } }>('/api/assistant/chat/stream', { message: '测试' }, event => {
+      if (event.data.text) events.push(event.data.text);
+      if (event.data.answer) events.push(event.data.answer.headline);
+    });
+    expect(events).toEqual(['结论：', '完成']);
   });
 });

@@ -6,6 +6,7 @@ import { createSparseCategoryInterval } from '../utils/chartAxis';
 import ChartCardHeader from './ChartCardHeader';
 import { fetchAPI } from '../utils/api';
 import { DeviceBreakdown, deviceSeriesColors, deviceTooltipRows, normalizeDeviceBreakdown } from '../utils/deviceEnergy';
+import type { DailyTrendData } from '../types/dashboard';
 
 interface DailyData {
   date: string;
@@ -19,9 +20,10 @@ interface DailyTrendProps {
   isMobile?: boolean;
   refreshKey?: number;
   theme?: ColorTheme;
+  initialData?: DailyTrendData[];
 }
 
-const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false, refreshKey = 0, theme = 'light' }) => {
+const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false, refreshKey = 0, theme = 'light', initialData }) => {
   const [data, setData] = useState<DailyData[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -43,8 +45,13 @@ const DailyTrend: React.FC<DailyTrendProps> = ({ isMobile = false, refreshKey = 
   }, []);
 
   useEffect(() => {
+    if (initialData) {
+      setData(initialData);
+      setLoading(false);
+      return;
+    }
     fetchData();
-  }, [fetchData, refreshKey]);
+  }, [fetchData, initialData, refreshKey]);
   
   const colors = getChartTheme(theme);
   const totalUsage = data.reduce((total, item) => total + (Number(item.used_kwh) || 0), 0);

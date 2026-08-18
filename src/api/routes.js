@@ -11,6 +11,7 @@ const summaryReport = require('../services/summaryReport');
 const batteryAlertService = require('../services/batteryAlertService');
 const dataEvents = require('../services/dataEvents');
 const electricityAssistant = require('../services/electricityAssistant');
+const { loadDashboardSnapshot } = require('../services/dashboardSnapshot');
 const DeviceEnergyReading = require('../models/DeviceEnergyReading');
 const xiaomiHistoryProbe = require('../services/xiaomiHistoryProbe');
 const xiaomiEnergySync = require('../services/xiaomiEnergySync');
@@ -628,6 +629,26 @@ function calculateMonthCostPrediction(monthStats, currentTime, monthStart) {
   };
 }
 
+// 首屏统一快照：由 Express 自动生成 ETag，五分钟内复用同一份聚合结果。
+router.get(
+  '/dashboard-snapshot',
+  (_req, res, next) => {
+    res.set('Cache-Control', 'private, max-age=0, must-revalidate');
+    next();
+  },
+  cacheMiddleware('dashboard_snapshot', 300000),
+  asyncHandler(async (_req, res) => {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        error: '数据库连接不可用',
+        message: 'MongoDB连接已断开，请稍后重试',
+        status: 'database_unavailable'
+      });
+    }
+    return res.json(await loadDashboardSnapshot());
+  })
+);
+
 // 获取总览数据
 router.get('/overview', cacheMiddleware('overview', 60000), asyncHandler(async (req, res) => {
     // 检查数据库连接状态
@@ -981,6 +1002,46 @@ router.post('/assistant/chat', asyncHandler(async (req, res) => {
 
   res.json(await electricityAssistant.answerQuestion(message));
 }));
+
+// 流式用电问答。上游支持 SSE 时直接转发文本增量，同时用心跳穿过 Railway 代理。
+router.post('/assistant/chat/stream', async (req, res) => {
+  const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+  if (!message || message.length > 500) {
+    return res.status(400).json({ error: !message ? '请输入用电问题' : '问题不能超过 500 个字符' });
+  }
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ error: '数据库连接不可用', status: 'database_unavailable' });
+  }
+
+  res.status(200);
+  res.set({
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+  res.flushHeaders?.();
+  const send = (event, data) => {
+    if (!res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+  const keepAlive = setInterval(() => {
+    if (!res.writableEnded) res.write(': keep-alive\n\n');
+  }, 10000);
+
+  try {
+    send('status', { phase: 'preparing' });
+    const answer = await electricityAssistant.answerQuestion(message, {
+      onDelta: text => send('delta', { text })
+    });
+    send('done', { answer });
+  } catch (error) {
+    logger.error('流式 AI 问答失败:', error.message);
+    send('error', { message: 'AI 服务暂时不可用，请稍后重试' });
+  } finally {
+    clearInterval(keepAlive);
+    if (!res.writableEnded) res.end();
+  }
+});
 
 // 手动触发爬取
 router.post('/crawl', async (req, res) => {

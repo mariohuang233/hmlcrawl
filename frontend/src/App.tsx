@@ -1,4 +1,4 @@
-import React, { lazy, startTransition, useState, useEffect, useCallback, useRef } from 'react';
+import React, { lazy, useState, useEffect, useCallback, useRef } from 'react';
 import Overview from './components/Overview';
 import DeferredSection from './components/DeferredSection';
 import { fetchAPI, retryRequest, formatErrorMessage } from './utils/api';
@@ -6,14 +6,16 @@ import bubuIcon from './assets/bubu.png';
 import { ColorTheme } from './utils/chartTheme';
 import ElectricityAssistant from './components/ElectricityAssistant';
 import DeviceEnergy from './components/DeviceEnergy';
+import type { DashboardSnapshot } from './types/dashboard';
 
 const Trend24h = lazy(() => import('./components/Trend24h'));
 const TodayUsage = lazy(() => import('./components/TodayUsage'));
 const DailyTrend = lazy(() => import('./components/DailyTrend'));
 const MonthlyTrend = lazy(() => import('./components/MonthlyTrend'));
 const RechargeHistory = lazy(() => import('./components/RechargeHistory'));
-const DATA_REFRESH_INTERVAL_MS = 60 * 1000;
-const DETAIL_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const DEFAULT_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const SNAPSHOT_CACHE_KEY = 'electricity-dashboard-snapshot-v1';
+const SNAPSHOT_MAX_AGE_MS = 30 * 60 * 1000;
 
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = useState(false);
@@ -123,11 +125,22 @@ function getCollectionStatus(data: OverviewData | null) {
   return { level: 'offline', label: '数据离线', ageLabel };
 }
 
+function readCachedSnapshot(): DashboardSnapshot<OverviewData> | null {
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(SNAPSHOT_CACHE_KEY) || 'null') as DashboardSnapshot<OverviewData> | null;
+    if (!cached?.generated_at || Date.now() - new Date(cached.generated_at).getTime() > SNAPSHOT_MAX_AGE_MS) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
 function App() {
   const lastRefreshAtRef = useRef(0);
-  const lastDetailRefreshAtRef = useRef(Date.now());
-  const [overview, setOverview] = useState<OverviewData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cachedSnapshotRef = useRef<DashboardSnapshot<OverviewData> | null>(readCachedSnapshot());
+  const [snapshot, setSnapshot] = useState<DashboardSnapshot<OverviewData> | null>(cachedSnapshotRef.current);
+  const [overview, setOverview] = useState<OverviewData | null>(cachedSnapshotRef.current?.overview || null);
+  const [loading, setLoading] = useState(!cachedSnapshotRef.current);
   const [error, setError] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -155,15 +168,21 @@ function App() {
     setTheme(current => current === 'dark' ? 'light' : 'dark');
   }, []);
 
-  const fetchOverview = useCallback(async (silent = false) => {
+  const fetchSnapshot = useCallback(async (silent = false) => {
     try {
       if (!silent) {
         setLoading(true);
       } else {
         setIsRefreshing(true);
       }
-      const data = await retryRequest(() => fetchAPI<OverviewData>('/api/overview'), 2, 500);
-      setOverview(data);
+      const data = await retryRequest(
+        () => fetchAPI<DashboardSnapshot<OverviewData>>('/api/dashboard-snapshot'),
+        2,
+        500
+      );
+      setSnapshot(data);
+      setOverview(data.overview);
+      window.localStorage.setItem(SNAPSHOT_CACHE_KEY, JSON.stringify(data));
       lastRefreshAtRef.current = Date.now();
       setError(null);
     } catch (err) {
@@ -171,7 +190,7 @@ function App() {
       if (!silent) {
         setError(errorMessage);
       }
-      console.error('Error fetching overview:', err);
+      console.error('Error fetching dashboard snapshot:', err);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -207,13 +226,11 @@ function App() {
   }, []);
 
   const handleRefresh = useCallback(() => {
-    lastDetailRefreshAtRef.current = Date.now();
-    startTransition(() => setRefreshKey(prev => prev + 1));
-    fetchOverview(true);
+    fetchSnapshot(true).then(() => setRefreshKey(prev => prev + 1));
     if (showLogs) {
       fetchLogs();
     }
-  }, [fetchOverview, fetchLogs, showLogs]);
+  }, [fetchSnapshot, fetchLogs, showLogs]);
 
   const handleShowLogs = useCallback(() => {
     if (!showLogs) {
@@ -255,8 +272,8 @@ function App() {
   }, [showMobileMenu]);
 
   useEffect(() => {
-    fetchOverview();
-  }, [fetchOverview]);
+    fetchSnapshot(Boolean(cachedSnapshotRef.current));
+  }, [fetchSnapshot]);
 
   const collectionStatus = getCollectionStatus(overview);
   const collectionStatusDetails = [
@@ -271,24 +288,21 @@ function App() {
     const refreshVisiblePage = () => {
       if (document.visibilityState !== 'visible') return;
       const now = Date.now();
-      if (now - lastRefreshAtRef.current >= DATA_REFRESH_INTERVAL_MS) fetchOverview(true);
-      if (now - lastDetailRefreshAtRef.current >= DETAIL_REFRESH_INTERVAL_MS) {
-        lastDetailRefreshAtRef.current = now;
-        startTransition(() => setRefreshKey(prev => prev + 1));
-      }
+      const refreshInterval = Math.max(DEFAULT_REFRESH_INTERVAL_MS, snapshot?.refresh_after_ms || 0);
+      if (now - lastRefreshAtRef.current >= refreshInterval) fetchSnapshot(true);
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') refreshVisiblePage();
     };
 
-    const interval = setInterval(() => refreshVisiblePage(), DATA_REFRESH_INTERVAL_MS);
+    const interval = setInterval(() => refreshVisiblePage(), DEFAULT_REFRESH_INTERVAL_MS);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [fetchOverview]);
+  }, [fetchSnapshot, snapshot?.refresh_after_ms]);
 
   if (loading) {
     return (
@@ -456,26 +470,26 @@ function App() {
 
           <div className={isMobile ? 'charts-grid-mobile' : 'charts-grid'}>
             <DeferredSection label="24小时趋势">
-              <Trend24h isMobile={isMobile} refreshKey={refreshKey} theme={theme} />
+              <Trend24h isMobile={isMobile} refreshKey={refreshKey} theme={theme} initialData={snapshot?.trends?.last24h} />
             </DeferredSection>
             <DeferredSection label="今日用电分布">
-              <TodayUsage isMobile={isMobile} refreshKey={refreshKey} theme={theme} />
+              <TodayUsage isMobile={isMobile} refreshKey={refreshKey} theme={theme} initialData={snapshot?.trends?.today} />
             </DeferredSection>
           </div>
 
-          <DeviceEnergy refreshKey={refreshKey} />
+          <DeviceEnergy refreshKey={refreshKey} initialData={snapshot?.device_energy} />
 
           <div className={isMobile ? 'charts-grid-mobile' : 'charts-grid'}>
             <DeferredSection label="30天用电趋势">
-              <DailyTrend isMobile={isMobile} refreshKey={refreshKey} theme={theme} />
+              <DailyTrend isMobile={isMobile} refreshKey={refreshKey} theme={theme} initialData={snapshot?.trends?.days30} />
             </DeferredSection>
             <DeferredSection label="12个月用电趋势">
-              <MonthlyTrend isMobile={isMobile} refreshKey={refreshKey} theme={theme} />
+              <MonthlyTrend isMobile={isMobile} refreshKey={refreshKey} theme={theme} initialData={snapshot?.trends?.months12} />
             </DeferredSection>
           </div>
 
           <DeferredSection label="充值记录" minHeight={240} rootMargin="500px 0px">
-            <RechargeHistory isMobile={isMobile} refreshKey={refreshKey} />
+            <RechargeHistory isMobile={isMobile} refreshKey={refreshKey} initialData={snapshot?.recharge_history} />
           </DeferredSection>
           
           {showLogs && (
@@ -524,7 +538,7 @@ function App() {
           )}
         </div>
       </main>
-      <ElectricityAssistant />
+      <ElectricityAssistant initialBriefing={snapshot?.assistant_briefing} />
     </div>
   );
 }

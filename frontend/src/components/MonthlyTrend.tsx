@@ -6,6 +6,7 @@ import { createSparseCategoryInterval } from '../utils/chartAxis';
 import ChartCardHeader from './ChartCardHeader';
 import { fetchAPI } from '../utils/api';
 import { DeviceBreakdown, deviceSeriesColors, deviceTooltipRows, normalizeDeviceBreakdown } from '../utils/deviceEnergy';
+import type { MonthlyTrendData } from '../types/dashboard';
 
 interface MonthlyData {
   month: string;
@@ -19,9 +20,10 @@ interface MonthlyTrendProps {
   isMobile?: boolean;
   refreshKey?: number;
   theme?: ColorTheme;
+  initialData?: MonthlyTrendData[];
 }
 
-const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false, refreshKey = 0, theme = 'light' }) => {
+const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false, refreshKey = 0, theme = 'light', initialData }) => {
   const [data, setData] = useState<MonthlyData[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -54,8 +56,13 @@ const MonthlyTrend: React.FC<MonthlyTrendProps> = ({ isMobile = false, refreshKe
   }, []);
 
   useEffect(() => {
+    if (initialData) {
+      setData(initialData);
+      setLoading(false);
+      return;
+    }
     fetchData();
-  }, [fetchData, refreshKey]);
+  }, [fetchData, initialData, refreshKey]);
   
   const colors = getChartTheme(theme);
   const currentMonthUsage = data.length > 0 ? data[data.length - 1].used_kwh : 0;

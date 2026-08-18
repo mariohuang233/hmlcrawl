@@ -11,7 +11,6 @@ const {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_METER_ID = '18100071580';
 const DEFAULT_AI_TIMEOUT_MS = 18000;
-const DEFAULT_AI_RETRY_TIMEOUT_MS = 8000;
 
 function boundedPositiveInteger(value, fallback, maximum = 60000) {
   const parsed = Number(value);
@@ -39,57 +38,87 @@ function formatDelta(value) {
   return `较对比时段${value > 0 ? '高' : '低'} ${Math.abs(value)}%`;
 }
 
-function bucketHourlyUsage(records) {
-  const buckets = Array.from({ length: 24 }, (_, hour) => ({ hour, kwh: 0 }));
-  for (let index = 1; index < records.length; index += 1) {
-    const previous = records[index - 1];
-    const current = records[index];
-    const used = previous.remaining_kwh - current.remaining_kwh;
-    if (used >= 0) buckets[getBeijingHour(current.collected_at)].kwh += used;
-  }
-  return buckets.map(item => ({ ...item, kwh: round(item.kwh) }));
+function bucketTime(bucket) {
+  return Date.parse(`${bucket.key}T${String(Number(bucket.hour || 0)).padStart(2, '0')}:00:00+08:00`);
 }
 
-function statsFromRecords(records, startDate, endDate) {
-  const data = records.filter(record => {
-    const collectedAt = new Date(record.collected_at).getTime();
-    return collectedAt >= startDate.getTime() && collectedAt <= endDate.getTime();
+function statsFromHourlyBuckets(buckets, startDate, endDate) {
+  const selected = buckets.filter(bucket => {
+    const time = bucketTime(bucket);
+    return time >= startDate.getTime() && time <= endDate.getTime();
   });
-  let totalUsage = 0;
-  let validPoints = 0;
-  for (let index = 1; index < data.length; index += 1) {
-    const used = data[index - 1].remaining_kwh - data[index].remaining_kwh;
-    if (used >= 0) {
-      totalUsage += used;
-      validPoints += 1;
-    }
-  }
-  return { totalUsage: round(totalUsage), dataPoints: data.length, validPoints };
+  return {
+    totalUsage: round(selected.reduce((sum, bucket) => sum + Number(bucket.used_kwh || 0), 0)),
+    dataPoints: selected.length,
+    validPoints: selected.filter(bucket => Number(bucket.used_kwh || 0) > 0).length
+  };
 }
 
-function dailyUsageFromRecords(records, todayStart, daysCount = 8) {
+function hourlySeriesForDate(buckets, key) {
+  const values = new Map(buckets.filter(bucket => bucket.key === key).map(bucket => [Number(bucket.hour), Number(bucket.used_kwh || 0)]));
+  return Array.from({ length: 24 }, (_, hour) => ({ hour, kwh: round(values.get(hour)) }));
+}
+
+function dailyUsageFromHourlyBuckets(buckets, todayStart, daysCount = 8) {
   const totals = new Map();
-  for (let index = 1; index < records.length; index += 1) {
-    const used = records[index - 1].remaining_kwh - records[index].remaining_kwh;
-    if (used < 0) continue;
-    const beijingDate = new Date(new Date(records[index].collected_at).getTime() + 8 * 60 * 60 * 1000);
-    const date = beijingDate.toISOString().slice(0, 10);
-    totals.set(date, (totals.get(date) || 0) + used);
-  }
+  for (const bucket of buckets) totals.set(bucket.key, (totals.get(bucket.key) || 0) + Number(bucket.used_kwh || 0));
   return Array.from({ length: daysCount }, (_, index) => {
     const date = new Date(todayStart.getTime() - (daysCount - 1 - index) * DAY_MS);
     const beijingDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-    const dateKey = beijingDate.toISOString().slice(0, 10);
-    return { date: dateKey, usageKwh: round(totals.get(dateKey) || 0), dayOfWeek: beijingDate.getUTCDay() };
+    const key = beijingDate.toISOString().slice(0, 10);
+    return { date: key, usageKwh: round(totals.get(key)), dayOfWeek: beijingDate.getUTCDay() };
   });
+}
+
+function dashboardDetails(last24Records, hourlyBuckets, deviceDaily, todayStart, now) {
+  const dayMs = DAY_MS;
+  const last24Start = new Date(now.getTime() - dayMs);
+  const selectedLast24Records = last24Records.filter(record => new Date(record.collected_at) >= last24Start);
+  const last24Trend = [];
+  for (let index = 1; index < selectedLast24Records.length; index += 1) {
+    const previous = selectedLast24Records[index - 1];
+    const current = selectedLast24Records[index];
+    const used = Number(previous.remaining_kwh) - Number(current.remaining_kwh);
+    if (used < 0) continue;
+    last24Trend.push({
+      time: new Date(current.collected_at).toISOString(),
+      used_kwh: round(used),
+      remaining_kwh: round(current.remaining_kwh)
+    });
+  }
+
+  const hourlyHistory = Array.from({ length: 24 }, () => ({ total: 0, dates: new Set() }));
+  const todayKey = new Date(todayStart.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  for (const bucket of hourlyBuckets) {
+    if (bucket.key === todayKey) continue;
+    const hour = Number(bucket.hour || 0);
+    hourlyHistory[hour].total += Number(bucket.used_kwh || 0);
+    hourlyHistory[hour].dates.add(bucket.key);
+  }
+
+  const deviceDailyBreakdowns = Object.fromEntries(
+    [...deviceDaily.entries()].map(([date, value]) => [date, {
+      air_conditioner_kwh: round(value.air_conditioner_kwh),
+      water_heater_kwh: round(value.water_heater_kwh)
+    }])
+  );
+
+  return {
+    last24Trend,
+    thirtyDayUsage: dailyUsageFromHourlyBuckets(hourlyBuckets, todayStart, 30),
+    averageHourly: hourlyHistory.map(item => round(item.total / Math.max(1, item.dates.size))),
+    deviceDailyBreakdowns
+  };
 }
 
 function summarizeDevices(deviceDaily, todayStart, todayUsage, monthUsage, now) {
   const dateKey = date => new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const todayKey = dateKey(todayStart);
+  const monthStartKey = `${todayKey.slice(0, 7)}-01`;
   const today = withOther(deviceDaily.get(todayKey), todayUsage);
   const monthMeasured = { air_conditioner_kwh: 0, water_heater_kwh: 0 };
-  for (const value of deviceDaily.values()) {
+  for (const [key, value] of deviceDaily.entries()) {
+    if (key < monthStartKey) continue;
     monthMeasured.air_conditioner_kwh += Number(value.air_conditioner_kwh || 0);
     monthMeasured.water_heater_kwh += Number(value.water_heater_kwh || 0);
   }
@@ -132,34 +161,34 @@ async function loadContext(now = new Date()) {
   const weekStart = getBeijingWeekStart(now);
   const monthStart = getBeijingMonthStart(now);
   const sevenDaysStart = new Date(todayStart.getTime() - 7 * DAY_MS);
+  const thirtyDaysStart = new Date(todayStart.getTime() - 29 * DAY_MS);
   const previousWeekStart = new Date(weekStart.getTime() - 7 * DAY_MS);
   const previousWeekEnd = new Date(weekStart.getTime() - 1);
   const previousWeekSameEnd = new Date(previousWeekStart.getTime() + Math.max(0, now.getTime() - weekStart.getTime()));
 
-  // One indexed range read replaces nine concurrent queries. This avoids exhausting
-  // the small remote MongoDB connection pool when the dashboard loads in parallel.
-  const queryStart = new Date(Math.min(monthStart.getTime(), sevenDaysStart.getTime(), yesterdayStart.getTime(), previousWeekStart.getTime()));
-  const [records, deviceDaily] = await Promise.all([
-    Usage.getUsageInRange(meterId, queryStart, now),
-    getDeviceDailyMap(monthStart, now).catch(() => new Map())
+  // Aggregate the long range in MongoDB and only transfer raw samples for the
+  // 24-hour sparkline. This keeps the first dashboard/AI request lightweight.
+  const queryStart = new Date(Math.min(monthStart.getTime(), thirtyDaysStart.getTime(), sevenDaysStart.getTime(), yesterdayStart.getTime(), previousWeekStart.getTime()));
+  const last24Start = new Date(now.getTime() - DAY_MS);
+  const [hourlyBuckets, last24Records, latest, deviceDaily] = await Promise.all([
+    Usage.getUsageBuckets(meterId, queryStart, now, 'hour'),
+    Usage.getUsageInRange(meterId, last24Start, now),
+    Usage.getLatestUsage(meterId),
+    getDeviceDailyMap(queryStart, now).catch(() => new Map())
   ]);
-  const latest = records.at(-1) || await Usage.getLatestUsage(meterId);
-  const todayStats = statsFromRecords(records, todayStart, now);
-  const yesterdaySameStats = statsFromRecords(records, yesterdayStart, yesterdaySameTime);
-  const yesterdayStats = statsFromRecords(records, yesterdayStart, yesterdayEnd);
-  const weekStats = statsFromRecords(records, weekStart, now);
-  const previousWeekStats = statsFromRecords(records, previousWeekStart, previousWeekEnd);
-  const previousWeekSameStats = statsFromRecords(records, previousWeekStart, previousWeekSameEnd);
-  const monthStats = statsFromRecords(records, monthStart, now);
-  const todayRecords = records.filter(record => new Date(record.collected_at) >= todayStart);
-  const yesterdayRecords = records.filter(record => {
-    const collectedAt = new Date(record.collected_at);
-    return collectedAt >= yesterdayStart && collectedAt <= yesterdaySameTime;
-  });
-  const dailyUsage = dailyUsageFromRecords(records, todayStart, 8);
+  const todayStats = statsFromHourlyBuckets(hourlyBuckets, todayStart, now);
+  const yesterdaySameStats = statsFromHourlyBuckets(hourlyBuckets, yesterdayStart, yesterdaySameTime);
+  const yesterdayStats = statsFromHourlyBuckets(hourlyBuckets, yesterdayStart, yesterdayEnd);
+  const weekStats = statsFromHourlyBuckets(hourlyBuckets, weekStart, now);
+  const previousWeekStats = statsFromHourlyBuckets(hourlyBuckets, previousWeekStart, previousWeekEnd);
+  const previousWeekSameStats = statsFromHourlyBuckets(hourlyBuckets, previousWeekStart, previousWeekSameEnd);
+  const monthStats = statsFromHourlyBuckets(hourlyBuckets, monthStart, now);
+  const todayKey = new Date(todayStart.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const yesterdayKey = new Date(yesterdayStart.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const dailyUsage = dailyUsageFromHourlyBuckets(hourlyBuckets, todayStart, 8);
 
-  const todayHourly = bucketHourlyUsage(todayRecords);
-  const yesterdayHourly = bucketHourlyUsage(yesterdayRecords);
+  const todayHourly = hourlySeriesForDate(hourlyBuckets, todayKey);
+  const yesterdayHourly = hourlySeriesForDate(hourlyBuckets, yesterdayKey);
   const elapsedHours = Math.max(1, elapsedMs / (60 * 60 * 1000));
   const paceProjection = round((todayStats.totalUsage / elapsedHours) * 24);
   const samePeriodDelta = percentageChange(todayStats.totalUsage, yesterdaySameStats.totalUsage);
@@ -168,11 +197,13 @@ async function loadContext(now = new Date()) {
   const peak = activeHours.reduce((best, item) => item.kwh > (best?.kwh || 0) ? item : best, null);
   const sevenDayPeak = dailyUsage.reduce((best, item) => item.usageKwh > (best?.usageKwh || 0) ? item : best, null);
   const deviceEnergy = summarizeDevices(deviceDaily, todayStart, todayStats.totalUsage, monthStats.totalUsage, now);
+  const dashboard = dashboardDetails(last24Records, hourlyBuckets, deviceDaily, todayStart, now);
 
   return {
     meterId,
     generatedAt: now.toISOString(),
     updatedAt: latestCollectedAt ? new Date(latestCollectedAt).toISOString() : null,
+    collectionSource: latest?.source || null,
     updatedLabel: latestCollectedAt ? formatBeijingTime(new Date(latestCollectedAt), 'time') : '暂无数据',
     remainingKwh: round(latest?.remaining_kwh),
     todayUsage: round(todayStats.totalUsage),
@@ -192,6 +223,7 @@ async function loadContext(now = new Date()) {
     sevenDayUsage: dailyUsage.slice(-7),
     sevenDayPeak,
     deviceEnergy,
+    dashboard,
     dataComplete: todayStats.dataPoints >= 2
   };
 }
@@ -541,6 +573,7 @@ async function askConfiguredModel(message, context, requestedModel, options = {}
         model,
         temperature: 0.2,
         max_tokens: maxTokens,
+        stream: typeof options.onDelta === 'function',
         messages: [
           {
             role: 'system',
@@ -584,9 +617,46 @@ async function askConfiguredModel(message, context, requestedModel, options = {}
         model
       };
     }
-    const payload = await response.json();
-    const finishReason = payload?.choices?.[0]?.finish_reason || null;
-    const text = extractAIText(payload);
+    let finishReason = null;
+    let text = null;
+    if (typeof options.onDelta === 'function' && response.body) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let streamedText = '';
+      const consumeLine = line => {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) return;
+        const data = trimmed.slice(5).trim();
+        if (!data || data === '[DONE]') return;
+        try {
+          const payload = JSON.parse(data);
+          const choice = payload?.choices?.[0];
+          const delta = choice?.delta?.content;
+          if (typeof delta === 'string' && delta) {
+            streamedText += delta;
+            options.onDelta(delta);
+          }
+          if (choice?.finish_reason) finishReason = choice.finish_reason;
+        } catch {
+          // Ignore malformed keep-alive lines from OpenAI-compatible gateways.
+        }
+      };
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() || '';
+        lines.forEach(consumeLine);
+        if (done) break;
+      }
+      if (buffer) consumeLine(buffer);
+      text = streamedText.trim() || null;
+    } else {
+      const payload = await response.json();
+      finishReason = payload?.choices?.[0]?.finish_reason || null;
+      text = extractAIText(payload);
+    }
     if (!text || finishReason === 'length') {
       logAIWarning('AI model returned an incomplete response', {
         model,
@@ -697,39 +767,46 @@ async function getBriefing() {
   };
 }
 
-async function answerQuestion(message) {
+async function answerQuestion(message, options = {}) {
+  const startedAt = Date.now();
+  const finish = answer => ({ ...answer, elapsedMs: Date.now() - startedAt });
   const intent = classifyIntent(message);
-  if (intent === 'out_of_scope') return buildOutOfScopeAnswer();
-  if (intent === 'unknown') return buildClarificationAnswer();
+  if (intent === 'out_of_scope') return finish(buildOutOfScopeAnswer());
+  if (intent === 'unknown') return finish(buildClarificationAnswer());
 
   const context = await buildContext();
   const deterministic = buildDeterministicAnswer(intent, context);
   if (needsAIAnalysis(message, intent)) {
     const primaryModel = process.env.AI_MODEL;
     const fallbackModel = process.env.AI_FALLBACK_MODEL;
+    let emittedDelta = false;
+    const onDelta = typeof options.onDelta === 'function'
+      ? delta => { emittedDelta = true; options.onDelta(delta); }
+      : undefined;
     let completion = await askConfiguredModel(message, context, primaryModel, {
-      timeoutMs: boundedPositiveInteger(process.env.AI_TIMEOUT_MS, DEFAULT_AI_TIMEOUT_MS)
+      timeoutMs: boundedPositiveInteger(process.env.AI_TIMEOUT_MS, 28000),
+      onDelta
     });
     const hasDifferentFallback = Boolean(fallbackModel && fallbackModel !== primaryModel);
     const fallbackCanHelp = hasDifferentFallback && (
       !completion.reason ||
       ['empty_response', 'truncated', 'http_404'].includes(completion.reason)
     );
-    if (!isUsableAIText(completion.text) && (completion.retryable || fallbackCanHelp)) {
+    if (!emittedDelta && !isUsableAIText(completion.text) && (completion.retryable || fallbackCanHelp)) {
       await new Promise(resolve => setTimeout(resolve, completion.retryAfterMs || 300));
       completion = await askConfiguredModel(
         message,
         context,
         hasDifferentFallback ? fallbackModel : primaryModel,
         {
-          timeoutMs: boundedPositiveInteger(process.env.AI_RETRY_TIMEOUT_MS, DEFAULT_AI_RETRY_TIMEOUT_MS),
+          timeoutMs: boundedPositiveInteger(process.env.AI_RETRY_TIMEOUT_MS, 20000),
           maxTokens: completion.reason === 'truncated' ? 1300 : 900
         }
       );
     }
     const aiText = completion.text;
     if (isUsableAIText(aiText)) {
-      return {
+      return finish({
         ...deterministic,
         headline: '布布的 AI 分析',
         body: aiText,
@@ -737,14 +814,14 @@ async function answerQuestion(message) {
         mode: 'ai',
         disclaimer: 'AI 只负责解释与建议，所有用电数值均来自电表数据。',
         quickReplies: ['比较本周和上周', '预计本月用多少？']
-      };
+      });
     }
-    return {
+    return finish({
       ...deterministic,
       disclaimer: `${deterministic.disclaimer ? `${deterministic.disclaimer} ` : ''}AI 分析服务暂时不可用，本次显示确定性数据分析。`
-    };
+    });
   }
-  return deterministic;
+  return finish(deterministic);
 }
 
 module.exports = {

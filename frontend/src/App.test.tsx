@@ -21,37 +21,54 @@ const overviewFixture = {
   month_cost: 46.2,
 };
 
+const assistantBriefingFixture = {
+  available: true,
+  aiConfigured: false,
+  notification: {
+    id: 'device-test', type: 'device', severity: 'warning', title: '空调今日用电偏高',
+    message: '今日已用 1.2 kWh。', actionLabel: '查看设备分析', prompt: '分析空调今天的用电', source: '更新于 10:28', proactive: true
+  },
+  welcome: {},
+  quickReplies: ['今天用了多少？', '为什么变高？']
+};
+
+const deviceEnergyFixture = {
+  success: true,
+  configured: true,
+  updated_at: new Date().toISOString(),
+  devices: [
+    { device_id: 'air_conditioner', device_name: '空调', today_kwh: 1.2, month_kwh: 18.4, updated_at: new Date().toISOString(), coverage: { today_complete: true, month_complete: true } },
+    { device_id: 'water_heater', device_name: '热水器', today_kwh: 0.8, month_kwh: 12.6, updated_at: new Date().toISOString(), coverage: { today_complete: true, month_complete: true } }
+  ],
+  totals: { today_kwh: 2.8, month_kwh: 76.4, monitored_today_kwh: 2, monitored_month_kwh: 31, other_today_kwh: 0.8, other_month_kwh: 45.4, monitored_month_cost: 31 }
+};
+
+const snapshotFixture = {
+  generated_at: new Date().toISOString(),
+  refresh_after_ms: 300000,
+  modules: {},
+  overview: overviewFixture,
+  trends: { last24h: [], today: [], days30: [], months12: [] },
+  device_energy: deviceEnergyFixture,
+  recharge_history: { total: 0, totalRechargeKwh: 0, records: [] },
+  assistant_briefing: assistantBriefingFixture
+};
+
 beforeEach(() => {
   window.localStorage.clear();
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     let payload: unknown = overviewFixture;
-    if (url.includes('/api/assistant/briefing')) {
-      payload = {
-        available: true,
-        aiConfigured: false,
-        notification: {
-          id: 'device-test', type: 'device', severity: 'warning', title: '空调今日用电偏高',
-          message: '今日已用 1.2 kWh。', actionLabel: '查看设备分析', prompt: '分析空调今天的用电', source: '更新于 10:28', proactive: true
-        },
-        welcome: {},
-        quickReplies: ['今天用了多少？', '为什么变高？']
-      };
+    if (url.includes('/api/dashboard-snapshot')) {
+      payload = snapshotFixture;
+    } else if (url.includes('/api/assistant/briefing')) {
+      payload = assistantBriefingFixture;
     } else if (url.includes('/api/trend/')) {
       payload = [];
     } else if (url.includes('/api/recharge-history')) {
       payload = { success: true, records: [] };
     } else if (url.includes('/api/device-energy/summary')) {
-      payload = {
-        success: true,
-        configured: true,
-        updated_at: new Date().toISOString(),
-        devices: [
-          { device_id: 'air_conditioner', device_name: '空调', today_kwh: 1.2, month_kwh: 18.4, updated_at: new Date().toISOString(), coverage: { today_complete: true, month_complete: true } },
-          { device_id: 'water_heater', device_name: '热水器', today_kwh: 0.8, month_kwh: 12.6, updated_at: new Date().toISOString(), coverage: { today_complete: true, month_complete: true } }
-        ],
-        totals: { today_kwh: 2.8, month_kwh: 76.4, monitored_today_kwh: 2, monitored_month_kwh: 31, other_today_kwh: 0.8, other_month_kwh: 45.4, monitored_month_cost: 31 }
-      };
+      payload = deviceEnergyFixture;
     } else if (url.includes('/api/assistant/chat') && init?.method === 'POST') {
       payload = {
         role: 'assistant', intent: 'today', headline: '截至 10:28，今日已用 2.18 kWh',
@@ -106,7 +123,20 @@ test('opens the assistant and answers a grounded quick question', async () => {
 
   expect(await screen.findByText('截至 10:28，今日已用 2.18 kWh')).toBeInTheDocument();
   expect(screen.getByText('基于电表数据 · 更新于 10:28')).toBeInTheDocument();
+  expect(window.localStorage.getItem('electricity-assistant-conversation-v1')).toContain('截至 10:28');
 }, 15000);
+
+test('restores the saved assistant conversation after remounting', async () => {
+  window.localStorage.setItem('electricity-assistant-conversation-v1', JSON.stringify([
+    { id: 'u-saved', role: 'user', text: '今天用了多少？' },
+    { id: 'a-saved', role: 'assistant', answer: { role: 'assistant', intent: 'today', headline: '已保存的回答', body: '今日数据已恢复。', source: '本地会话', mode: 'data' } }
+  ]));
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole('button', { name: '打开布布用电助手' }));
+  expect(screen.getByText('已保存的回答')).toBeInTheDocument();
+  expect(screen.getByText('今天用了多少？')).toBeInTheDocument();
+});
 
 test('opens a Xiaomi-aware smart reminder and applies global reminder cooldown', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });

@@ -6,6 +6,7 @@ import { createSparseCategoryInterval } from '../utils/chartAxis';
 import ChartCardHeader from './ChartCardHeader';
 import { fetchAPI, formatErrorMessage } from '../utils/api';
 import { DeviceBreakdown, normalizeDeviceBreakdown } from '../utils/deviceEnergy';
+import type { TodayTrendData } from '../types/dashboard';
 
 interface TodayData {
   hour: number;
@@ -21,9 +22,10 @@ interface TodayUsageProps {
   isMobile?: boolean;
   refreshKey?: number;
   theme?: ColorTheme;
+  initialData?: TodayTrendData[];
 }
 
-const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, refreshKey = 0, theme = 'light' }) => {
+const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, refreshKey = 0, theme = 'light', initialData }) => {
   const [data, setData] = useState<TodayData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,8 +50,14 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
   }, []);
 
   useEffect(() => {
+    if (initialData) {
+      setData(initialData);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     fetchData();
-  }, [fetchData, refreshKey]);
+  }, [fetchData, initialData, refreshKey]);
   
   const colors = useMemo(() => getChartTheme(theme), [theme]);
   const todayTotal = useMemo(

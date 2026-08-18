@@ -5,6 +5,7 @@ import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
 interface RechargeHistoryProps {
   isMobile?: boolean;
   refreshKey?: number;
+  initialData?: RechargeHistoryData;
 }
 
 const MINUTE_MS = 60 * 1000;
@@ -36,7 +37,7 @@ const formatDuration = (durationMs: number, compact = false) => {
   return `${minutes}分钟`;
 };
 
-const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, refreshKey = 0 }) => {
+const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, refreshKey = 0, initialData }) => {
   const [data, setData] = useState<RechargeHistoryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,8 +68,14 @@ const RechargeHistory: React.FC<RechargeHistoryProps> = ({ isMobile = false, ref
   }, []);
 
   useEffect(() => {
+    if (initialData) {
+      setData(initialData);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     fetchData();
-  }, [fetchData, refreshKey]);
+  }, [fetchData, initialData, refreshKey]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), MINUTE_MS);

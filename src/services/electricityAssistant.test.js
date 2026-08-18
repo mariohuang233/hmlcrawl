@@ -134,6 +134,35 @@ test('marks rate limits as retryable without exposing provider payloads', async 
   assert.equal(result.text, null);
 });
 
+test('streams compatible provider deltas without waiting for the full response', async t => {
+  const originalFetch = global.fetch;
+  const originalKey = process.env.AI_API_KEY;
+  const originalModel = process.env.AI_MODEL;
+  t.after(() => {
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.AI_API_KEY;
+    else process.env.AI_API_KEY = originalKey;
+    if (originalModel === undefined) delete process.env.AI_MODEL;
+    else process.env.AI_MODEL = originalModel;
+  });
+  process.env.AI_API_KEY = 'test-key';
+  process.env.AI_MODEL = 'test-model';
+  global.fetch = async () => new Response([
+    'data: {"choices":[{"delta":{"content":"结论：当前正常。"}}]}\n\n',
+    'data: {"choices":[{"delta":{"content":"建议：继续观察。"},"finish_reason":"stop"}]}\n\n',
+    'data: [DONE]\n\n'
+  ].join(''), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  const deltas = [];
+  const result = await askConfiguredModel('分析用电', context, undefined, {
+    timeoutMs: 1000,
+    silent: true,
+    onDelta: delta => deltas.push(delta)
+  });
+  assert.deepEqual(deltas, ['结论：当前正常。', '建议：继续观察。']);
+  assert.equal(result.text, '结论：当前正常。建议：继续观察。');
+  assert.equal(result.finishReason, 'stop');
+});
+
 test('caps provider retry-after delays to keep the assistant responsive', () => {
   assert.equal(retryDelayFromResponse({ status: 429, headers: { get: () => '30' } }), 3000);
   assert.equal(retryDelayFromResponse({ status: 429, headers: { get: () => null } }), 1000);

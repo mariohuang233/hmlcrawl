@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchAPI, formatErrorMessage, retryRequest } from '../utils/api';
 import { useIntersectionObserver } from '../hooks/useIntersectionObserver';
+import type { DeviceEnergySnapshot } from '../types/dashboard';
 
 interface DeviceEnergyItem {
   device_id: string;
@@ -32,11 +33,12 @@ interface DeviceEnergySummary {
 
 interface DeviceEnergyProps {
   refreshKey?: number;
+  initialData?: DeviceEnergySnapshot;
 }
 
 const formatKwh = (value: number) => Number.isFinite(value) ? value.toFixed(2) : '0.00';
 
-const DeviceEnergy: React.FC<DeviceEnergyProps> = ({ refreshKey = 0 }) => {
+const DeviceEnergy: React.FC<DeviceEnergyProps> = ({ refreshKey = 0, initialData }) => {
   const [data, setData] = useState<DeviceEnergySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,8 +61,14 @@ const DeviceEnergy: React.FC<DeviceEnergyProps> = ({ refreshKey = 0 }) => {
   }, []);
 
   useEffect(() => {
+    if (initialData) {
+      setData(initialData);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     load();
-  }, [load, refreshKey]);
+  }, [initialData, load, refreshKey]);
 
   const cards = useMemo(() => {
     if (!data) return [];

@@ -5,6 +5,7 @@ import { fetchAPI, retryRequest, formatErrorMessage } from '../utils/api';
 import { ColorTheme, getChartTheme } from '../utils/chartTheme';
 import { createSparseCategoryInterval } from '../utils/chartAxis';
 import ChartCardHeader from './ChartCardHeader';
+import type { Trend24hData } from '../types/dashboard';
 
 interface TrendData {
   time: string;
@@ -16,9 +17,10 @@ interface Trend24hProps {
   isMobile?: boolean;
   refreshKey?: number;
   theme?: ColorTheme;
+  initialData?: Trend24hData[];
 }
 
-const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, theme = 'light' }) => {
+const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, theme = 'light', initialData }) => {
   const [data, setData] = useState<TrendData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,8 +107,14 @@ const Trend24h: React.FC<Trend24hProps> = ({ isMobile = false, refreshKey = 0, t
   }, [aggregateDataBy10Min]);
 
   useEffect(() => {
+    if (initialData) {
+      setData(aggregateDataBy10Min(initialData));
+      setError(null);
+      setLoading(false);
+      return;
+    }
     fetchData();
-  }, [fetchData, refreshKey]);
+  }, [aggregateDataBy10Min, fetchData, initialData, refreshKey]);
   
   const mobileState = isMobile;
   const colors = getChartTheme(theme);
