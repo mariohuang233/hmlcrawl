@@ -15,6 +15,14 @@ const { loadDashboardSnapshot } = require('../services/dashboardSnapshot');
 const DeviceEnergyReading = require('../models/DeviceEnergyReading');
 const xiaomiHistoryProbe = require('../services/xiaomiHistoryProbe');
 const xiaomiEnergySync = require('../services/xiaomiEnergySync');
+const xiaomiCloudAuthStore = require('../services/xiaomiCloudAuthStore');
+const {
+  signingSecret: xiaomiReauthSigningSecret,
+  issueAccessToken: issueXiaomiReauthAccessToken,
+  verifyAccessToken: verifyXiaomiReauthAccessToken,
+  publicBaseUrl: xiaomiReauthPublicBaseUrl
+} = require('../services/xiaomiReauthAccess');
+const { sendServerChan } = require('../utils/alerter');
 const {
   getDeviceDailyMap,
   getDeviceMonthlyMap,
@@ -1194,7 +1202,7 @@ router.get('/device-energy/summary', cacheMiddleware('device_energy_summary', 12
   const meterId = process.env.METER_ID || '18100071580';
   const deviceIds = await DeviceEnergyReading.distinct('device_id');
 
-  const [totalBuckets, devices] = await Promise.all([
+  const [totalBuckets, devices, xiaomiStatus] = await Promise.all([
     Usage.getUsageBuckets(meterId, monthStart, now, 'day'),
     Promise.all(deviceIds.map(async deviceId => {
       const [latest, latestDaily] = await Promise.all([
@@ -1224,7 +1232,8 @@ router.get('/device-energy/summary', cacheMiddleware('device_energy_summary', 12
           month_complete: month.complete
         }
       };
-    }))
+    })),
+    xiaomiCloudAuthStore.status().catch(() => null)
   ]);
   const todayKey = new Date(todayStart.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const totalTodayUsage = roundKwh(totalBuckets.find(item => item.key === todayKey)?.used_kwh || 0);
@@ -1238,6 +1247,11 @@ router.get('/device-energy/summary', cacheMiddleware('device_energy_summary', 12
   return res.json({
     success: true,
     configured: deviceIds.length > 0,
+    sync: {
+      status: xiaomiStatus?.reauth_required_at ? 'reauth_required' : xiaomiStatus?.last_error ? 'error' : 'ready',
+      last_sync_at: xiaomiStatus?.last_sync_at || null,
+      message: xiaomiStatus?.last_error || null
+    },
     updated_at: devices.reduce((latest, item) => {
       if (!item.updated_at) return latest;
       return !latest || new Date(item.updated_at) > new Date(latest) ? item.updated_at : latest;
@@ -1408,12 +1422,33 @@ function localOnly(req, res, next) {
   return res.status(403).send(probePage('仅限本机访问', '<h1>仅限本机访问</h1><p>这个敏感测试页只能通过当前电脑的 <code>127.0.0.1</code> 打开。</p>'));
 }
 
-function historyProbeForm(message = '') {
+let lastXiaomiReauthLinkSentAt = 0;
+
+function xiaomiReauthAccess(req, res, next) {
+  const address = String(req.socket.remoteAddress || '');
+  if (address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1') return next();
+  const access = String(req.body?.access || req.query?.access || '');
+  if (verifyXiaomiReauthAccessToken(access, xiaomiReauthSigningSecret())) {
+    req.xiaomiReauthAccess = access;
+    return next();
+  }
+  return res.status(403).send(probePage('安全验证', `
+    <h1>在网页重新连接米家</h1>
+    <p>为了避免把米家账号登录页直接暴露在公网，请先把一个 2 小时有效的安全链接发送到已配置的 Server酱微信；打开后，米家验证码会话有 15 分钟完成时间。</p>
+    <form method="post" action="/api/xiaomi/history-probe/request-access">
+      <button class="button" type="submit" style="border:0;font-size:16px;cursor:pointer">发送安全授权链接</button>
+    </form>
+    <p class="muted">链接只会发送到你的 Server酱账户；米家密码仅用于本次登录，不会保存。</p>
+  `));
+}
+
+function historyProbeForm(message = '', access = '') {
   return probePage('连接米家设备用电', `
     <h1>连接米家设备用电</h1>
     <p>这里只读取两个目标设备的云端日统计，不会控制设备；账号和密码只在本机内存中完成登录，成功后密码立即丢弃，仅将云端会话令牌加密保存，供现有 Web 定时同步。</p>
     ${message ? `<div class="result">${escapeHtml(message)}</div>` : ''}
     <form method="post" action="/api/xiaomi/history-probe/login" autocomplete="off">
+      ${access ? `<input type="hidden" name="access" value="${escapeHtml(access)}">` : ''}
       <p><label>小米账号<br><input name="username" required autocomplete="username" style="box-sizing:border-box;width:100%;padding:11px;border:1px solid #ccd1d8;border-radius:9px;font-size:16px"></label></p>
       <p><label>密码<br><input name="password" type="password" required autocomplete="current-password" style="box-sizing:border-box;width:100%;padding:11px;border:1px solid #ccd1d8;border-radius:9px;font-size:16px"></label></p>
       <button class="button" type="submit" style="border:0;font-size:16px;cursor:pointer">连接并同步</button>
@@ -1422,24 +1457,46 @@ function historyProbeForm(message = '') {
   `);
 }
 
-router.get('/xiaomi/history-probe', localOnly, (req, res) => {
-  res.set('Cache-Control', 'no-store').send(historyProbeForm());
+router.post('/xiaomi/history-probe/request-access', asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const now = Date.now();
+  if (now - lastXiaomiReauthLinkSentAt < 5 * 60 * 1000) {
+    return res.status(429).send(probePage('请稍后再试', '<h1>安全链接刚刚已经发送</h1><p>请检查微信中的 Server酱通知；为避免重复推送，5 分钟内不会再次发送。</p>'));
+  }
+  const baseUrl = xiaomiReauthPublicBaseUrl();
+  const secret = xiaomiReauthSigningSecret();
+  if (!baseUrl || !secret || !process.env.SERVER_CHAN_KEY) {
+    return res.status(503).send(probePage('尚未配置', '<h1>网页重新授权尚未配置完整</h1><p>需要配置公开网址、签名密钥和 Server酱后才能使用。</p>'));
+  }
+  const access = issueXiaomiReauthAccessToken(secret, now);
+  const url = `${baseUrl}/api/xiaomi/history-probe?access=${encodeURIComponent(access)}`;
+  lastXiaomiReauthLinkSentAt = now;
+  const sent = await sendServerChan('米家安全授权链接', `请在 2 小时内打开下面的链接重新连接米家；打开并提交登录后，请在 15 分钟内完成验证码：\n\n[打开米家授权页面](${url})\n\n如果不是你本人操作，请忽略此消息。`);
+  if (!sent) {
+    lastXiaomiReauthLinkSentAt = 0;
+    return res.status(502).send(probePage('发送失败', '<h1>安全链接发送失败</h1><p>请稍后重试，或检查 Server酱配置。</p>'));
+  }
+  return res.send(probePage('已发送', '<h1>安全链接已发送</h1><p>请在 2 小时内打开微信中的 Server酱链接；开始登录后，请在 15 分钟内完成验证码。</p>'));
+}));
+
+router.get('/xiaomi/history-probe', xiaomiReauthAccess, (req, res) => {
+  res.set('Cache-Control', 'no-store').send(historyProbeForm('', req.xiaomiReauthAccess || ''));
 });
 
-router.post('/xiaomi/history-probe/login', localOnly, async (req, res) => {
+router.post('/xiaomi/history-probe/login', xiaomiReauthAccess, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
     const result = await xiaomiHistoryProbe.start(String(req.body.username || '').trim(), String(req.body.password || ''));
     if (result.status === 'complete') {
       xiaomiEnergySync.sync({ forceDays: 32 }).catch(error => logger.warn(`米家首次设备数据保存失败：${error.message}`));
     }
-    return renderHistoryProbeResult(res, result);
+    return renderHistoryProbeResult(res, result, req.xiaomiReauthAccess || '');
   } catch (error) {
-    return res.status(400).send(historyProbeForm(error.message));
+    return res.status(400).send(historyProbeForm(error.message, req.xiaomiReauthAccess || ''));
   }
 });
 
-router.post('/xiaomi/history-probe/continue', localOnly, async (req, res) => {
+router.post('/xiaomi/history-probe/continue', xiaomiReauthAccess, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
     const result = await xiaomiHistoryProbe.advance(req.body.flowId, {
@@ -1449,25 +1506,25 @@ router.post('/xiaomi/history-probe/continue', localOnly, async (req, res) => {
     if (result.status === 'complete') {
       xiaomiEnergySync.sync({ forceDays: 32 }).catch(error => logger.warn(`米家首次设备数据保存失败：${error.message}`));
     }
-    return renderHistoryProbeResult(res, result);
+    return renderHistoryProbeResult(res, result, req.xiaomiReauthAccess || '');
   } catch (error) {
-    return res.status(400).send(historyProbeForm(error.message));
+    return res.status(400).send(historyProbeForm(error.message, req.xiaomiReauthAccess || ''));
   }
 });
 
-function renderHistoryProbeResult(res, result) {
+function renderHistoryProbeResult(res, result, access = '') {
   if (result.status === 'verification') {
     return res.status(202).send(probePage('需要完成小米账号验证', `
       <h1>需要完成账号验证</h1><p>请先打开小米验证页，选择手机或邮箱接收验证码；收到后回到这里，把验证码填入下方再继续。</p>
       <a class="button" href="${escapeHtml(result.verificationUrl)}" target="_blank" rel="noreferrer">打开小米验证页</a>
-      <form method="post" action="/api/xiaomi/history-probe/continue"><input type="hidden" name="flowId" value="${escapeHtml(result.flowId)}"><p><label>短信或邮件验证码<br><input name="verifyTicket" required inputmode="numeric" autocomplete="one-time-code" style="padding:11px;border:1px solid #ccd1d8;border-radius:9px;font-size:16px"></label></p><button class="button" type="submit" style="border:0;font-size:16px;cursor:pointer">提交验证码并读取</button></form>
+      <form method="post" action="/api/xiaomi/history-probe/continue"><input type="hidden" name="flowId" value="${escapeHtml(result.flowId)}">${access ? `<input type="hidden" name="access" value="${escapeHtml(access)}">` : ''}<p><label>短信或邮件验证码<br><input name="verifyTicket" required inputmode="numeric" autocomplete="one-time-code" style="padding:11px;border:1px solid #ccd1d8;border-radius:9px;font-size:16px"></label></p><button class="button" type="submit" style="border:0;font-size:16px;cursor:pointer">提交验证码并读取</button></form>
       <p class="muted">临时登录状态只在内存中保留 15 分钟。</p>
     `));
   }
   if (result.status === 'captcha') {
     return res.status(202).send(probePage('请输入小米验证码', `
       <h1>请输入验证码</h1><p><img src="${escapeHtml(result.captchaImage)}" alt="小米登录验证码" style="max-width:240px;border:1px solid #ddd;border-radius:8px"></p>
-      <form method="post" action="/api/xiaomi/history-probe/continue"><input type="hidden" name="flowId" value="${escapeHtml(result.flowId)}"><p><input name="captcha" required autocomplete="off" style="padding:11px;border:1px solid #ccd1d8;border-radius:9px;font-size:16px"></p><button class="button" type="submit" style="border:0;font-size:16px;cursor:pointer">提交并继续</button></form>
+      <form method="post" action="/api/xiaomi/history-probe/continue"><input type="hidden" name="flowId" value="${escapeHtml(result.flowId)}">${access ? `<input type="hidden" name="access" value="${escapeHtml(access)}">` : ''}<p><input name="captcha" required autocomplete="off" style="padding:11px;border:1px solid #ccd1d8;border-radius:9px;font-size:16px"></p><button class="button" type="submit" style="border:0;font-size:16px;cursor:pointer">提交并继续</button></form>
     `));
   }
   const cards = result.readings.map(item => {

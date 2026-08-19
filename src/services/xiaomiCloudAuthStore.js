@@ -46,7 +46,11 @@ async function save(auth) {
         connected_at: new Date(),
         last_error: null
       },
-      $unset: { backfill_completed_at: 1 }
+      $unset: {
+        backfill_completed_at: 1,
+        reauth_required_at: 1,
+        last_reauth_alert_at: 1
+      }
     },
     { upsert: true }
   );
@@ -58,24 +62,58 @@ async function load() {
 }
 
 async function updateStatus({ success, error, backfill = false }) {
-  await XiaomiCloudCredential.updateOne(
-    { account: 'xiaomi-cn' },
-    { $set: success
-      ? {
+  const update = success
+    ? {
+        $set: {
           last_sync_at: new Date(),
           last_error: null,
           ...(backfill ? { backfill_completed_at: new Date() } : {})
-        }
-      : { last_error: String(error || '同步失败').slice(0, 300) }
-    }
+        },
+        $unset: { reauth_required_at: 1 }
+      }
+    : { $set: { last_error: String(error || '同步失败').slice(0, 300) } };
+  await XiaomiCloudCredential.updateOne({ account: 'xiaomi-cn' }, update);
+}
+
+async function markReauthRequired(error, now = new Date()) {
+  await XiaomiCloudCredential.updateOne(
+    { account: 'xiaomi-cn' },
+    { $set: {
+      last_error: String(error || '米家登录已过期，请重新连接').slice(0, 300),
+      reauth_required_at: now
+    } }
   );
+}
+
+async function claimReauthAlert(now = new Date()) {
+  const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const record = await XiaomiCloudCredential.findOneAndUpdate(
+    {
+      account: 'xiaomi-cn',
+      $or: [
+        { last_reauth_alert_at: { $exists: false } },
+        { last_reauth_alert_at: { $lte: cutoff } }
+      ]
+    },
+    { $set: { last_reauth_alert_at: now } },
+    { new: true }
+  ).select('_id').lean();
+  return Boolean(record);
 }
 
 async function status() {
   const record = await XiaomiCloudCredential.findOne({ account: 'xiaomi-cn' })
-    .select('connected_at last_sync_at backfill_completed_at last_error')
+    .select('connected_at last_sync_at backfill_completed_at reauth_required_at last_error')
     .lean();
   return record || null;
 }
 
-module.exports = { save, load, updateStatus, status, _test: { encrypt, decrypt } };
+module.exports = {
+  save,
+  load,
+  updateStatus,
+  markReauthRequired,
+  claimReauthAlert,
+  status,
+  _test: { encrypt, decrypt }
+};

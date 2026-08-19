@@ -4,6 +4,7 @@ export interface DeviceBreakdownData {
   air_conditioner_kwh: number;
   water_heater_kwh: number;
   other_kwh: number;
+  available?: boolean;
 }
 
 export interface Trend24hData {
@@ -42,6 +43,11 @@ export interface DeviceEnergySnapshot {
   success: boolean;
   configured: boolean;
   updated_at: string | null;
+  sync?: {
+    status: 'ready' | 'error' | 'reauth_required';
+    last_sync_at: string | null;
+    message: string | null;
+  };
   devices: Array<{
     device_id: string;
     device_name: string;

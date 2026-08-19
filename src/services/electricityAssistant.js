@@ -115,6 +115,7 @@ function summarizeDevices(deviceDaily, todayStart, todayUsage, monthUsage, now) 
   const dateKey = date => new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const todayKey = dateKey(todayStart);
   const monthStartKey = `${todayKey.slice(0, 7)}-01`;
+  const todayComplete = deviceDaily.has(todayKey);
   const today = withOther(deviceDaily.get(todayKey), todayUsage);
   const monthMeasured = { air_conditioner_kwh: 0, water_heater_kwh: 0 };
   for (const [key, value] of deviceDaily.entries()) {
@@ -141,6 +142,7 @@ function summarizeDevices(deviceDaily, todayStart, todayUsage, monthUsage, now) 
       name,
       todayKwh,
       monthKwh,
+      todayComplete,
       dailyAverageKwh,
       todayShare: todayUsage > 0 ? round((todayKwh / todayUsage) * 100, 1) : 0,
       versusDailyAverage: dailyAverageKwh > 0 ? percentageChange(todayKwh, dailyAverageKwh) : null,

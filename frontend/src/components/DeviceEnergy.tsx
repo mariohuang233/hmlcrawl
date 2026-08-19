@@ -19,6 +19,11 @@ interface DeviceEnergySummary {
   success: boolean;
   configured: boolean;
   updated_at: string | null;
+  sync?: {
+    status: 'ready' | 'error' | 'reauth_required';
+    last_sync_at: string | null;
+    message: string | null;
+  };
   devices: DeviceEnergyItem[];
   totals: {
     today_kwh: number;
@@ -77,6 +82,7 @@ const DeviceEnergy: React.FC<DeviceEnergyProps> = ({ refreshKey = 0, initialData
       name: device.device_name,
       today: device.today_kwh,
       month: device.month_kwh,
+      todayAvailable: device.coverage.today_complete,
       incomplete: !device.coverage.today_complete || !device.coverage.month_complete,
       tone: device.device_id === 'air_conditioner' ? 'cool' : 'warm'
     }));
@@ -86,6 +92,7 @@ const DeviceEnergy: React.FC<DeviceEnergyProps> = ({ refreshKey = 0, initialData
         name: '其他未监测电器',
         today: data.totals.other_today_kwh,
         month: data.totals.other_month_kwh,
+        todayAvailable: data.devices.every(device => device.coverage.today_complete),
         incomplete: false,
         tone: 'neutral'
       });
@@ -110,6 +117,12 @@ const DeviceEnergy: React.FC<DeviceEnergyProps> = ({ refreshKey = 0, initialData
         </div>
         {updatedLabel && <span className="device-energy-updated">更新于 {updatedLabel}</span>}
       </div>
+
+      {data?.sync?.status === 'reauth_required' && (
+        <div className="device-energy-inline-error" role="status">
+          米家授权已过期，今日数据暂停同步，请在本机重新连接米家。
+        </div>
+      )}
 
       {loading ? (
         <div className="device-energy-grid" aria-label="设备用电加载中">
@@ -149,7 +162,7 @@ const DeviceEnergy: React.FC<DeviceEnergyProps> = ({ refreshKey = 0, initialData
                 <div className="device-energy-values">
                   <div className="device-energy-primary">
                     <span>今日</span>
-                    <strong>{formatKwh(card.today)}</strong>
+                    <strong>{card.todayAvailable ? formatKwh(card.today) : '--'}</strong>
                     <small>kWh</small>
                   </div>
                   <div className="device-energy-month">

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('crypto');
-const { _test } = require('./xiaomiHistoryProbe');
+const { LegacySession, _test } = require('./xiaomiHistoryProbe');
 
 test('RC4 codec discards the Xiaomi prefix stream and round-trips bytes', () => {
   const key = crypto.randomBytes(32);
@@ -34,4 +34,23 @@ test('signed nonce follows SHA-256 over decoded security and nonce', () => {
     .update(Buffer.concat([Buffer.from('security'), Buffer.from('123456789012')]))
     .digest('base64');
   assert.equal(_test.signedNonce(security, nonce), expected);
+});
+
+test('recognizes an expired Xiaomi service token hidden behind HTTP 426', async () => {
+  const session = LegacySession.fromAuth({
+    deviceId: 'device-id',
+    userId: 'user-id',
+    ssecurity: Buffer.from('security').toString('base64'),
+    serviceToken: 'expired-token'
+  }, async () => new Response('{"code":0,"message":"SERVICETOKEN_EXPIRED"}', {
+    status: 426,
+    headers: { 'Content-Type': 'application/json' }
+  }));
+
+  await assert.rejects(
+    () => session.apiPost('home/device_list', {}),
+    error => error.kind === 'credentials'
+      && error.code === 'SERVICETOKEN_EXPIRED'
+      && error.message === '米家登录已过期，请重新连接'
+  );
 });

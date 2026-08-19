@@ -256,9 +256,9 @@ const TodayUsage: React.FC<TodayUsageProps> = React.memo(({ isMobile = false, re
         lazyUpdate={true}
       />
       <div className="today-device-strip" aria-label="今日设备用电构成">
-        <span className="tone-cool"><small>空调</small><strong>{deviceBreakdown.air_conditioner_kwh.toFixed(2)}</strong><em>kWh</em></span>
-        <span className="tone-warm"><small>热水器</small><strong>{deviceBreakdown.water_heater_kwh.toFixed(2)}</strong><em>kWh</em></span>
-        <span className="tone-neutral"><small>其他</small><strong>{deviceBreakdown.other_kwh.toFixed(2)}</strong><em>kWh</em></span>
+        <span className="tone-cool"><small>空调</small><strong>{deviceBreakdown.available ? deviceBreakdown.air_conditioner_kwh.toFixed(2) : '--'}</strong><em>{deviceBreakdown.available ? 'kWh' : '待同步'}</em></span>
+        <span className="tone-warm"><small>热水器</small><strong>{deviceBreakdown.available ? deviceBreakdown.water_heater_kwh.toFixed(2) : '--'}</strong><em>{deviceBreakdown.available ? 'kWh' : '待同步'}</em></span>
+        <span className="tone-neutral"><small>其他</small><strong>{deviceBreakdown.available ? deviceBreakdown.other_kwh.toFixed(2) : '--'}</strong><em>{deviceBreakdown.available ? 'kWh' : '待同步'}</em></span>
       </div>
     </div>
   );

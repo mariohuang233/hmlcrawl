@@ -356,7 +356,17 @@ class LegacySession {
       signal: AbortSignal.timeout(30000)
     });
     let text = await response.text();
-    if (!response.ok) throw new ProbeError(`小米云请求失败（HTTP ${response.status}）`);
+    if (!response.ok) {
+      let errorBody = null;
+      try { errorBody = JSON.parse(text); } catch { /* Plain-text gateway response. */ }
+      if (errorBody?.message === 'SERVICETOKEN_EXPIRED') {
+        throw new ProbeError('米家登录已过期，请重新连接', 'credentials', {
+          status: response.status,
+          code: errorBody.message
+        });
+      }
+      throw new ProbeError(`小米云请求失败（HTTP ${response.status}）`);
+    }
     if (!text.trim().startsWith('{')) text = decodeRc4Response(text, this.ssecurity, params._nonce);
     let body;
     try { body = JSON.parse(text); } catch { throw new ProbeError('小米云返回了无法识别的数据'); }

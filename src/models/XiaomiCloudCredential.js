@@ -7,6 +7,8 @@ const xiaomiCloudCredentialSchema = new mongoose.Schema({
   auth_tag: { type: String, required: true },
   last_sync_at: { type: Date },
   backfill_completed_at: { type: Date },
+  reauth_required_at: { type: Date },
+  last_reauth_alert_at: { type: Date },
   last_error: { type: String, maxlength: 300 },
   connected_at: { type: Date, required: true, default: Date.now }
 }, { timestamps: true });

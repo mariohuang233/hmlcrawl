@@ -4,6 +4,12 @@ const logger = require('../utils/logger');
 const xiaomiCloudAuthStore = require('./xiaomiCloudAuthStore');
 const { LegacySession } = require('./xiaomiHistoryProbe');
 const dataEvents = require('./dataEvents');
+const { sendServerChan } = require('../utils/alerter');
+const {
+  signingSecret: xiaomiReauthSigningSecret,
+  issueAccessToken: issueXiaomiReauthAccessToken,
+  publicBaseUrl: xiaomiReauthPublicBaseUrl
+} = require('./xiaomiReauthAccess');
 
 const DEVICE_IDS = {
   'lumi.acpartner.mcn02': { id: 'air_conditioner', name: '空调' },
@@ -67,7 +73,26 @@ class XiaomiEnergySync {
       logger.info(`米家设备用电同步完成：写入或更新 ${operations.length} 条日统计${days >= 370 ? '，已完成近 12 个月回填' : ''}`);
       return result.readings;
     } catch (error) {
-      await xiaomiCloudAuthStore.updateStatus({ success: false, error: error.message }).catch(() => {});
+      if (error.kind === 'credentials') {
+        await xiaomiCloudAuthStore.markReauthRequired(error.message).catch(() => {});
+        const shouldAlert = await xiaomiCloudAuthStore.claimReauthAlert().catch(() => false);
+        if (shouldAlert) {
+          const baseUrl = xiaomiReauthPublicBaseUrl();
+          const secret = xiaomiReauthSigningSecret();
+          const reauthUrl = baseUrl && secret
+            ? `${baseUrl}/api/xiaomi/history-probe?access=${encodeURIComponent(issueXiaomiReauthAccessToken(secret))}`
+            : null;
+          const action = reauthUrl
+            ? `请在 2 小时内通过下面的安全链接重新连接；开始登录后，请在 15 分钟内完成验证码：\n\n[打开米家授权页面](${reauthUrl})`
+            : '请在运行本项目的电脑上打开 /api/xiaomi/history-probe，重新连接米家账号。';
+          sendServerChan(
+            '米家授权已过期',
+            `空调和热水器的今日用电已停止同步，历史数据仍被保留，页面不会再用 0 冒充缺失值。\n\n${action}`
+          ).catch(alertError => logger.warn(`米家重新授权提醒发送失败：${alertError.message}`));
+        }
+      } else {
+        await xiaomiCloudAuthStore.updateStatus({ success: false, error: error.message }).catch(() => {});
+      }
       throw error;
     } finally {
       this.running = false;

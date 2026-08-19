@@ -1,6 +1,7 @@
 const Usage = require('../models/Usage');
 const CrawlerLog = require('../models/CrawlerLog');
 const electricityAssistant = require('./electricityAssistant');
+const xiaomiCloudAuthStore = require('./xiaomiCloudAuthStore');
 const { getDeviceMonthlyMap, withOther } = require('./deviceEnergyAnalytics');
 const {
   getBeijingTodayStart,
@@ -94,7 +95,8 @@ function buildOverview(context, earliestData, recentCrawlResults, monthlyTrend, 
 function buildToday(context) {
   const todayByHour = new Map(context.todayHourly.map(item => [item.hour, item.kwh]));
   const yesterdayByHour = new Map(context.yesterdayHourly.map(item => [item.hour, item.kwh]));
-  const todayBreakdown = withOther(context.dashboard.deviceDailyBreakdowns[dateKey(getBeijingTodayStart(new Date(context.generatedAt)))], context.todayUsage);
+  const rawTodayBreakdown = context.dashboard.deviceDailyBreakdowns[dateKey(getBeijingTodayStart(new Date(context.generatedAt)))];
+  const todayBreakdown = { ...withOther(rawTodayBreakdown, context.todayUsage), available: Boolean(rawTodayBreakdown) };
   return Array.from({ length: 24 }, (_, hour) => {
     const today = round(todayByHour.get(hour));
     const yesterday = round(yesterdayByHour.get(hour));
@@ -114,12 +116,13 @@ function buildToday(context) {
 function buildThirtyDays(context) {
   return context.dashboard.thirtyDayUsage.map((item, index, items) => {
     const previous = index ? items[index - 1].usageKwh : 0;
+    const rawBreakdown = context.dashboard.deviceDailyBreakdowns[item.date];
     return {
       date: item.date,
       used_kwh: item.usageKwh,
       prev_day_used_kwh: previous,
       vs_prev_day: index ? percentageChange(item.usageKwh, previous) : null,
-      device_breakdown: withOther(context.dashboard.deviceDailyBreakdowns[item.date], item.usageKwh)
+      device_breakdown: { ...withOther(rawBreakdown, item.usageKwh), available: Boolean(rawBreakdown) }
     };
   });
 }
@@ -144,23 +147,29 @@ function buildMonthly(monthlyBuckets, deviceMonthly, now) {
   });
 }
 
-function buildDeviceSummary(context) {
+function buildDeviceSummary(context, xiaomiStatus) {
   const electricityPrice = Number(process.env.ELECTRICITY_PRICE_PER_KWH || 1);
+  const deviceUpdatedAt = xiaomiStatus?.last_sync_at || null;
   const devices = context.deviceEnergy.devices.filter(device => !device.estimated).map(device => ({
     device_id: device.id,
     device_name: device.name,
     entity_id: null,
     today_kwh: device.todayKwh,
     month_kwh: device.monthKwh,
-    updated_at: context.updatedAt,
-    coverage: { today_complete: true, month_complete: true }
+    updated_at: deviceUpdatedAt,
+    coverage: { today_complete: device.todayComplete !== false, month_complete: true }
   }));
   const monitoredToday = round(devices.reduce((sum, device) => sum + device.today_kwh, 0));
   const monitoredMonth = round(devices.reduce((sum, device) => sum + device.month_kwh, 0));
   return {
     success: true,
     configured: context.deviceEnergy.configured,
-    updated_at: context.updatedAt,
+    updated_at: deviceUpdatedAt,
+    sync: {
+      status: xiaomiStatus?.reauth_required_at ? 'reauth_required' : xiaomiStatus?.last_error ? 'error' : 'ready',
+      last_sync_at: deviceUpdatedAt,
+      message: xiaomiStatus?.last_error || null
+    },
     devices,
     totals: {
       today_kwh: context.todayUsage,
@@ -180,14 +189,15 @@ async function loadDashboardSnapshot(now = new Date()) {
   const monthlyStart = new Date(Date.UTC(beijingNow.getUTCFullYear(), beijingNow.getUTCMonth() - 11, 1) - 8 * 60 * 60 * 1000);
   const recentLogStart = new Date(now.getTime() - DAY_MS);
 
-  const [context, monthlyBuckets, deviceMonthly, rechargeHistory, earliestData, recentCrawlResults] = await Promise.all([
+  const [context, monthlyBuckets, deviceMonthly, rechargeHistory, earliestData, recentCrawlResults, xiaomiStatus] = await Promise.all([
     electricityAssistant.buildContext(),
     Usage.getUsageBuckets(meterId, monthlyStart, now, 'month'),
     getDeviceMonthlyMap(monthlyStart, now).catch(() => new Map()),
     Usage.getRechargeHistory(meterId, 50),
     Usage.findOne({ meter_id: meterId }).select('collected_at').sort({ collected_at: 1 }).lean(),
     CrawlerLog.find({ timestamp: { $gte: recentLogStart }, action: { $in: ['success', 'failed'] } })
-      .select('action').sort({ timestamp: -1 }).limit(100).lean()
+      .select('action').sort({ timestamp: -1 }).limit(100).lean(),
+    xiaomiCloudAuthStore.status().catch(() => null)
   ]);
   const briefing = await electricityAssistant.getBriefing();
   const monthlyTrend = buildMonthly(monthlyBuckets, deviceMonthly, now);
@@ -198,7 +208,10 @@ async function loadDashboardSnapshot(now = new Date()) {
     modules: {
       overview: { status: 'ready', updated_at: context.updatedAt },
       trends: { status: 'ready', updated_at: context.updatedAt },
-      devices: { status: context.deviceEnergy.configured ? 'ready' : 'empty', updated_at: context.updatedAt },
+      devices: {
+        status: xiaomiStatus?.reauth_required_at ? 'error' : context.deviceEnergy.configured ? 'ready' : 'empty',
+        updated_at: xiaomiStatus?.last_sync_at || null
+      },
       recharge: { status: rechargeHistory.error ? 'degraded' : 'ready', updated_at: context.updatedAt },
       assistant: { status: briefing.available ? 'ready' : 'degraded', updated_at: context.updatedAt }
     },
@@ -209,7 +222,7 @@ async function loadDashboardSnapshot(now = new Date()) {
       days30: buildThirtyDays(context),
       months12: monthlyTrend
     },
-    device_energy: buildDeviceSummary(context),
+    device_energy: buildDeviceSummary(context, xiaomiStatus),
     recharge_history: rechargeHistory,
     assistant_briefing: briefing
   };
