@@ -72,7 +72,7 @@ Windows 开机启动和日志脚本说明见 [SCRIPTS_README.md](./SCRIPTS_READM
 
 助手入口位于看板右下角，支持昨日摘要、今日用电、周期统计、同期对比、用电预测、时段解释和节电建议；桌面端使用浮层面板，移动端使用底部抽屉。`GET /api/assistant/briefing` 返回主动提醒和快捷问题，`POST /api/assistant/chat` 接收 `{ "message": "今天用了多少？" }` 并返回结构化答案、图表数据、统计范围和更新时间。
 
-助手采用三层分流：非用电问题直接拦截，余额、用量、费用、峰值与预测等事实问题由后端确定性计算，原因、规律、比较、总结与建议类问题才调用模型分析。部署环境可配置 `AI_API_KEY`、`AI_BASE_URL`、`AI_MODEL` 和可选的 `AI_FALLBACK_MODEL`；服务端按 OpenAI Chat Completions 兼容格式调用模型，密钥不会下发到浏览器。模型会在网络异常、限流、服务端错误或截断时执行一次受控重试，再降级到同口径的确定性数据分析；可通过 `AI_TIMEOUT_MS` 和 `AI_RETRY_TIMEOUT_MS` 调整默认的 18 秒主请求与 8 秒重试时限。
+助手采用三层分流：非用电问题直接拦截，余额、用量、费用、峰值与预测等事实问题由后端确定性计算，原因、规律、比较、总结与建议类问题才调用模型分析。推荐在部署环境中配置 `DOTS_API_KEY`，并以 `DOTS_MODEL=dots3-note-prev` 作为主模型；再配置 `DEEPSEEK_API_KEY` 和 `DEEPSEEK_MODEL=deepseek-v4-flash` 作为跨服务兜底。Dots 使用 `api-key` 请求头，DeepSeek 使用 `Authorization: Bearer`，两类密钥都只存在于服务端，不会下发到浏览器；旧版 `AI_API_KEY`、`AI_BASE_URL`、`AI_MODEL` 与 `AI_FALLBACK_MODEL` 仍保持兼容。主服务在网络异常、鉴权失败、限流、服务端错误、空响应或截断时会自动切换到 DeepSeek，后者仍不可用时再降级到同口径的确定性数据分析；可通过 `AI_TIMEOUT_MS` 和 `AI_RETRY_TIMEOUT_MS` 调整请求时限。
 
 ## 部署
 

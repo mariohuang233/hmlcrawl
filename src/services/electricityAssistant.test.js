@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   askConfiguredModel,
+  configuredAIProviders,
   buildDeterministicAnswer,
   buildClarificationAnswer,
   buildNotification,
@@ -110,6 +111,43 @@ test('accepts compatible providers that return segmented content', () => {
     choices: [{ message: { content: [{ type: 'text', text: '结论：正常。' }, { type: 'text', text: '建议：继续观察。' }] } }]
   }), '结论：正常。建议：继续观察。');
   assert.equal(isUsableAIText('结论：当前用电正常。建议：继续观察今晚的变化。'), true);
+});
+
+test('prioritizes Dots and configures DeepSeek as the fallback provider', () => {
+  const providers = configuredAIProviders({
+    DOTS_API_KEY: 'dots-secret',
+    DEEPSEEK_API_KEY: 'deepseek-secret'
+  });
+  assert.deepEqual(providers.map(item => item.id), ['dots', 'deepseek']);
+  assert.equal(providers[0].model, 'dots3-note-prev');
+  assert.equal(providers[0].auth, 'api-key');
+  assert.equal(providers[1].model, 'deepseek-v4-flash');
+  assert.equal(providers[1].auth, 'bearer');
+});
+
+test('calls Dots with its required api-key header and request shape', async t => {
+  const originalFetch = global.fetch;
+  t.after(() => { global.fetch = originalFetch; });
+  const provider = configuredAIProviders({ DOTS_API_KEY: 'dots-secret' })[0];
+  let captured;
+  global.fetch = async (url, options) => {
+    captured = { url, options, body: JSON.parse(options.body) };
+    return new Response(JSON.stringify({
+      choices: [{ finish_reason: 'stop', message: { content: '结论：当前正常。建议：继续观察今天的用电变化。' } }]
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  const result = await askConfiguredModel('分析用电', context, provider.model, {
+    provider,
+    timeoutMs: 1000,
+    silent: true
+  });
+  assert.equal(captured.url, 'https://note3-prev-api.askdiandian.com/v1/chat/completions');
+  assert.equal(captured.options.headers['api-key'], 'dots-secret');
+  assert.equal(captured.options.headers.Authorization, undefined);
+  assert.equal(captured.body.model, 'dots3-note-prev');
+  assert.equal(captured.body.chat_template_kwargs.enable_thinking, false);
+  assert.equal(result.provider, 'dots');
 });
 
 test('marks rate limits as retryable without exposing provider payloads', async t => {

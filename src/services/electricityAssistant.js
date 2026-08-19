@@ -553,14 +553,76 @@ function retryDelayFromResponse(response) {
   return Number.isFinite(retryAt) ? Math.min(3000, Math.max(300, retryAt - Date.now())) : 300;
 }
 
-async function askConfiguredModel(message, context, requestedModel, options = {}) {
-  const apiKey = process.env.AI_API_KEY;
-  const model = requestedModel || process.env.AI_MODEL;
-  if (!apiKey || !model) {
-    return { text: null, reason: 'not_configured', retryable: false, model: model || null };
+function configuredAIProviders(env = process.env) {
+  const providers = [];
+  if (env.DOTS_API_KEY) {
+    providers.push({
+      id: 'dots',
+      label: 'Dots',
+      apiKey: env.DOTS_API_KEY,
+      baseUrl: env.DOTS_BASE_URL || 'https://note3-prev-api.askdiandian.com/v1',
+      model: env.DOTS_MODEL || 'dots3-note-prev',
+      auth: 'api-key',
+      body: { chat_template_kwargs: { enable_thinking: false } }
+    });
+  }
+  if (env.DEEPSEEK_API_KEY) {
+    providers.push({
+      id: 'deepseek',
+      label: 'DeepSeek',
+      apiKey: env.DEEPSEEK_API_KEY,
+      baseUrl: env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
+      model: env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+      auth: 'bearer',
+      body: { thinking: { type: 'disabled' } }
+    });
+  }
+  if (providers.length > 0) {
+    if (providers[0].id === 'dots' && !env.DEEPSEEK_API_KEY && env.AI_API_KEY && env.AI_MODEL) {
+      providers.push({
+        id: 'compatible',
+        label: '备用 AI',
+        apiKey: env.AI_API_KEY,
+        baseUrl: env.AI_BASE_URL || 'https://api.openai.com/v1',
+        model: env.AI_MODEL,
+        auth: 'bearer'
+      });
+    }
+    return providers;
   }
 
-  const baseUrl = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  if (env.AI_API_KEY && env.AI_MODEL) {
+    const legacy = {
+      id: 'compatible',
+      label: 'AI',
+      apiKey: env.AI_API_KEY,
+      baseUrl: env.AI_BASE_URL || 'https://api.openai.com/v1',
+      model: env.AI_MODEL,
+      auth: 'bearer'
+    };
+    providers.push(legacy);
+    if (env.AI_FALLBACK_MODEL && env.AI_FALLBACK_MODEL !== env.AI_MODEL) {
+      providers.push({ ...legacy, model: env.AI_FALLBACK_MODEL });
+    }
+  }
+  return providers;
+}
+
+async function askConfiguredModel(message, context, requestedModel, options = {}) {
+  const provider = options.provider || {
+    id: 'compatible',
+    label: 'AI',
+    apiKey: process.env.AI_API_KEY,
+    baseUrl: process.env.AI_BASE_URL || 'https://api.openai.com/v1',
+    model: requestedModel || process.env.AI_MODEL,
+    auth: 'bearer'
+  };
+  const { apiKey, model } = provider;
+  if (!apiKey || !model) {
+    return { text: null, reason: 'not_configured', retryable: false, model: model || null, provider: provider.id };
+  }
+
+  const baseUrl = String(provider.baseUrl).replace(/\/+$/, '');
   const controller = new AbortController();
   const timeoutMs = boundedPositiveInteger(options.timeoutMs, DEFAULT_AI_TIMEOUT_MS);
   const maxTokens = boundedPositiveInteger(options.maxTokens, 900, 2000);
@@ -569,7 +631,10 @@ async function askConfiguredModel(message, context, requestedModel, options = {}
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(provider.auth === 'api-key' ? { 'api-key': apiKey } : { Authorization: `Bearer ${apiKey}` })
+      },
       signal: controller.signal,
       body: JSON.stringify({
         model,
@@ -599,7 +664,8 @@ async function askConfiguredModel(message, context, requestedModel, options = {}
               updatedLabel: context.updatedLabel
             })}`
           }
-        ]
+        ],
+        ...(provider.body || {})
       })
     });
     if (!response.ok) {
@@ -616,7 +682,9 @@ async function askConfiguredModel(message, context, requestedModel, options = {}
         reason: `http_${response.status}`,
         retryable,
         retryAfterMs: retryDelayFromResponse(response),
-        model
+        model,
+        provider: provider.id,
+        providerLabel: provider.label
       };
     }
     let finishReason = null;
@@ -670,10 +738,12 @@ async function askConfiguredModel(message, context, requestedModel, options = {}
         reason: finishReason === 'length' ? 'truncated' : 'empty_response',
         retryable: finishReason === 'length',
         finishReason,
-        model
+        model,
+        provider: provider.id,
+        providerLabel: provider.label
       };
     }
-    return { text, reason: null, retryable: false, finishReason, model };
+    return { text, reason: null, retryable: false, finishReason, model, provider: provider.id, providerLabel: provider.label };
   } catch (error) {
     const timedOut = error?.name === 'AbortError';
     logAIWarning('AI model request unavailable', {
@@ -685,7 +755,9 @@ async function askConfiguredModel(message, context, requestedModel, options = {}
       text: null,
       reason: timedOut ? 'timeout' : 'network_error',
       retryable: true,
-      model
+      model,
+      provider: provider.id,
+      providerLabel: provider.label
     };
   } finally {
     clearTimeout(timeout);
@@ -762,7 +834,7 @@ async function getBriefing() {
   const context = await buildContext();
   return {
     available: context.dataComplete,
-    aiConfigured: Boolean(process.env.AI_API_KEY && process.env.AI_MODEL),
+    aiConfigured: configuredAIProviders().length > 0,
     notification: buildNotification(context),
     welcome: buildDeterministicAnswer('today', context),
     quickReplies: ['查看空调和热水器用电', '分析最近七天用电规律', '预计本月用多少？', '结合设备数据给我节电建议']
@@ -779,30 +851,30 @@ async function answerQuestion(message, options = {}) {
   const context = await buildContext();
   const deterministic = buildDeterministicAnswer(intent, context);
   if (needsAIAnalysis(message, intent)) {
-    const primaryModel = process.env.AI_MODEL;
-    const fallbackModel = process.env.AI_FALLBACK_MODEL;
+    const providers = configuredAIProviders();
+    const primaryProvider = providers[0];
+    const fallbackProvider = providers[1];
     let emittedDelta = false;
     const onDelta = typeof options.onDelta === 'function'
       ? delta => { emittedDelta = true; options.onDelta(delta); }
       : undefined;
-    let completion = await askConfiguredModel(message, context, primaryModel, {
+    let completion = await askConfiguredModel(message, context, primaryProvider?.model, {
       timeoutMs: boundedPositiveInteger(process.env.AI_TIMEOUT_MS, 28000),
-      onDelta
+      onDelta,
+      provider: primaryProvider
     });
-    const hasDifferentFallback = Boolean(fallbackModel && fallbackModel !== primaryModel);
-    const fallbackCanHelp = hasDifferentFallback && (
-      !completion.reason ||
-      ['empty_response', 'truncated', 'http_404'].includes(completion.reason)
-    );
-    if (!emittedDelta && !isUsableAIText(completion.text) && (completion.retryable || fallbackCanHelp)) {
+    if (!emittedDelta && !isUsableAIText(completion.text) && (completion.retryable || fallbackProvider)) {
       await new Promise(resolve => setTimeout(resolve, completion.retryAfterMs || 300));
+      const retryProvider = fallbackProvider || primaryProvider;
       completion = await askConfiguredModel(
         message,
         context,
-        hasDifferentFallback ? fallbackModel : primaryModel,
+        retryProvider?.model,
         {
           timeoutMs: boundedPositiveInteger(process.env.AI_RETRY_TIMEOUT_MS, 20000),
-          maxTokens: completion.reason === 'truncated' ? 1300 : 900
+          maxTokens: completion.reason === 'truncated' ? 1300 : 900,
+          onDelta,
+          provider: retryProvider
         }
       );
     }
@@ -812,7 +884,7 @@ async function answerQuestion(message, options = {}) {
         ...deterministic,
         headline: '布布的 AI 分析',
         body: aiText,
-        source: `基于电表与米家设备数据，由 AI 分析 · 更新于 ${context.updatedLabel}`,
+        source: `基于电表与米家设备数据，由 ${completion.providerLabel || 'AI'} 分析 · 更新于 ${context.updatedLabel}`,
         mode: 'ai',
         disclaimer: 'AI 只负责解释与建议，所有用电数值均来自电表数据。',
         quickReplies: ['比较本周和上周', '预计本月用多少？']
@@ -828,6 +900,7 @@ async function answerQuestion(message, options = {}) {
 
 module.exports = {
   askConfiguredModel,
+  configuredAIProviders,
   answerQuestion,
   buildContext,
   buildClarificationAnswer,
