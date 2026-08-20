@@ -74,6 +74,8 @@ Windows 开机启动和日志脚本说明见 [SCRIPTS_README.md](./SCRIPTS_READM
 
 助手采用三层分流：非用电问题直接拦截，余额、用量、费用、峰值与预测等事实问题由后端确定性计算，原因、规律、比较、总结与建议类问题才调用模型分析。推荐在部署环境中配置 `DOTS_API_KEY`，并以 `DOTS_MODEL=dots3-note-prev` 作为主模型；再配置 `DEEPSEEK_API_KEY` 和 `DEEPSEEK_MODEL=deepseek-v4-flash` 作为跨服务兜底。Dots 使用 `api-key` 请求头，DeepSeek 使用 `Authorization: Bearer`，两类密钥都只存在于服务端，不会下发到浏览器；旧版 `AI_API_KEY`、`AI_BASE_URL`、`AI_MODEL` 与 `AI_FALLBACK_MODEL` 仍保持兼容。主服务在网络异常、鉴权失败、限流、服务端错误、空响应或截断时会自动切换到 DeepSeek，后者仍不可用时再降级到同口径的确定性数据分析；可通过 `AI_TIMEOUT_MS` 和 `AI_RETRY_TIMEOUT_MS` 调整请求时限。
 
+每个问题会先解析为包含动作、指标、设备、时间范围、对比基准和置信度的结构化查询计划，回答、证据、图表与个性化快捷问题统一由该计划驱动。前端最多携带最近 10 轮精简会话及上一轮计划，因此支持“那昨天呢”“换成热水器”“和上周比”等自然追问；原始电量、费用、预测和异常基准仍全部由服务端计算，模型只负责解释。意图回归语料位于 `src/services/electricityIntentEval.js`，用于持续覆盖口语、省略、多时间范围、设备别名与越界请求。
+
 ## 部署
 
 仓库保留了仍可使用的正式部署入口：`railway.json` 与 `nixpacks.toml` 用于 Railway，`render.yaml` 用于 Render，`zeabur.json`、`zbpack.json` 与 `Dockerfile` 用于 Zeabur/容器部署，`vercel.json` 与 `api/` 用于 Vercel。所有平台都需要配置 `MONGO_URI`，生产环境还应按实际需要配置 `METER_ID`、`METER_NAME`、`ENABLE_CRAWLER`、`API_TOKEN` 和通知相关变量。

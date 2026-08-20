@@ -2,6 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   askConfiguredModel,
+  buildQueryPlan,
+  buildPlanDrivenAnswer,
   configuredAIProviders,
   buildDeterministicAnswer,
   buildClarificationAnswer,
@@ -12,6 +14,7 @@ const {
   isUsableAIText,
   retryDelayFromResponse
 } = require('./electricityAssistant');
+const intentEvalCases = require('./electricityIntentEval');
 
 const context = {
   generatedAt: '2026-08-09T02:30:00.000Z',
@@ -48,6 +51,46 @@ const context = {
   },
   dataComplete: true
 };
+
+test('passes the realistic Chinese query-plan evaluation set', () => {
+  for (const [message, options, expected] of intentEvalCases) {
+    const plan = buildQueryPlan(message, options.history || []);
+    assert.equal(plan.action, expected.action, `${message} action`);
+    assert.equal(plan.metric, expected.metric, `${message} metric`);
+    assert.equal(plan.entities[0], expected.entity, `${message} entity`);
+    assert.equal(plan.timeRange.kind, expected.range, `${message} range`);
+    if (expected.compareWith) assert.equal(plan.compareWith, expected.compareWith, `${message} comparison`);
+    if (expected.entityCount) assert.equal(plan.entities.length, expected.entityCount, `${message} entity count`);
+  }
+});
+
+test('drives comparison copy and evidence from the structured query plan', () => {
+  const plan = buildQueryPlan('比较今天和昨天用电');
+  const answer = buildPlanDrivenAnswer(plan, context);
+  assert.match(answer.headline, /昨天同期/);
+  assert.equal(answer.evidence[0].value, '2.18 kWh');
+  assert.equal(answer.evidence[1].value, '2.06 kWh');
+  assert.equal(answer.plan.compareWith, 'yesterday_same_time');
+});
+
+test('only emits personalized quick replies that resolve to supported query plans', () => {
+  const prompts = [
+    '今天用了多少电？',
+    '空调今天用了多少电？',
+    '近30天用电趋势',
+    '结合空调数据给我节电建议',
+    '数据什么时候更新？',
+    '当前余额还能用多久？'
+  ];
+  for (const prompt of prompts) {
+    const plan = buildQueryPlan(prompt);
+    const answer = buildPlanDrivenAnswer(plan, context);
+    for (const reply of answer.quickReplies || []) {
+      const nextPlan = buildQueryPlan(reply, [{ role: 'assistant', content: answer.body, plan }]);
+      assert.doesNotMatch(nextPlan.action, /clarify|out_of_scope|reminder/, `${prompt} -> ${reply}`);
+    }
+  }
+});
 
 test('classifies supported electricity questions deterministically', () => {
   assert.equal(classifyIntent('今天到现在用了多少电？'), 'today');
@@ -220,8 +263,9 @@ test('builds a grounded appliance answer from Xiaomi device readings', () => {
   assert.equal(answer.evidence.length, 3);
 });
 
-test('prioritizes a meaningful device anomaly popup', () => {
-  const notification = buildNotification(context);
+test('only prioritizes a full-day device anomaly late enough in the day', () => {
+  assert.equal(buildNotification(context).type, 'daily');
+  const notification = buildNotification({ ...context, generatedAt: '2026-08-09T12:30:00.000Z' });
   assert.equal(notification.type, 'device');
   assert.equal(notification.proactive, true);
   assert.match(notification.message, /本月此前日均高 55%/);

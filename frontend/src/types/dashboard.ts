@@ -73,6 +73,18 @@ export interface AssistantSeries {
   values: number[];
 }
 
+export interface AssistantQueryPlan {
+  version: number;
+  action: 'query' | 'compare' | 'forecast' | 'explain' | 'recommend' | 'trend' | 'status' | 'reminder' | 'clarify' | 'out_of_scope';
+  metric: 'usage' | 'balance' | 'cost' | 'peak' | 'freshness' | 'trend';
+  entities: Array<'total' | 'air_conditioner' | 'water_heater' | 'other'>;
+  timeRange: { kind: string; days?: number; months?: number };
+  compareWith?: string | null;
+  needsAI: boolean;
+  confidence: number;
+  intent: string;
+}
+
 export interface AssistantAnswer {
   role: 'assistant';
   intent: string;
@@ -87,6 +99,7 @@ export interface AssistantAnswer {
   evidence?: Array<{ label: string; value: string }>;
   disclaimer?: string;
   quickReplies?: string[];
+  plan?: AssistantQueryPlan;
 }
 
 export interface AssistantNotification {

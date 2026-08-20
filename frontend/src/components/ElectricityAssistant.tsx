@@ -291,12 +291,19 @@ export default function ElectricityAssistant({ initialBriefing }: { initialBrief
     setIsSending(true);
     slowTimerRef.current = window.setTimeout(() => setIsSlow(true), 8000);
     try {
+      const history = conversation.slice(-10).map(item => item.role === 'user'
+        ? { role: 'user', content: item.text || '' }
+        : {
+            role: 'assistant',
+            content: item.answer ? `${item.answer.headline}\n${item.answer.body}` : '',
+            plan: item.answer?.plan
+          });
       let completedAnswer: AssistantAnswer | null = null;
       let receivedDelta = false;
       try {
         await streamAPI<{ text?: string; answer?: AssistantAnswer }>(
           '/api/assistant/chat/stream',
-          { message: question },
+          { message: question, history },
           event => {
             if (event.event === 'delta' && event.data.text) {
               receivedDelta = true;
@@ -311,7 +318,7 @@ export default function ElectricityAssistant({ initialBriefing }: { initialBrief
         if (receivedDelta) throw streamError;
         completedAnswer = await fetchAPI<AssistantAnswer>('/api/assistant/chat', {
           method: 'POST',
-          body: JSON.stringify({ message: question })
+          body: JSON.stringify({ message: question, history })
         }, 60_000);
       }
       if (!completedAnswer) throw new Error('AI 返回内容不完整');

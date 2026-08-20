@@ -1,0 +1,60 @@
+const todayTotalPlan = {
+  version: 1,
+  action: 'query',
+  metric: 'usage',
+  entities: ['total'],
+  timeRange: { kind: 'today' },
+  compareWith: null,
+  needsAI: false,
+  confidence: 0.9,
+  intent: 'today'
+};
+
+const todayAirConditionerPlan = {
+  ...todayTotalPlan,
+  entities: ['air_conditioner'],
+  intent: 'devices'
+};
+
+module.exports = [
+  ['今天用了多少电？', {}, { action: 'query', metric: 'usage', entity: 'total', range: 'today' }],
+  ['今天到现在耗了几度？', {}, { action: 'query', metric: 'usage', entity: 'total', range: 'today' }],
+  ['昨天总共用了多少电', {}, { action: 'query', metric: 'usage', entity: 'total', range: 'yesterday' }],
+  ['本周用了多少度', {}, { action: 'query', metric: 'usage', entity: 'total', range: 'this_week' }],
+  ['上周全屋用电', {}, { action: 'query', metric: 'usage', entity: 'total', range: 'last_week' }],
+  ['本月电费是多少', {}, { action: 'query', metric: 'cost', entity: 'total', range: 'this_month' }],
+  ['上个月用了多少电？', {}, { action: 'query', metric: 'usage', entity: 'total', range: 'last_month' }],
+  ['最近7天全屋用电趋势', {}, { action: 'trend', metric: 'trend', entity: 'total', range: 'rolling_days' }],
+  ['近30天用电规律', {}, { action: 'trend', metric: 'trend', entity: 'total', range: 'rolling_days' }],
+  ['过去12个月趋势', {}, { action: 'trend', metric: 'trend', entity: 'total', range: 'rolling_months' }],
+  ['今天和昨天用电差多少', {}, { action: 'compare', metric: 'usage', entity: 'total', range: 'today', compareWith: 'yesterday_same_time' }],
+  ['比较本周和上周同期', {}, { action: 'compare', metric: 'usage', entity: 'total', range: 'this_week', compareWith: 'previous_period_same_progress' }],
+  ['这个月和上个月相比怎么样', {}, { action: 'compare', metric: 'usage', entity: 'total', range: 'this_month', compareWith: 'previous_period_same_progress' }],
+  ['今天比平时高吗', {}, { action: 'compare', metric: 'usage', entity: 'total', range: 'today', compareWith: 'historical_average' }],
+  ['为什么今天用电突然变高', {}, { action: 'explain', metric: 'usage', entity: 'total', range: 'today' }],
+  ['分析最近一周的用电规律', {}, { action: 'trend', metric: 'trend', entity: 'total', range: 'rolling_days' }],
+  ['结合最近30天给我节电建议', {}, { action: 'recommend', metric: 'usage', entity: 'total', range: 'rolling_days' }],
+  ['预计今天全天用多少', {}, { action: 'forecast', metric: 'usage', entity: 'total', range: 'today' }],
+  ['预测本月用电量', {}, { action: 'forecast', metric: 'usage', entity: 'total', range: 'this_month' }],
+  ['当前余额还能用多久', {}, { action: 'forecast', metric: 'balance', entity: 'total', range: 'today' }],
+  ['空调今天用了多少电', {}, { action: 'query', metric: 'usage', entity: 'air_conditioner', range: 'today' }],
+  ['热水器昨天耗电多少', {}, { action: 'query', metric: 'usage', entity: 'water_heater', range: 'yesterday' }],
+  ['分析空调最近一周用电趋势', {}, { action: 'trend', metric: 'trend', entity: 'air_conditioner', range: 'rolling_days' }],
+  ['热水器本月和上月比怎么样', {}, { action: 'compare', metric: 'usage', entity: 'water_heater', range: 'this_month' }],
+  ['其他电器近30天用了多少', {}, { action: 'query', metric: 'usage', entity: 'other', range: 'rolling_days' }],
+  ['查看所有设备今天的用电', {}, { action: 'query', metric: 'usage', entity: 'air_conditioner', range: 'today', entityCount: 3 }],
+  ['空调温度调高一度能省电吗？', {}, { action: 'recommend', metric: 'usage', entity: 'air_conditioner', range: 'today' }],
+  ['数据什么时候更新？', {}, { action: 'status', metric: 'freshness', entity: 'total', range: 'today' }],
+  ['米家数据同步正常吗', {}, { action: 'status', metric: 'freshness', entity: 'air_conditioner', range: 'today', entityCount: 3 }],
+  ['设置高峰提醒', {}, { action: 'reminder', metric: 'peak', entity: 'total', range: 'today' }],
+  ['今天哪个时段用电最高', {}, { action: 'query', metric: 'peak', entity: 'total', range: 'today' }],
+  ['最近一周哪天最高', {}, { action: 'query', metric: 'peak', entity: 'total', range: 'rolling_days' }],
+  ['今天天气如何？', {}, { action: 'out_of_scope', metric: 'usage', entity: 'total', range: 'today' }],
+  ['帮我写一段代码', {}, { action: 'out_of_scope', metric: 'usage', entity: 'total', range: 'today' }],
+  ['讲个笑话', {}, { action: 'clarify', metric: 'usage', entity: 'total', range: 'today' }],
+  ['那昨天呢？', { history: [{ role: 'assistant', content: '今天用了 2.1 度', plan: todayTotalPlan }] }, { action: 'query', metric: 'usage', entity: 'total', range: 'yesterday' }],
+  ['那热水器呢？', { history: [{ role: 'assistant', content: '空调今天用了 1.2 度', plan: todayAirConditionerPlan }] }, { action: 'query', metric: 'usage', entity: 'water_heater', range: 'today' }],
+  ['和昨天比呢？', { history: [{ role: 'assistant', content: '今天用了 2.1 度', plan: todayTotalPlan }] }, { action: 'compare', metric: 'usage', entity: 'total', range: 'today', compareWith: 'yesterday_same_time' }],
+  ['为什么？', { history: [{ role: 'assistant', content: '今天较昨天高 20%', plan: { ...todayTotalPlan, action: 'compare', compareWith: 'yesterday_same_time', intent: 'analysis' } }] }, { action: 'explain', metric: 'usage', entity: 'total', range: 'today' }],
+  ['换成最近30天', { history: [{ role: 'assistant', content: '空调最近7天趋势', plan: { ...todayAirConditionerPlan, action: 'trend', metric: 'trend', timeRange: { kind: 'rolling_days', days: 7 }, needsAI: true, intent: 'analysis' } }] }, { action: 'trend', metric: 'trend', entity: 'air_conditioner', range: 'rolling_days' }]
+];

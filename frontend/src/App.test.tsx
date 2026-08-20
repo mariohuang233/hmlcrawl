@@ -138,6 +138,31 @@ test('restores the saved assistant conversation after remounting', async () => {
   expect(screen.getByText('今天用了多少？')).toBeInTheDocument();
 });
 
+test('sends recent structured conversation context for natural follow-up questions', async () => {
+  window.localStorage.setItem('electricity-assistant-conversation-v1', JSON.stringify([
+    { id: 'u-context', role: 'user', text: '空调今天用了多少电？' },
+    {
+      id: 'a-context',
+      role: 'assistant',
+      answer: {
+        role: 'assistant', intent: 'devices', headline: '空调今天用了 1.2 kWh', body: '来自米家日用电数据。', source: '测试', mode: 'data',
+        plan: { version: 1, action: 'query', metric: 'usage', entities: ['air_conditioner'], timeRange: { kind: 'today' }, compareWith: null, needsAI: false, confidence: 0.9, intent: 'devices' }
+      }
+    }
+  ]));
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(await screen.findByRole('button', { name: '打开布布用电助手' }));
+  await user.type(screen.getByRole('textbox', { name: '输入用电问题' }), '那热水器呢？');
+  await user.click(screen.getByRole('button', { name: '发送' }));
+  await screen.findByText('截至 10:28，今日已用 2.18 kWh');
+
+  const requests = vi.mocked(fetch).mock.calls
+    .filter(([input, init]) => String(input).includes('/api/assistant/chat') && init?.method === 'POST')
+    .map(([, init]) => JSON.parse(String(init?.body || '{}')));
+  expect(requests.some(body => body.message === '那热水器呢？' && body.history?.[1]?.plan?.entities?.[0] === 'air_conditioner')).toBe(true);
+});
+
 test('opens a Xiaomi-aware smart reminder and applies global reminder cooldown', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-08-12T04:00:00.000Z'));

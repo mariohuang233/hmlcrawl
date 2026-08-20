@@ -992,6 +992,7 @@ router.get('/assistant/briefing', cacheMiddleware('assistant_briefing', 60000), 
 // 布布用电助手：结构化问答；无 AI 密钥时仍支持核心用电问题
 router.post('/assistant/chat', asyncHandler(async (req, res) => {
   const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+  const history = Array.isArray(req.body?.history) ? req.body.history.slice(-10) : [];
   if (!message) {
     return res.status(400).json({ error: '请输入用电问题', status: 'invalid_message' });
   }
@@ -999,7 +1000,7 @@ router.post('/assistant/chat', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: '问题不能超过 500 个字符', status: 'message_too_long' });
   }
 
-  const intent = electricityAssistant.classifyIntent(message);
+  const intent = electricityAssistant.classifyIntent(message, history);
   if (mongoose.connection.readyState !== 1 && !['out_of_scope', 'unknown'].includes(intent)) {
     return res.status(503).json({
       error: '数据库连接不可用',
@@ -1008,12 +1009,13 @@ router.post('/assistant/chat', asyncHandler(async (req, res) => {
     });
   }
 
-  res.json(await electricityAssistant.answerQuestion(message));
+  res.json(await electricityAssistant.answerQuestion(message, { history }));
 }));
 
 // 流式用电问答。上游支持 SSE 时直接转发文本增量，同时用心跳穿过 Railway 代理。
 router.post('/assistant/chat/stream', async (req, res) => {
   const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+  const history = Array.isArray(req.body?.history) ? req.body.history.slice(-10) : [];
   if (!message || message.length > 500) {
     return res.status(400).json({ error: !message ? '请输入用电问题' : '问题不能超过 500 个字符' });
   }
@@ -1039,7 +1041,8 @@ router.post('/assistant/chat/stream', async (req, res) => {
   try {
     send('status', { phase: 'preparing' });
     const answer = await electricityAssistant.answerQuestion(message, {
-      onDelta: text => send('delta', { text })
+      onDelta: text => send('delta', { text }),
+      history
     });
     send('done', { answer });
   } catch (error) {

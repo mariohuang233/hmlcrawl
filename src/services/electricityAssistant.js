@@ -33,6 +33,13 @@ function percentageChange(current, previous) {
   return round(((current - previous) / previous) * 100, 1);
 }
 
+function median(values) {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
 function formatDelta(value) {
   if (value === 0) return '与对比时段持平';
   return `较对比时段${value > 0 ? '高' : '低'} ${Math.abs(value)}%`;
@@ -162,8 +169,15 @@ async function loadContext(now = new Date()) {
   const yesterdayEnd = new Date(todayStart.getTime() - 1);
   const weekStart = getBeijingWeekStart(now);
   const monthStart = getBeijingMonthStart(now);
+  const previousMonthEnd = new Date(monthStart.getTime() - 1);
+  const previousMonthStart = getBeijingMonthStart(previousMonthEnd);
+  const previousMonthSameEnd = new Date(Math.min(
+    previousMonthEnd.getTime(),
+    previousMonthStart.getTime() + Math.max(0, now.getTime() - monthStart.getTime())
+  ));
   const sevenDaysStart = new Date(todayStart.getTime() - 7 * DAY_MS);
   const thirtyDaysStart = new Date(todayStart.getTime() - 29 * DAY_MS);
+  const historyStart = new Date(todayStart.getTime() - 366 * DAY_MS);
   const previousWeekStart = new Date(weekStart.getTime() - 7 * DAY_MS);
   const previousWeekEnd = new Date(weekStart.getTime() - 1);
   const previousWeekSameEnd = new Date(previousWeekStart.getTime() + Math.max(0, now.getTime() - weekStart.getTime()));
@@ -176,7 +190,7 @@ async function loadContext(now = new Date()) {
     Usage.getUsageBuckets(meterId, queryStart, now, 'hour'),
     Usage.getUsageInRange(meterId, last24Start, now),
     Usage.getLatestUsage(meterId),
-    getDeviceDailyMap(queryStart, now).catch(() => new Map())
+    getDeviceDailyMap(historyStart, now).catch(() => new Map())
   ]);
   const todayStats = statsFromHourlyBuckets(hourlyBuckets, todayStart, now);
   const yesterdaySameStats = statsFromHourlyBuckets(hourlyBuckets, yesterdayStart, yesterdaySameTime);
@@ -185,9 +199,12 @@ async function loadContext(now = new Date()) {
   const previousWeekStats = statsFromHourlyBuckets(hourlyBuckets, previousWeekStart, previousWeekEnd);
   const previousWeekSameStats = statsFromHourlyBuckets(hourlyBuckets, previousWeekStart, previousWeekSameEnd);
   const monthStats = statsFromHourlyBuckets(hourlyBuckets, monthStart, now);
+  const previousMonthStats = statsFromHourlyBuckets(hourlyBuckets, previousMonthStart, previousMonthEnd);
+  const previousMonthSameStats = statsFromHourlyBuckets(hourlyBuckets, previousMonthStart, previousMonthSameEnd);
   const todayKey = new Date(todayStart.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const yesterdayKey = new Date(yesterdayStart.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const dailyUsage = dailyUsageFromHourlyBuckets(hourlyBuckets, todayStart, 8);
+  const dailyUsageHistory = dailyUsageFromHourlyBuckets(hourlyBuckets, todayStart, 62);
 
   const todayHourly = hourlySeriesForDate(hourlyBuckets, todayKey);
   const yesterdayHourly = hourlySeriesForDate(hourlyBuckets, yesterdayKey);
@@ -200,6 +217,19 @@ async function loadContext(now = new Date()) {
   const sevenDayPeak = dailyUsage.reduce((best, item) => item.usageKwh > (best?.usageKwh || 0) ? item : best, null);
   const deviceEnergy = summarizeDevices(deviceDaily, todayStart, todayStats.totalUsage, monthStats.totalUsage, now);
   const dashboard = dashboardDetails(last24Records, hourlyBuckets, deviceDaily, todayStart, now);
+  const beijingNow = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  const currentHour = beijingNow.getUTCHours();
+  const currentDayType = [0, 6].includes(beijingNow.getUTCDay()) ? 'weekend' : 'weekday';
+  const comparableTotals = new Map();
+  for (const bucket of hourlyBuckets) {
+    if (bucket.key === todayKey || Number(bucket.hour) >= currentHour) continue;
+    const day = new Date(`${bucket.key}T00:00:00+08:00`);
+    const dayType = [0, 6].includes(new Date(day.getTime() + 8 * 60 * 60 * 1000).getUTCDay()) ? 'weekend' : 'weekday';
+    if (dayType !== currentDayType) continue;
+    comparableTotals.set(bucket.key, (comparableTotals.get(bucket.key) || 0) + Number(bucket.used_kwh || 0));
+  }
+  const todayCompletedHoursUsage = round(todayHourly.slice(0, currentHour).reduce((sum, item) => sum + item.kwh, 0));
+  const sameProgressMedian = median([...comparableTotals.values()]);
 
   return {
     meterId,
@@ -215,6 +245,8 @@ async function loadContext(now = new Date()) {
     previousWeekUsage: round(previousWeekStats.totalUsage),
     previousWeekSameUsage: round(previousWeekSameStats.totalUsage),
     monthUsage: round(monthStats.totalUsage),
+    previousMonthUsage: round(previousMonthStats.totalUsage),
+    previousMonthSameUsage: round(previousMonthSameStats.totalUsage),
     samePeriodDelta,
     projectedTodayUsage: elapsedHours >= 3 && todayStats.dataPoints >= 2 ? paceProjection : null,
     todayDataPoints: todayStats.dataPoints,
@@ -224,6 +256,14 @@ async function loadContext(now = new Date()) {
     peakHourUsage: peak?.kwh ?? null,
     sevenDayUsage: dailyUsage.slice(-7),
     sevenDayPeak,
+    dailyUsage30: dashboard.thirtyDayUsage,
+    dailyUsageHistory,
+    availableDailyKeys: [...new Set(hourlyBuckets.map(item => item.key))],
+    monthlyUsage12: [],
+    sameProgressMedian: sameProgressMedian === null ? null : round(sameProgressMedian),
+    sameProgressMedianDelta: sameProgressMedian ? percentageChange(todayCompletedHoursUsage, sameProgressMedian) : null,
+    comparableDayCount: comparableTotals.size,
+    dataAgeMinutes: latestCollectedAt ? round((now.getTime() - new Date(latestCollectedAt).getTime()) / 60000, 1) : null,
     deviceEnergy,
     dashboard,
     dataComplete: todayStats.dataPoints >= 2
@@ -233,10 +273,18 @@ async function loadContext(now = new Date()) {
 let contextCache = null;
 let contextCacheExpiresAt = 0;
 let contextLoadPromise = null;
+let longRangeCache = null;
+let longRangeCacheExpiresAt = 0;
+let previousMonthCache = null;
+let previousMonthCacheExpiresAt = 0;
 
 function invalidateContextCache() {
   contextCache = null;
   contextCacheExpiresAt = 0;
+  longRangeCache = null;
+  longRangeCacheExpiresAt = 0;
+  previousMonthCache = null;
+  previousMonthCacheExpiresAt = 0;
 }
 
 async function buildContext(now) {
@@ -261,29 +309,154 @@ async function buildContext(now) {
   return contextLoadPromise;
 }
 
-function classifyIntent(message) {
-  const normalized = String(message || '').trim();
-  const hasPowerContext = /用电|电量|电费|电价|电表|耗电|耗能|功率|千瓦|kwh|度电|节电|省电|余额|剩余电|续航|高峰|峰值|充电/.test(normalized.toLowerCase());
-  const isUsageQuestion = /用了多少|用多少电|会用多少|预计.*用多少|耗了多少|消耗多少|还剩多少电/.test(normalized);
-
-  // Explicitly reject common non-electricity domains before looking at time words
-  // such as “今天”; otherwise “今天天气如何” would be misclassified as today usage.
-  if (/天气|气温|温度|下雨|降雨|刮风|台风|空气质量|穿什么|新闻|股票|基金|汇率|彩票|足球|篮球|比赛|电影|音乐|菜谱|快递|路线|导航|翻译|写代码/.test(normalized)) {
-    return 'out_of_scope';
+async function enrichContextForPlan(context, plan) {
+  let enriched = context;
+  const needsPreviousMonth = plan.timeRange.kind === 'last_month' ||
+    (plan.timeRange.kind === 'this_month' && plan.action === 'compare');
+  if (needsPreviousMonth && (!previousMonthCache || Date.now() >= previousMonthCacheExpiresAt)) {
+    const now = new Date(context.generatedAt);
+    const monthStart = getBeijingMonthStart(now);
+    const previousMonthEnd = new Date(monthStart.getTime() - 1);
+    const previousMonthStart = getBeijingMonthStart(previousMonthEnd);
+    const previousMonthSameEnd = new Date(Math.min(
+      previousMonthEnd.getTime(),
+      previousMonthStart.getTime() + Math.max(0, now.getTime() - monthStart.getTime())
+    ));
+    const buckets = await Usage.getUsageBuckets(context.meterId, previousMonthStart, previousMonthEnd, 'hour');
+    previousMonthCache = {
+      previousMonthUsage: round(statsFromHourlyBuckets(buckets, previousMonthStart, previousMonthEnd).totalUsage),
+      previousMonthSameUsage: round(statsFromHourlyBuckets(buckets, previousMonthStart, previousMonthSameEnd).totalUsage)
+    };
+    previousMonthCacheExpiresAt = Date.now() + 30 * 60 * 1000;
   }
-  if (/余额|剩余|还能用|用完|续航/.test(normalized)) return 'balance';
-  if (/空调|热水器|米家|设备|电器/.test(normalized) && /用电|耗电|多少|最高|最多|占比|本月|今天|今日|比较|分析/.test(normalized)) return 'devices';
-  if ((/最近一周|近一周/.test(normalized) && hasPowerContext) || /哪天用电最高|用电最高的一天|^哪天最高[？?]?$/.test(normalized)) return 'week_peak';
-  if ((/为什么|原因|变高|变多|异常|高峰/.test(normalized) && hasPowerContext) || /^为什么(变高|变多)?[？?]?$/.test(normalized)) return 'explain';
-  if ((/分析|总结|规律|趋势|比较|对比|判断/.test(normalized) && hasPowerContext) || /比较.*(本周|上周)|本周.*上周/.test(normalized)) return 'analysis';
-  if (/预计|预测/.test(normalized) && /本月|这个月|月底|本月底/.test(normalized)) return 'month_forecast';
-  if ((/预计|预测|全天/.test(normalized) && (hasPowerContext || isUsageQuestion)) || /今天会用(多少)?电/.test(normalized)) return 'forecast';
-  if (/本周|这周/.test(normalized) && (hasPowerContext || isUsageQuestion)) return 'week';
-  if (/电费|用电费用/.test(normalized) || (/本月|这个月/.test(normalized) && (hasPowerContext || isUsageQuestion))) return 'month';
-  if (/昨天|昨日/.test(normalized) && (hasPowerContext || isUsageQuestion)) return 'yesterday';
-  if ((/今天|今日|现在|当前/.test(normalized) && (hasPowerContext || isUsageQuestion)) || isUsageQuestion) return 'today';
-  if (/节电|省电|建议/.test(normalized)) return 'saving';
-  return 'unknown';
+  if (needsPreviousMonth && previousMonthCache) enriched = { ...enriched, ...previousMonthCache };
+
+  if (plan.timeRange.kind === 'rolling_months' && (!longRangeCache || Date.now() >= longRangeCacheExpiresAt)) {
+    const end = new Date(context.generatedAt);
+    const start = new Date(end.getTime() - 366 * DAY_MS);
+    const buckets = await Usage.getUsageBuckets(context.meterId, start, end, 'month');
+    longRangeCache = buckets.slice(-12).map(item => ({ month: item.key, usageKwh: round(item.used_kwh) }));
+    longRangeCacheExpiresAt = Date.now() + 30 * 60 * 1000;
+  }
+  if (plan.timeRange.kind === 'rolling_months') enriched = { ...enriched, monthlyUsage12: longRangeCache || [] };
+  return enriched;
+}
+
+function normalizeConversationHistory(history) {
+  if (!Array.isArray(history)) return [];
+  return history.slice(-10).map(item => ({
+    role: item?.role === 'assistant' ? 'assistant' : 'user',
+    content: String(item?.content || item?.text || '').trim().slice(0, 800),
+    plan: item?.plan && typeof item.plan === 'object' ? item.plan : undefined
+  })).filter(item => item.content || item.plan);
+}
+
+function planToIntent(plan) {
+  if (plan.action === 'out_of_scope') return 'out_of_scope';
+  if (plan.action === 'clarify') return 'unknown';
+  if (plan.action === 'status') return 'status';
+  if (plan.action === 'recommend') return 'saving';
+  if (plan.action === 'explain') return 'explain';
+  if (plan.metric === 'balance') return 'balance';
+  if (plan.action === 'forecast') return plan.timeRange.kind === 'this_month' ? 'month_forecast' : 'forecast';
+  if (plan.action === 'compare' || plan.action === 'trend') return 'analysis';
+  if (plan.entities.some(entity => entity !== 'total')) return 'devices';
+  if (plan.metric === 'peak') return 'week_peak';
+  if (plan.timeRange.kind === 'yesterday') return 'yesterday';
+  if (plan.timeRange.kind === 'this_week') return 'week';
+  if (['this_month', 'last_month'].includes(plan.timeRange.kind)) return 'month';
+  return 'today';
+}
+
+function buildQueryPlan(message, history = []) {
+  const normalized = String(message || '').trim();
+  const lower = normalized.toLowerCase();
+  const conversation = normalizeConversationHistory(history);
+  const lastAssistantPlan = [...conversation].reverse().find(item => item.role === 'assistant' && item.plan)?.plan;
+  const lastUser = [...conversation].reverse().find(item => item.role === 'user' && item.content)?.content;
+  const inherited = lastAssistantPlan || (lastUser ? buildQueryPlan(lastUser, []) : null);
+  const isFollowUp = /^(那|那么|换成|改成|再看|还有|以及|和|对比一下|比较一下)/.test(normalized) || normalized.length <= 8;
+  const hasPowerContext = /用电|电量|电费|电价|电表|耗电|耗能|功率|千瓦|kwh|度电|节电|省电|余额|剩余电|续航|高峰|峰值|充电|空调|热水器|米家|设备|电器/.test(lower);
+  const externalDomain = /天气|气温|下雨|降雨|刮风|台风|空气质量|穿什么|新闻|股票|基金|汇率|彩票|足球|篮球|比赛|电影|音乐|菜谱|快递|路线|导航|翻译|写.*代码|编程/.test(normalized);
+  const plan = {
+    version: 1,
+    action: 'query',
+    metric: 'usage',
+    entities: ['total'],
+    timeRange: { kind: 'today' },
+    compareWith: null,
+    needsAI: false,
+    confidence: 0.9
+  };
+
+  if (isFollowUp && inherited) {
+    Object.assign(plan, inherited, {
+      entities: [...(inherited.entities || ['total'])],
+      timeRange: { ...(inherited.timeRange || { kind: 'today' }) }
+    });
+  }
+  if (externalDomain && !hasPowerContext && !/省|节约|耗/.test(normalized)) {
+    return { ...plan, action: 'out_of_scope', confidence: 0.99, intent: 'out_of_scope' };
+  }
+
+  if (/空调/.test(normalized)) plan.entities = ['air_conditioner'];
+  else if (/热水器|热水/.test(normalized)) plan.entities = ['water_heater'];
+  else if (/其他电器|其它电器/.test(normalized)) plan.entities = ['other'];
+  else if (/全部设备|所有设备|米家|设备|电器/.test(normalized)) plan.entities = ['air_conditioner', 'water_heater', 'other'];
+  else if (/全屋|总用电|总电表/.test(normalized)) plan.entities = ['total'];
+
+  if (/过去\s*12\s*个?月|近\s*12\s*个?月|最近一年|过去一年/.test(normalized)) plan.timeRange = { kind: 'rolling_months', months: 12 };
+  else if (/近\s*30\s*天|最近\s*30\s*天|过去\s*30\s*天/.test(normalized)) plan.timeRange = { kind: 'rolling_days', days: 30 };
+  else if (/最近一周|近一周|近\s*7\s*天|最近\s*7\s*天|过去一周/.test(normalized)) plan.timeRange = { kind: 'rolling_days', days: 7 };
+  else if (/上个月|上月/.test(normalized)) plan.timeRange = { kind: 'last_month' };
+  else if (/本月|这个月|当月|月底|本月底/.test(normalized)) plan.timeRange = { kind: 'this_month' };
+  else if (/上周/.test(normalized) && !/本周.*上周|这周.*上周/.test(normalized)) plan.timeRange = { kind: 'last_week' };
+  else if (/本周|这周/.test(normalized)) plan.timeRange = { kind: 'this_week' };
+  else if (/昨天|昨日/.test(normalized)) plan.timeRange = { kind: 'yesterday' };
+  else if (/今天|今日|当天|现在|当前/.test(normalized)) plan.timeRange = { kind: 'today' };
+
+  if (/余额|剩余|还能用|用完|续航/.test(normalized)) plan.metric = 'balance';
+  else if (/电费|费用|多少钱|成本/.test(normalized)) plan.metric = 'cost';
+  else if (/峰值|最高|最多|高峰/.test(normalized)) plan.metric = 'peak';
+  else if (/更新|同步|新鲜度|数据状态|数据.*完整/.test(normalized)) plan.metric = 'freshness';
+  else if (/趋势|规律|走势/.test(normalized)) plan.metric = 'trend';
+
+  if (/设置.*提醒|创建.*提醒|提醒我/.test(normalized)) plan.action = 'reminder';
+  else if (/比较|对比|相比|差多少|高多少|低多少|和.*比|比平时|比平均|较平时/.test(normalized)) plan.action = 'compare';
+  else if (/为什么|原因|解释|异常|变高|变多|突然/.test(normalized)) plan.action = 'explain';
+  else if (/节电|省电|建议|怎么省|如何省|优化/.test(normalized)) plan.action = 'recommend';
+  else if (/预计|预测|会用多少|什么时候用完|还能用多久/.test(normalized)) plan.action = 'forecast';
+  else if (/趋势|规律|走势|分析|总结/.test(normalized)) plan.action = 'trend';
+  else if (plan.metric === 'freshness') plan.action = 'status';
+
+  if (plan.action === 'compare') {
+    if (/今天.*昨天|昨天.*今天/.test(normalized) || (inherited && /(?:和)?昨天比/.test(normalized))) {
+      plan.timeRange = { kind: 'today' };
+      plan.compareWith = 'yesterday_same_time';
+    } else if (/本周.*上周|这周.*上周/.test(normalized)) {
+      plan.timeRange = { kind: 'this_week' };
+      plan.compareWith = 'previous_period_same_progress';
+    } else if (/本月.*上月|这个月.*上个月/.test(normalized)) {
+      plan.timeRange = { kind: 'this_month' };
+      plan.compareWith = 'previous_period_same_progress';
+    } else if (/平均|日均|平时/.test(normalized)) {
+      plan.compareWith = 'historical_average';
+    } else {
+      plan.compareWith = 'previous_period';
+    }
+  }
+  plan.needsAI = ['explain', 'recommend', 'trend'].includes(plan.action) || /解释|原因|为什么/.test(normalized);
+  if (!normalized) plan.action = 'clarify';
+  if (!hasPowerContext && !inherited && plan.action === 'query' && plan.metric === 'usage' && !/用了多少|用多少|耗了多少|消耗多少|几度/.test(normalized)) {
+    plan.action = 'clarify';
+    plan.confidence = 0.35;
+  }
+  plan.intent = planToIntent(plan);
+  return plan;
+}
+
+function classifyIntent(message, history = []) {
+  return buildQueryPlan(message, history).intent;
 }
 
 function buildOutOfScopeAnswer() {
@@ -310,7 +483,9 @@ function buildClarificationAnswer() {
   };
 }
 
-function needsAIAnalysis(message, intent) {
+function needsAIAnalysis(message, intentOrPlan) {
+  if (intentOrPlan && typeof intentOrPlan === 'object') return Boolean(intentOrPlan.needsAI);
+  const intent = intentOrPlan;
   if (intent === 'analysis' || intent === 'explain' || intent === 'saving') return true;
   return /帮我分析|总结|规律|解释|为什么|原因|是否异常|比较|对比|给我.*建议|保持这样|当前速度|按照.*速度/.test(message);
 }
@@ -530,6 +705,350 @@ function buildDeterministicAnswer(intent, context) {
   }
 }
 
+const ENTITY_LABELS = {
+  total: '全屋',
+  air_conditioner: '空调',
+  water_heater: '热水器',
+  other: '其他电器'
+};
+
+function rangeLabel(timeRange) {
+  const labels = {
+    today: '今天',
+    yesterday: '昨天',
+    this_week: '本周',
+    last_week: '上周',
+    this_month: '本月',
+    last_month: '上个月'
+  };
+  if (timeRange.kind === 'rolling_days') return `最近 ${timeRange.days || 7} 天`;
+  if (timeRange.kind === 'rolling_months') return `最近 ${timeRange.months || 12} 个月`;
+  return labels[timeRange.kind] || '当前时段';
+}
+
+function beijingKey(date) {
+  return new Date(new Date(date).getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function deviceValueForDate(context, entity, date) {
+  const breakdown = context.dashboard?.deviceDailyBreakdowns?.[date] || {};
+  if (entity === 'air_conditioner') return Number(breakdown.air_conditioner_kwh || 0);
+  if (entity === 'water_heater') return Number(breakdown.water_heater_kwh || 0);
+  const total = context.dailyUsageHistory?.find(item => item.date === date)?.usageKwh || 0;
+  return Math.max(0, total - Number(breakdown.air_conditioner_kwh || 0) - Number(breakdown.water_heater_kwh || 0));
+}
+
+function periodData(plan, context) {
+  const entity = plan.entities.length === 1 ? plan.entities[0] : 'total';
+  const now = new Date(context.generatedAt);
+  const todayKey = beijingKey(now);
+  const allDailyKeys = Object.keys(context.dashboard?.deviceDailyBreakdowns || {});
+  const availableKeys = new Set(context.availableDailyKeys || []);
+  const totalDaily = (context.dailyUsageHistory || context.dailyUsage30 || []).filter(item => !availableKeys.size || availableKeys.has(item.date));
+  const valueForDate = date => entity === 'total'
+    ? Number(totalDaily.find(item => item.date === date)?.usageKwh || 0)
+    : deviceValueForDate(context, entity, date);
+  const dateStartKey = daysAgo => beijingKey(new Date(now.getTime() - daysAgo * DAY_MS));
+  let dates = [];
+  let value = 0;
+
+  if (plan.timeRange.kind === 'today') {
+    value = entity === 'total' ? context.todayUsage : deviceValueForDate(context, entity, todayKey);
+    if (entity === 'total') {
+      const hour = getBeijingHour(now);
+      return {
+        entity,
+        value: round(value),
+        labels: context.todayHourly.slice(0, hour + 1).map(item => `${String(item.hour).padStart(2, '0')}:00`),
+        values: context.todayHourly.slice(0, hour + 1).map(item => item.kwh)
+      };
+    }
+  } else if (plan.timeRange.kind === 'yesterday') {
+    const key = dateStartKey(1);
+    dates = [key];
+    value = entity === 'total' ? context.yesterdayUsage : deviceValueForDate(context, entity, key);
+    if (entity === 'total') {
+      return {
+        entity,
+        value: round(value),
+        labels: context.yesterdayHourly.map(item => `${String(item.hour).padStart(2, '0')}:00`),
+        values: context.yesterdayHourly.map(item => item.kwh)
+      };
+    }
+  } else if (plan.timeRange.kind === 'this_week' || plan.timeRange.kind === 'last_week') {
+    const weekStart = getBeijingWeekStart(now);
+    const start = plan.timeRange.kind === 'last_week' ? new Date(weekStart.getTime() - 7 * DAY_MS) : weekStart;
+    const end = plan.timeRange.kind === 'last_week' ? new Date(weekStart.getTime() - 1) : now;
+    const startKey = beijingKey(start);
+    const endKey = beijingKey(end);
+    dates = [...new Set([...totalDaily.map(item => item.date), ...allDailyKeys])].filter(key => key >= startKey && key <= endKey).sort();
+    value = entity === 'total'
+      ? (plan.timeRange.kind === 'last_week' ? context.previousWeekUsage : context.weekUsage)
+      : round(dates.reduce((sum, key) => sum + valueForDate(key), 0));
+  } else if (plan.timeRange.kind === 'this_month' || plan.timeRange.kind === 'last_month') {
+    const monthKey = plan.timeRange.kind === 'last_month'
+      ? beijingKey(new Date(getBeijingMonthStart(now).getTime() - 1)).slice(0, 7)
+      : todayKey.slice(0, 7);
+    dates = allDailyKeys.filter(key => key.startsWith(monthKey)).sort();
+    if (entity === 'total') value = plan.timeRange.kind === 'last_month' ? context.previousMonthUsage : context.monthUsage;
+    else value = round(dates.reduce((sum, key) => sum + valueForDate(key), 0));
+  } else if (plan.timeRange.kind === 'rolling_days') {
+    const days = Math.min(30, Number(plan.timeRange.days || 7));
+    const startKey = dateStartKey(days - 1);
+    dates = totalDaily.map(item => item.date).filter(key => key >= startKey && key <= todayKey).sort();
+    value = round(dates.reduce((sum, key) => sum + valueForDate(key), 0));
+  } else if (plan.timeRange.kind === 'rolling_months') {
+    const months = Math.min(12, Number(plan.timeRange.months || 12));
+    const monthly = (context.monthlyUsage12 || []).slice(-months);
+    if (entity === 'total') {
+      return {
+        entity,
+        value: round(monthly.reduce((sum, item) => sum + item.usageKwh, 0)),
+        labels: monthly.map(item => item.month),
+        values: monthly.map(item => item.usageKwh)
+      };
+    }
+    const allowedMonths = new Set(monthly.map(item => item.month));
+    const totals = new Map([...allowedMonths].map(month => [month, 0]));
+    for (const key of allDailyKeys) {
+      const month = key.slice(0, 7);
+      if (allowedMonths.has(month)) totals.set(month, (totals.get(month) || 0) + valueForDate(key));
+    }
+    return {
+      entity,
+      value: round([...totals.values()].reduce((sum, item) => sum + item, 0)),
+      labels: [...totals.keys()],
+      values: [...totals.values()].map(item => round(item))
+    };
+  }
+
+  return {
+    entity,
+    value: round(value),
+    labels: dates.map(key => key.slice(5)),
+    values: dates.map(key => round(valueForDate(key)))
+  };
+}
+
+function personalizedQuickReplies(plan, context) {
+  const entity = plan.entities.length === 1 ? plan.entities[0] : 'total';
+  const name = ENTITY_LABELS[entity] || '全屋';
+  const period = rangeLabel(plan.timeRange);
+  const trendPeriod = entity !== 'total' && plan.timeRange.kind === 'today' ? '最近 7 天' : period;
+  const alternatives = entity === 'air_conditioner'
+    ? ['再看热水器今天用了多少电']
+    : entity === 'water_heater'
+      ? ['再看空调今天用了多少电']
+      : context.deviceEnergy?.configured ? ['查看空调和热水器今天的用电'] : [];
+  const candidates = [
+    { action: 'compare', text: `${name}${period}和上一周期相比怎么样？` },
+    { action: 'trend', text: `分析${name}${trendPeriod}的用电趋势` },
+    { action: 'recommend', text: `结合${name}${period}数据给我节电建议` },
+    ...alternatives.map(text => ({ action: 'query', text }))
+  ].filter(item => item.action !== plan.action);
+  if (plan.metric === 'balance') candidates.unshift({ action: 'forecast', text: '按最近 7 天日均还能用多久？' });
+  if (plan.action === 'status') candidates.unshift({ action: 'status_detail', text: '今天的数据是否完整？' });
+  return [...new Set(candidates.map(item => item.text))].slice(0, 3);
+}
+
+function comparisonForPlan(plan, context, current) {
+  const entity = plan.entities.length === 1 ? plan.entities[0] : 'total';
+  if (entity !== 'total') {
+    if (plan.timeRange.kind === 'this_week') {
+      const previous = periodData({ ...plan, timeRange: { kind: 'last_week' } }, context);
+      return { label: '上周', value: previous.value };
+    }
+    if (plan.timeRange.kind === 'this_month') {
+      const previous = periodData({ ...plan, timeRange: { kind: 'last_month' } }, context);
+      return { label: '上个月', value: previous.value };
+    }
+    const todayKey = beijingKey(context.generatedAt);
+    const samples = Object.keys(context.dashboard?.deviceDailyBreakdowns || {})
+      .filter(key => key < todayKey)
+      .sort()
+      .slice(-14)
+      .map(key => deviceValueForDate(context, entity, key))
+      .filter(value => value > 0);
+    const baseline = median(samples);
+    return { label: '最近完整日中位数', value: baseline === null ? null : round(baseline), samples: samples.length };
+  }
+  if (plan.compareWith === 'historical_average' && plan.timeRange.kind === 'today') {
+    return { label: '同类日期同进度中位数', value: context.sameProgressMedian, samples: context.comparableDayCount };
+  }
+  if (plan.timeRange.kind === 'today') return { label: '昨天同期', value: context.yesterdaySameUsage };
+  if (plan.timeRange.kind === 'this_week') return { label: '上周同期', value: context.previousWeekSameUsage };
+  if (plan.timeRange.kind === 'this_month') return { label: '上月同期', value: context.previousMonthSameUsage };
+  if (plan.timeRange.kind === 'yesterday') {
+    const previous = context.dailyUsage30?.at(-3)?.usageKwh;
+    return { label: '前天', value: previous };
+  }
+  return { label: '上一周期', value: null, current };
+}
+
+function buildPlanDrivenAnswer(plan, context) {
+  if (plan.action === 'out_of_scope') return { ...buildOutOfScopeAnswer(), plan };
+  if (plan.action === 'clarify') return { ...buildClarificationAnswer(), plan };
+  const source = `${context.deviceEnergy?.configured ? '基于电表与米家设备数据' : '基于电表采集数据'} · 更新于 ${context.updatedLabel}`;
+  const common = { role: 'assistant', intent: plan.intent, source, updatedAt: context.updatedAt, mode: 'data', plan };
+
+  if (!context.dataComplete && !['status'].includes(plan.action) && plan.metric !== 'balance') {
+    return {
+      ...common,
+      headline: '当前数据不足',
+      body: '今天的有效采集点不足，暂时无法完成可靠的查询或分析；系统不会把缺失数据当作 0。',
+      quickReplies: ['当前余额多少？', '数据什么时候更新？']
+    };
+  }
+
+  if (plan.action === 'status') {
+    const fresh = context.dataAgeMinutes !== null && context.dataAgeMinutes <= 30;
+    return {
+      ...common,
+      headline: fresh ? '数据更新正常' : '数据更新可能延迟',
+      body: context.dataAgeMinutes === null ? '目前没有可用的电表更新时间。' : `最近一次电表数据更新于 ${context.updatedLabel}，距现在约 ${context.dataAgeMinutes} 分钟；今日共有 ${context.todayDataPoints} 个小时采集桶。`,
+      evidence: [
+        { label: '最近更新', value: context.updatedLabel },
+        { label: '数据延迟', value: context.dataAgeMinutes === null ? '未知' : `${context.dataAgeMinutes} 分钟` },
+        { label: '米家设备', value: context.deviceEnergy?.configured ? (context.deviceEnergy.devices.every(item => item.estimated || item.todayComplete) ? '今日数据已同步' : '今日数据待同步') : '未接入' }
+      ],
+      quickReplies: personalizedQuickReplies(plan, context)
+    };
+  }
+
+  if (plan.action === 'reminder') {
+    return {
+      ...common,
+      headline: '暂时不能直接创建自定义提醒',
+      body: '当前只支持系统自动识别低余额、设备异常和全屋增长提醒；为了避免误操作，我不会假装已经创建提醒。',
+      quickReplies: ['查看当前是否存在用电异常', '分析今天的用电高峰', '当前余额还能用多久？']
+    };
+  }
+
+  if (plan.action === 'query' && plan.entities.length > 1) {
+    const answer = buildDeterministicAnswer('devices', context);
+    return { ...answer, plan, quickReplies: personalizedQuickReplies(plan, context) };
+  }
+
+  const period = periodData(plan, context);
+  const entityName = ENTITY_LABELS[period.entity] || '全屋';
+  const periodName = rangeLabel(plan.timeRange);
+  const chart = period.labels.length > 1 ? {
+    kind: 'bar',
+    labels: period.labels,
+    series: [{ name: `${entityName}用电`, values: period.values }]
+  } : undefined;
+
+  if (plan.metric === 'peak' && plan.action === 'query') {
+    if (plan.timeRange.kind === 'today' && period.entity === 'total') {
+      const label = context.peakHour === null ? null : `${String(context.peakHour).padStart(2, '0')}:00–${String((context.peakHour + 1) % 24).padStart(2, '0')}:00`;
+      return {
+        ...common,
+        headline: label ? `今天用电最高时段是 ${label}` : '今天的分时数据不足',
+        body: label ? `该小时用电约 ${context.peakHourUsage} kWh；这里只能确认用电集中时段，不能仅凭总表判断具体设备原因。` : '继续采集后才能识别可靠的高峰时段。',
+        chart: chartForToday(context),
+        evidence: label ? [{ label: '最高时段', value: label }, { label: '该小时用电', value: `${context.peakHourUsage} kWh` }] : undefined,
+        quickReplies: personalizedQuickReplies(plan, context)
+      };
+    }
+    const peakIndex = period.values.length ? period.values.indexOf(Math.max(...period.values)) : -1;
+    return {
+      ...common,
+      headline: peakIndex >= 0 ? `${entityName}${periodName}最高点为 ${period.labels[peakIndex]}` : `${entityName}${periodName}数据不足`,
+      body: peakIndex >= 0 ? `最高点用电 ${period.values[peakIndex]} kWh，周期累计 ${period.value} kWh。` : '当前没有足够的数据点进行比较。',
+      chart,
+      quickReplies: personalizedQuickReplies(plan, context)
+    };
+  }
+
+  if (plan.metric === 'cost' && plan.action === 'query') {
+    const price = Number(process.env.ELECTRICITY_PRICE_PER_KWH || 1);
+    const cost = round(period.value * price);
+    return {
+      ...common,
+      headline: `${entityName}${periodName}预估电费 ¥${cost}`,
+      body: `按当前配置电价 ¥${round(price, 3)}/kWh，以 ${period.value} kWh 估算；若实际采用阶梯电价，账单金额可能不同。`,
+      evidence: [{ label: '用电量', value: `${period.value} kWh` }, { label: '计算电价', value: `¥${round(price, 3)}/kWh` }],
+      chart,
+      disclaimer: '费用为按配置单价计算的估算值，不代表电力公司的最终账单。',
+      quickReplies: personalizedQuickReplies(plan, context)
+    };
+  }
+
+  if (plan.action === 'compare') {
+    const comparison = comparisonForPlan(plan, context, period.value);
+    const delta = Number.isFinite(comparison.value) ? percentageChange(period.value, comparison.value) : null;
+    return {
+      ...common,
+      headline: delta === null ? `${entityName}${periodName}暂无可比周期` : `${entityName}${periodName}较${comparison.label}${delta > 0 ? '高' : delta < 0 ? '低' : '持平'}${delta ? ` ${Math.abs(delta)}%` : ''}`,
+      body: delta === null ? '当前保存的数据不足以完成同口径比较。' : `当前为 ${period.value} kWh，${comparison.label}为 ${comparison.value} kWh；比较使用相同进度或完整周期数据，避免拿未结束周期与完整周期直接比较。`,
+      evidence: [
+        { label: `${periodName}用电`, value: `${period.value} kWh` },
+        { label: comparison.label, value: comparison.value === null ? '数据不足' : `${comparison.value} kWh` },
+        ...(comparison.samples ? [{ label: '参考样本', value: `${comparison.samples} 个同类日期` }] : [])
+      ],
+      chart,
+      quickReplies: personalizedQuickReplies(plan, context)
+    };
+  }
+
+  if (plan.action === 'trend') {
+    const values = period.values.filter(Number.isFinite);
+    const peakIndex = values.length ? values.indexOf(Math.max(...values)) : -1;
+    const average = values.length ? round(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
+    return {
+      ...common,
+      headline: `${entityName}${periodName}用电趋势`,
+      body: values.length > 1 ? `${periodName}累计 ${period.value} kWh，日均或月均 ${average} kWh，最高点为 ${period.labels[peakIndex]} 的 ${values[peakIndex]} kWh。` : '当前周期的数据点不足，暂时不能判断可靠趋势。',
+      evidence: average === null ? undefined : [
+        { label: '周期累计', value: `${period.value} kWh` },
+        { label: '周期均值', value: `${average} kWh` },
+        { label: '最高点', value: `${period.labels[peakIndex]} · ${values[peakIndex]} kWh` }
+      ],
+      chart,
+      quickReplies: personalizedQuickReplies(plan, context)
+    };
+  }
+
+  if (plan.action === 'explain' || plan.action === 'recommend') {
+    const requestedDevice = plan.entities.length === 1 && plan.entities[0] !== 'total'
+      ? context.deviceEnergy?.devices?.find(item => item.id === plan.entities[0])
+      : null;
+    const topDevice = requestedDevice || (context.deviceEnergy?.configured
+      ? context.deviceEnergy.devices.filter(item => !item.estimated).sort((a, b) => b.todayKwh - a.todayKwh)[0]
+      : null);
+    const medianDelta = context.sameProgressMedianDelta;
+    return {
+      ...common,
+      headline: plan.action === 'recommend' ? `给${entityName}的个性化节电建议` : `${entityName}${periodName}变化分析`,
+      body: medianDelta === null
+        ? `当前同类日期样本不足，无法可靠判断是否异常。${topDevice ? `今天两台米家设备中，${topDevice.name}用电较多，为 ${topDevice.todayKwh} kWh。` : ''}`
+        : `截至上一个完整小时，全屋用电较 ${context.comparableDayCount} 个同类日期的同进度中位数${medianDelta > 0 ? '高' : '低'} ${Math.abs(medianDelta)}%。${topDevice ? `${topDevice.name}今日用电为 ${topDevice.todayKwh} kWh。` : '当前没有可靠的设备级数据，不能归因到具体电器。'}`,
+      evidence: [
+        { label: '同进度中位数', value: context.sameProgressMedian === null ? '样本不足' : `${context.sameProgressMedian} kWh` },
+        { label: '参考样本', value: `${context.comparableDayCount} 个${[0, 6].includes(new Date(new Date(context.generatedAt).getTime() + 8 * 60 * 60 * 1000).getUTCDay()) ? '周末' : '工作日'}` },
+        ...(topDevice ? [{ label: `${topDevice.name}今日`, value: `${topDevice.todayKwh} kWh（${topDevice.estimated ? '总表差值估算' : '米家实测'}）` }] : [])
+      ],
+      chart: chartForToday(context),
+      disclaimer: '异常判断使用同为工作日或同为周末的历史同进度中位数；米家设备为实测，其他电器仍是总表差值估算。',
+      quickReplies: personalizedQuickReplies(plan, context)
+    };
+  }
+
+  if (plan.action === 'query' && (plan.entities.some(entity => entity !== 'total') || !['today', 'yesterday', 'this_week', 'this_month'].includes(plan.timeRange.kind))) {
+    return {
+      ...common,
+      headline: `${entityName}${periodName}用电 ${period.value} kWh`,
+      body: period.entity === 'other' ? '“其他电器”是全屋总表减去空调和热水器后的估算值，不是单独电器的实测值。' : `${entityName}${periodName}用电按照${period.entity === 'total' ? '全屋电表' : '米家设备日用电'}数据统计。`,
+      metric: { value: period.value, unit: 'kWh', label: `${entityName}${periodName}` },
+      chart,
+      quickReplies: personalizedQuickReplies(plan, context)
+    };
+  }
+
+  const fallback = buildDeterministicAnswer(plan.intent, context);
+  return { ...fallback, plan, quickReplies: personalizedQuickReplies(plan, context) };
+}
+
 function extractAIText(payload) {
   const choice = payload?.choices?.[0];
   const content = choice?.message?.content ?? choice?.text;
@@ -646,9 +1165,14 @@ async function askConfiguredModel(message, context, requestedModel, options = {}
             role: 'system',
             content: '你是家庭用电助手布布，负责分析和表达，不负责猜测或计算原始数值。只回答与当前家庭用电数据有关的问题。输出必须是简洁纯文本并严格分成四段，每段依次以“结论：”“数据依据：”“可解释范围：”“建议：”开头，不要使用 Markdown。比较尚未结束的本周与上周时，必须使用上周相同进度数据 previousWeekSameUsage，不能拿本周累计与上周整周比较。只有 deviceEnergy.configured 为 true 时才可以引用具体设备；空调和热水器来自米家日用电数据，其他电器是全屋总表减去两台设备后的估算值，必须明确区分实测与估算。不得修改输入数值，不得猜测输入中没有的设备状态、运行时长或原因。不得输出自我纠正、反问、推理过程或前后矛盾的表述。数据不足时要明确说明。'
           },
+          ...normalizeConversationHistory(options.history).map(item => ({
+            role: item.role,
+            content: item.content
+          })),
           {
             role: 'user',
             content: `用户问题：${message}\n可用的结构化数据：${JSON.stringify({
+              queryPlan: options.queryPlan,
               remainingKwh: context.remainingKwh,
               todayUsage: context.todayUsage,
               yesterdaySameUsage: context.yesterdaySameUsage,
@@ -657,9 +1181,14 @@ async function askConfiguredModel(message, context, requestedModel, options = {}
               previousWeekSameUsage: context.previousWeekSameUsage,
               monthUsage: context.monthUsage,
               samePeriodDelta: context.samePeriodDelta,
+              sameProgressMedian: context.sameProgressMedian,
+              sameProgressMedianDelta: context.sameProgressMedianDelta,
+              comparableDayCount: context.comparableDayCount,
               projectedTodayUsage: context.projectedTodayUsage,
               peakHour: context.peakHour,
               sevenDayUsage: context.sevenDayUsage,
+              dailyUsage30: context.dailyUsage30,
+              monthlyUsage12: context.monthlyUsage12,
               deviceEnergy: context.deviceEnergy,
               updatedLabel: context.updatedLabel
             })}`
@@ -791,7 +1320,7 @@ function buildNotification(context) {
       .filter(item => !item.estimated && item.todayKwh >= 0.5 && item.dailyAverageKwh > 0)
       .sort((a, b) => (b.versusDailyAverage || 0) - (a.versusDailyAverage || 0))[0]
     : null;
-  if (deviceCandidate && deviceCandidate.versusDailyAverage >= 50) {
+  if (beijingHour >= 18 && deviceCandidate && deviceCandidate.versusDailyAverage >= 50) {
     return {
       ...base,
       id: `device-anomaly-${deviceCandidate.id}-${new Date(context.generatedAt).toISOString().slice(0, 10)}`,
@@ -804,7 +1333,7 @@ function buildNotification(context) {
       prompt: `分析${deviceCandidate.name}今天的用电`
     };
   }
-  if (context.dataComplete && context.samePeriodDelta >= 20) {
+  if (context.dataComplete && context.comparableDayCount >= 3 && context.sameProgressMedianDelta >= 20) {
     return {
       ...base,
       id: `usage-anomaly-${new Date(context.generatedAt).toISOString().slice(0, 10)}`,
@@ -812,7 +1341,7 @@ function buildNotification(context) {
       severity: 'warning',
       title: '今日用电增长较快',
       proactive: true,
-      message: `今日用电较昨日同期高 ${context.samePeriodDelta}%，要看看变化集中在哪个时段吗？`,
+      message: `截至上一个完整小时，今日用电较 ${context.comparableDayCount} 个同类日期的同进度中位数高 ${context.sameProgressMedianDelta}%，要看看变化集中在哪个时段吗？`,
       actionLabel: '查看原因',
       prompt: '为什么今天用电更高？'
     };
@@ -832,25 +1361,28 @@ function buildNotification(context) {
 
 async function getBriefing() {
   const context = await buildContext();
+  const starterPlan = buildQueryPlan('查看今天的全屋和设备用电');
   return {
     available: context.dataComplete,
     aiConfigured: configuredAIProviders().length > 0,
     notification: buildNotification(context),
     welcome: buildDeterministicAnswer('today', context),
-    quickReplies: ['查看空调和热水器用电', '分析最近七天用电规律', '预计本月用多少？', '结合设备数据给我节电建议']
+    quickReplies: personalizedQuickReplies(starterPlan, context)
   };
 }
 
 async function answerQuestion(message, options = {}) {
   const startedAt = Date.now();
   const finish = answer => ({ ...answer, elapsedMs: Date.now() - startedAt });
-  const intent = classifyIntent(message);
-  if (intent === 'out_of_scope') return finish(buildOutOfScopeAnswer());
-  if (intent === 'unknown') return finish(buildClarificationAnswer());
+  const history = normalizeConversationHistory(options.history);
+  const plan = buildQueryPlan(message, history);
+  if (plan.action === 'out_of_scope') return finish({ ...buildOutOfScopeAnswer(), plan });
+  if (plan.action === 'clarify') return finish({ ...buildClarificationAnswer(), plan });
 
-  const context = await buildContext();
-  const deterministic = buildDeterministicAnswer(intent, context);
-  if (needsAIAnalysis(message, intent)) {
+  const baseContext = await buildContext();
+  const context = await enrichContextForPlan(baseContext, plan);
+  const deterministic = buildPlanDrivenAnswer(plan, context);
+  if (needsAIAnalysis(message, plan)) {
     const providers = configuredAIProviders();
     const primaryProvider = providers[0];
     const fallbackProvider = providers[1];
@@ -861,7 +1393,9 @@ async function answerQuestion(message, options = {}) {
     let completion = await askConfiguredModel(message, context, primaryProvider?.model, {
       timeoutMs: boundedPositiveInteger(process.env.AI_TIMEOUT_MS, 28000),
       onDelta,
-      provider: primaryProvider
+      provider: primaryProvider,
+      queryPlan: plan,
+      history
     });
     if (!emittedDelta && !isUsableAIText(completion.text) && (completion.retryable || fallbackProvider)) {
       await new Promise(resolve => setTimeout(resolve, completion.retryAfterMs || 300));
@@ -874,7 +1408,9 @@ async function answerQuestion(message, options = {}) {
           timeoutMs: boundedPositiveInteger(process.env.AI_RETRY_TIMEOUT_MS, 20000),
           maxTokens: completion.reason === 'truncated' ? 1300 : 900,
           onDelta,
-          provider: retryProvider
+          provider: retryProvider,
+          queryPlan: plan,
+          history
         }
       );
     }
@@ -900,6 +1436,8 @@ async function answerQuestion(message, options = {}) {
 
 module.exports = {
   askConfiguredModel,
+  buildQueryPlan,
+  buildPlanDrivenAnswer,
   configuredAIProviders,
   answerQuestion,
   buildContext,
@@ -912,6 +1450,7 @@ module.exports = {
   isUsableAIText,
   retryDelayFromResponse,
   needsAIAnalysis,
+  normalizeConversationHistory,
   invalidateContextCache,
   getBriefing
 };
