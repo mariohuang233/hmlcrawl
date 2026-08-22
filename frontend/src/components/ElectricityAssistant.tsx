@@ -326,7 +326,7 @@ export default function ElectricityAssistant({ initialBriefing }: { initialBrief
       let completedAnswer: AssistantAnswer | null = null;
       let receivedDelta = false;
       try {
-        await streamAPI<{ text?: string; answer?: AssistantAnswer }>(
+        await streamAPI<{ text?: string; answer?: AssistantAnswer; phase?: string }>(
           '/api/assistant/chat/stream',
           { message: question, history },
           event => {
