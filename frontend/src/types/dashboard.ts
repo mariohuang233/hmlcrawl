@@ -99,6 +99,7 @@ export interface AssistantAnswer {
   evidence?: Array<{ label: string; value: string }>;
   disclaimer?: string;
   quickReplies?: string[];
+  toolResults?: string[];
   plan?: AssistantQueryPlan;
 }
 

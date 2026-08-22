@@ -11,6 +11,19 @@ const {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_METER_ID = '18100071580';
 const DEFAULT_AI_TIMEOUT_MS = 18000;
+const CONTROLLED_TOOL_LIMIT = 3;
+const QUERY_PLAN_CONFIDENCE_THRESHOLD = 0.7;
+
+// These are intentionally internal, read-only capabilities.  A model never gets
+// database access or a calculation primitive; it only receives their results.
+const CONTROLLED_TOOLS = Object.freeze({
+  get_usage_summary: { label: '读取用电汇总' },
+  get_device_usage: { label: '读取设备用电' },
+  compare_periods: { label: '比较同口径周期' },
+  get_balance_forecast: { label: '读取余额预测' },
+  get_data_freshness: { label: '检查数据新鲜度' },
+  explain_anomaly: { label: '生成异常依据' }
+});
 
 function boundedPositiveInteger(value, fallback, maximum = 60000) {
   const parsed = Number(value);
@@ -368,6 +381,49 @@ function planToIntent(plan) {
   return 'today';
 }
 
+function scoreQueryPlan(plan, { normalized, hasPowerContext, inherited }) {
+  if (plan.action === 'out_of_scope') return 0.99;
+  if (plan.action === 'clarify') return 0.35;
+  let score = 0.54;
+  if (hasPowerContext) score += 0.16;
+  if (/今天|今日|昨天|昨日|本周|这周|本月|上月|近\s*\d+\s*天|最近|过去/.test(normalized)) score += 0.1;
+  if (/空调|热水器|热水|全屋|总用电|设备|电器/.test(normalized)) score += 0.08;
+  if (/比较|对比|为什么|原因|趋势|规律|预计|预测|省电|建议|余额|更新/.test(normalized)) score += 0.07;
+  if (inherited && (/^(那|那么|换成|改成|再看|还有|以及|和|对比一下|比较一下)/.test(normalized) || normalized.length <= 8)) score += 0.08;
+  if (!hasPowerContext && !inherited) score -= 0.2;
+  return round(Math.max(0.35, Math.min(0.98, score)), 2);
+}
+
+function isValidPlanEntity(value) {
+  return ['total', 'air_conditioner', 'water_heater', 'other'].includes(value);
+}
+
+function validateQueryPlan(candidate, fallback) {
+  if (!candidate || typeof candidate !== 'object') return fallback;
+  const action = ['query', 'compare', 'forecast', 'explain', 'recommend', 'trend', 'status', 'reminder', 'clarify', 'out_of_scope'].includes(candidate.action)
+    ? candidate.action : fallback.action;
+  const metric = ['usage', 'balance', 'cost', 'peak', 'freshness', 'trend'].includes(candidate.metric)
+    ? candidate.metric : fallback.metric;
+  const entities = Array.isArray(candidate.entities)
+    ? [...new Set(candidate.entities.filter(isValidPlanEntity))].slice(0, 3)
+    : fallback.entities;
+  const timeRange = candidate.timeRange && typeof candidate.timeRange.kind === 'string'
+    ? { ...fallback.timeRange, ...candidate.timeRange, kind: String(candidate.timeRange.kind).slice(0, 40) }
+    : fallback.timeRange;
+  const plan = {
+    ...fallback,
+    version: 1,
+    action,
+    metric,
+    entities: entities.length ? entities : fallback.entities,
+    timeRange,
+    compareWith: typeof candidate.compareWith === 'string' ? candidate.compareWith.slice(0, 80) : fallback.compareWith,
+    needsAI: ['explain', 'recommend', 'trend'].includes(action),
+    confidence: Math.max(fallback.confidence, Math.min(0.9, Number(candidate.confidence) || 0.72))
+  };
+  return { ...plan, intent: planToIntent(plan) };
+}
+
 function buildQueryPlan(message, history = []) {
   const normalized = String(message || '').trim();
   const lower = normalized.toLowerCase();
@@ -386,7 +442,7 @@ function buildQueryPlan(message, history = []) {
     timeRange: { kind: 'today' },
     compareWith: null,
     needsAI: false,
-    confidence: 0.9
+    confidence: 0.54
   };
 
   if (isFollowUp && inherited) {
@@ -449,8 +505,8 @@ function buildQueryPlan(message, history = []) {
   if (!normalized) plan.action = 'clarify';
   if (!hasPowerContext && !inherited && plan.action === 'query' && plan.metric === 'usage' && !/用了多少|用多少|耗了多少|消耗多少|几度/.test(normalized)) {
     plan.action = 'clarify';
-    plan.confidence = 0.35;
   }
+  plan.confidence = scoreQueryPlan(plan, { normalized, hasPowerContext, inherited });
   plan.intent = planToIntent(plan);
   return plan;
 }
@@ -830,6 +886,89 @@ function periodData(plan, context) {
   };
 }
 
+function selectedControlledTools(plan) {
+  const tools = [];
+  const add = name => {
+    if (CONTROLLED_TOOLS[name] && !tools.includes(name) && tools.length < CONTROLLED_TOOL_LIMIT) tools.push(name);
+  };
+  if (plan.metric === 'freshness' || plan.action === 'status') add('get_data_freshness');
+  else if (plan.metric === 'balance' || plan.action === 'forecast') add('get_balance_forecast');
+  else if (plan.entities.some(entity => entity !== 'total')) add('get_device_usage');
+  else add('get_usage_summary');
+  if (plan.action === 'compare') add('compare_periods');
+  if (plan.action === 'explain' || plan.action === 'recommend' || plan.action === 'trend') add('explain_anomaly');
+  return tools;
+}
+
+function runControlledTools(plan, context) {
+  const period = periodData(plan, context);
+  const entityName = ENTITY_LABELS[period.entity] || '全屋';
+  const results = [];
+  for (const name of selectedControlledTools(plan)) {
+    if (name === 'get_usage_summary') {
+      results.push({ name, result: { entity: entityName, range: rangeLabel(plan.timeRange), usageKwh: period.value, updatedAt: context.updatedLabel } });
+    } else if (name === 'get_device_usage') {
+      const devices = plan.entities
+        .filter(entity => entity !== 'total')
+        .map(entity => {
+          const device = context.deviceEnergy?.devices?.find(item => item.id === entity);
+          return device ? { name: device.name, usageKwh: periodData({ ...plan, entities: [entity] }, context).value, source: device.estimated ? '总表差值估算' : '米家实测' } : null;
+        }).filter(Boolean);
+      results.push({ name, result: { range: rangeLabel(plan.timeRange), devices, configured: Boolean(context.deviceEnergy?.configured) } });
+    } else if (name === 'compare_periods') {
+      const comparison = comparisonForPlan(plan, context, period.value);
+      results.push({ name, result: {
+        currentLabel: `${entityName}${rangeLabel(plan.timeRange)}`,
+        currentKwh: period.value,
+        comparisonLabel: comparison.label,
+        comparisonKwh: comparison.value,
+        changePercent: Number.isFinite(comparison.value) ? percentageChange(period.value, comparison.value) : null,
+        samples: comparison.samples || null
+      } });
+    } else if (name === 'get_balance_forecast') {
+      const average = context.sevenDayUsage?.length
+        ? round(context.sevenDayUsage.reduce((sum, item) => sum + Number(item.usageKwh || 0), 0) / context.sevenDayUsage.length)
+        : null;
+      results.push({ name, result: {
+        remainingKwh: context.remainingKwh,
+        recentDailyAverageKwh: average,
+        estimatedDays: average > 0 ? round(context.remainingKwh / average, 1) : null,
+        updatedAt: context.updatedLabel
+      } });
+    } else if (name === 'get_data_freshness') {
+      results.push({ name, result: {
+        updatedAt: context.updatedLabel,
+        dataAgeMinutes: context.dataAgeMinutes,
+        todayDataPoints: context.todayDataPoints,
+        complete: context.dataComplete,
+        deviceDataReady: Boolean(context.deviceEnergy?.configured && context.deviceEnergy?.todayComplete)
+      } });
+    } else if (name === 'explain_anomaly') {
+      const topDevice = context.deviceEnergy?.configured
+        ? context.deviceEnergy.devices.filter(item => !item.estimated).sort((a, b) => b.todayKwh - a.todayKwh)[0]
+        : null;
+      results.push({ name, result: {
+        sameProgressMedianKwh: context.sameProgressMedian,
+        sameProgressChangePercent: context.sameProgressMedianDelta,
+        comparableDayCount: context.comparableDayCount,
+        peakHour: context.peakHour === null ? null : `${String(context.peakHour).padStart(2, '0')}:00–${String((context.peakHour + 1) % 24).padStart(2, '0')}:00`,
+        peakHourKwh: context.peakHourUsage,
+        leadingMeasuredDevice: topDevice ? { name: topDevice.name, todayKwh: topDevice.todayKwh } : null
+      } });
+    }
+  }
+  return results.slice(0, CONTROLLED_TOOL_LIMIT);
+}
+
+function toolFactSheet(plan, toolResults, context) {
+  return {
+    queryPlan: plan,
+    dataUpdatedAt: context.updatedLabel,
+    dataSource: context.deviceEnergy?.configured ? '电表与米家设备数据' : '电表数据',
+    toolResults
+  };
+}
+
 function personalizedQuickReplies(plan, context) {
   const entity = plan.entities.length === 1 ? plan.entities[0] : 'total';
   const name = ENTITY_LABELS[entity] || '全屋';
@@ -977,6 +1116,13 @@ function buildPlanDrivenAnswer(plan, context) {
   if (plan.action === 'compare') {
     const comparison = comparisonForPlan(plan, context, period.value);
     const delta = Number.isFinite(comparison.value) ? percentageChange(period.value, comparison.value) : null;
+    const comparisonChart = Number.isFinite(comparison.value)
+      ? {
+          kind: 'bar',
+          labels: [periodName, comparison.label],
+          series: [{ name: `${entityName}用电`, values: [period.value, comparison.value] }]
+        }
+      : chart;
     return {
       ...common,
       headline: delta === null ? `${entityName}${periodName}暂无可比周期` : `${entityName}${periodName}较${comparison.label}${delta > 0 ? '高' : delta < 0 ? '低' : '持平'}${delta ? ` ${Math.abs(delta)}%` : ''}`,
@@ -986,7 +1132,7 @@ function buildPlanDrivenAnswer(plan, context) {
         { label: comparison.label, value: comparison.value === null ? '数据不足' : `${comparison.value} kWh` },
         ...(comparison.samples ? [{ label: '参考样本', value: `${comparison.samples} 个同类日期` }] : [])
       ],
-      chart,
+      chart: comparisonChart,
       quickReplies: personalizedQuickReplies(plan, context)
     };
   }
@@ -1148,6 +1294,28 @@ async function askConfiguredModel(message, context, requestedModel, options = {}
   const startedAt = Date.now();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const systemPrompt = options.systemPrompt || '你是家庭用电助手布布，负责分析和表达，不负责猜测或计算原始数值。只回答与当前家庭用电数据有关的问题。输出必须是简洁纯文本并严格分成四段，每段依次以“结论：”“数据依据：”“可解释范围：”“建议：”开头，不要使用 Markdown。比较尚未结束的本周与上周时，必须使用上周相同进度数据 previousWeekSameUsage，不能拿本周累计与上周整周比较。只有 deviceEnergy.configured 为 true 时才可以引用具体设备；空调和热水器来自米家日用电数据，其他电器是全屋总表减去两台设备后的估算值，必须明确区分实测与估算。不得修改输入数值，不得猜测输入中没有的设备状态、运行时长或原因。不得输出自我纠正、反问、推理过程或前后矛盾的表述。数据不足时要明确说明。';
+    const userContent = options.userContent || `用户问题：${message}\n可用的结构化数据：${JSON.stringify(options.factSheet || {
+      queryPlan: options.queryPlan,
+      remainingKwh: context.remainingKwh,
+      todayUsage: context.todayUsage,
+      yesterdaySameUsage: context.yesterdaySameUsage,
+      yesterdayUsage: context.yesterdayUsage,
+      weekUsage: context.weekUsage,
+      previousWeekSameUsage: context.previousWeekSameUsage,
+      monthUsage: context.monthUsage,
+      samePeriodDelta: context.samePeriodDelta,
+      sameProgressMedian: context.sameProgressMedian,
+      sameProgressMedianDelta: context.sameProgressMedianDelta,
+      comparableDayCount: context.comparableDayCount,
+      projectedTodayUsage: context.projectedTodayUsage,
+      peakHour: context.peakHour,
+      sevenDayUsage: context.sevenDayUsage,
+      dailyUsage30: context.dailyUsage30,
+      monthlyUsage12: context.monthlyUsage12,
+      deviceEnergy: context.deviceEnergy,
+      updatedLabel: context.updatedLabel
+    })}`;
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -1163,7 +1331,7 @@ async function askConfiguredModel(message, context, requestedModel, options = {}
         messages: [
           {
             role: 'system',
-            content: '你是家庭用电助手布布，负责分析和表达，不负责猜测或计算原始数值。只回答与当前家庭用电数据有关的问题。输出必须是简洁纯文本并严格分成四段，每段依次以“结论：”“数据依据：”“可解释范围：”“建议：”开头，不要使用 Markdown。比较尚未结束的本周与上周时，必须使用上周相同进度数据 previousWeekSameUsage，不能拿本周累计与上周整周比较。只有 deviceEnergy.configured 为 true 时才可以引用具体设备；空调和热水器来自米家日用电数据，其他电器是全屋总表减去两台设备后的估算值，必须明确区分实测与估算。不得修改输入数值，不得猜测输入中没有的设备状态、运行时长或原因。不得输出自我纠正、反问、推理过程或前后矛盾的表述。数据不足时要明确说明。'
+            content: systemPrompt
           },
           ...normalizeConversationHistory(options.history).map(item => ({
             role: item.role,
@@ -1171,27 +1339,7 @@ async function askConfiguredModel(message, context, requestedModel, options = {}
           })),
           {
             role: 'user',
-            content: `用户问题：${message}\n可用的结构化数据：${JSON.stringify({
-              queryPlan: options.queryPlan,
-              remainingKwh: context.remainingKwh,
-              todayUsage: context.todayUsage,
-              yesterdaySameUsage: context.yesterdaySameUsage,
-              yesterdayUsage: context.yesterdayUsage,
-              weekUsage: context.weekUsage,
-              previousWeekSameUsage: context.previousWeekSameUsage,
-              monthUsage: context.monthUsage,
-              samePeriodDelta: context.samePeriodDelta,
-              sameProgressMedian: context.sameProgressMedian,
-              sameProgressMedianDelta: context.sameProgressMedianDelta,
-              comparableDayCount: context.comparableDayCount,
-              projectedTodayUsage: context.projectedTodayUsage,
-              peakHour: context.peakHour,
-              sevenDayUsage: context.sevenDayUsage,
-              dailyUsage30: context.dailyUsage30,
-              monthlyUsage12: context.monthlyUsage12,
-              deviceEnergy: context.deviceEnergy,
-              updatedLabel: context.updatedLabel
-            })}`
+            content: userContent
           }
         ],
         ...(provider.body || {})
@@ -1293,9 +1441,51 @@ async function askConfiguredModel(message, context, requestedModel, options = {}
   }
 }
 
-function isUsableAIText(text) {
+function numericTokens(value) {
+  return (String(value || '').match(/(?<![\w.])-?\d+(?:\.\d+)?/g) || []).map(Number).filter(Number.isFinite);
+}
+
+function hasGroundedNumbers(text, factSheet) {
+  if (!factSheet) return true;
+  const allowed = numericTokens(JSON.stringify(factSheet));
+  const numbers = numericTokens(text);
+  return numbers.every(value => allowed.some(source => Math.abs(source - value) <= Math.max(0.011, Math.abs(source) * 0.005)));
+}
+
+function isUsableAIText(text, factSheet) {
   const normalized = String(text || '').trim();
-  return normalized.length >= 20 && /[。！？.!?）)】]$/.test(normalized);
+  const sections = ['结论：', '数据依据：', '可解释范围：', '建议：'];
+  const positions = sections.map(section => normalized.indexOf(section));
+  return normalized.length >= 40 &&
+    positions.every(position => position >= 0) &&
+    positions.every((position, index) => index === 0 || position > positions[index - 1]) &&
+    /[。！？.!?）)】]$/.test(normalized) &&
+    hasGroundedNumbers(normalized, factSheet);
+}
+
+function parseJSONPlan(text) {
+  const normalized = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try {
+    return JSON.parse(normalized);
+  } catch {
+    const match = normalized.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try { return JSON.parse(match[0]); } catch { return null; }
+  }
+}
+
+async function refineQueryPlanWithAI(message, fallbackPlan, provider) {
+  if (!provider) return fallbackPlan;
+  const completion = await askConfiguredModel(message, {}, provider.model, {
+    provider,
+    timeoutMs: boundedPositiveInteger(process.env.AI_PLAN_TIMEOUT_MS, 5000, 10000),
+    maxTokens: 260,
+    silent: true,
+    systemPrompt: '你是家庭用电应用的查询计划解析器。只输出一个 JSON 对象，不要 Markdown、解释或额外文字。字段必须是 action、metric、entities、timeRange、compareWith、confidence。action 只能是 query、compare、forecast、explain、recommend、trend、status、clarify、out_of_scope；entities 只能包含 total、air_conditioner、water_heater、other。若不确定，保留 clarify，不要猜测设备或时间。',
+    userContent: `用户问题：${message}\n规则解析候选：${JSON.stringify(fallbackPlan)}`
+  });
+  if (!completion.text) return fallbackPlan;
+  return validateQueryPlan(parseJSONPlan(completion.text), fallbackPlan);
 }
 
 function buildNotification(context) {
@@ -1375,29 +1565,40 @@ async function answerQuestion(message, options = {}) {
   const startedAt = Date.now();
   const finish = answer => ({ ...answer, elapsedMs: Date.now() - startedAt });
   const history = normalizeConversationHistory(options.history);
-  const plan = buildQueryPlan(message, history);
+  const notify = (phase, extra = {}) => options.onStatus?.({ phase, ...extra });
+  notify('planning');
+  let plan = buildQueryPlan(message, history);
+  if (plan.confidence < QUERY_PLAN_CONFIDENCE_THRESHOLD && !['clarify', 'out_of_scope'].includes(plan.action)) {
+    notify('planning_ai');
+    plan = await refineQueryPlanWithAI(message, plan, configuredAIProviders()[0]);
+  }
   if (plan.action === 'out_of_scope') return finish({ ...buildOutOfScopeAnswer(), plan });
   if (plan.action === 'clarify') return finish({ ...buildClarificationAnswer(), plan });
 
+  notify('reading');
   const baseContext = await buildContext();
   const context = await enrichContextForPlan(baseContext, plan);
+  const toolResults = runControlledTools(plan, context);
+  const factSheet = toolFactSheet(plan, toolResults, context);
   const deterministic = buildPlanDrivenAnswer(plan, context);
   if (needsAIAnalysis(message, plan)) {
     const providers = configuredAIProviders();
     const primaryProvider = providers[0];
     const fallbackProvider = providers[1];
-    let emittedDelta = false;
-    const onDelta = typeof options.onDelta === 'function'
-      ? delta => { emittedDelta = true; options.onDelta(delta); }
-      : undefined;
+    // Keep upstream tokens private until the complete answer has passed the
+    // structure and numeric grounding checks; this makes fallback atomic.
+    const onDelta = () => {};
+    notify('comparing', { tools: toolResults.map(item => item.name) });
     let completion = await askConfiguredModel(message, context, primaryProvider?.model, {
       timeoutMs: boundedPositiveInteger(process.env.AI_TIMEOUT_MS, 28000),
       onDelta,
       provider: primaryProvider,
       queryPlan: plan,
-      history
+      history,
+      factSheet
     });
-    if (!emittedDelta && !isUsableAIText(completion.text) && (completion.retryable || fallbackProvider)) {
+    if (!isUsableAIText(completion.text, factSheet) && (completion.retryable || fallbackProvider)) {
+      notify('fallback', { provider: fallbackProvider?.label || primaryProvider?.label || 'AI' });
       await new Promise(resolve => setTimeout(resolve, completion.retryAfterMs || 300));
       const retryProvider = fallbackProvider || primaryProvider;
       completion = await askConfiguredModel(
@@ -1410,20 +1611,29 @@ async function answerQuestion(message, options = {}) {
           onDelta,
           provider: retryProvider,
           queryPlan: plan,
-          history
+          history,
+          factSheet
         }
       );
     }
     const aiText = completion.text;
-    if (isUsableAIText(aiText)) {
+    if (isUsableAIText(aiText, factSheet)) {
+      notify('verifying');
+      if (typeof options.onDelta === 'function') {
+        const chunks = aiText.match(/.{1,72}/g) || [aiText];
+        for (const chunk of chunks) options.onDelta(chunk);
+      }
       return finish({
         ...deterministic,
-        headline: '布布的 AI 分析',
+        // Keep the visible headline deterministic; the model enriches the
+        // explanation below it but never replaces the factual conclusion.
+        headline: deterministic.headline,
         body: aiText,
-        source: `基于电表与米家设备数据，由 ${completion.providerLabel || 'AI'} 分析 · 更新于 ${context.updatedLabel}`,
+        source: `基于${context.deviceEnergy?.configured ? '电表与米家设备' : '电表'}数据，由 ${completion.providerLabel || 'AI'} 分析 · 更新于 ${context.updatedLabel}`,
         mode: 'ai',
-        disclaimer: 'AI 只负责解释与建议，所有用电数值均来自电表数据。',
-        quickReplies: ['比较本周和上周', '预计本月用多少？']
+        disclaimer: `AI 只负责解释与建议；数值已由 ${toolResults.map(item => CONTROLLED_TOOLS[item.name].label).join('、')} 的结果校验。`,
+        quickReplies: deterministic.quickReplies,
+        toolResults: toolResults.map(item => item.name)
       });
     }
     return finish({

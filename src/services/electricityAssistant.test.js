@@ -146,14 +146,14 @@ test('compares this week with the same point last week', () => {
 
 test('rejects visibly truncated AI responses', () => {
   assert.equal(isUsableAIText('最近七天整体用电呈工作日高、周末'), false);
-  assert.equal(isUsableAIText('结论：本周用电低于上周同期。数据依据充分，建议继续观察晚间高峰是否持续下降。'), true);
+  assert.equal(isUsableAIText('结论：本周用电低于上周同期。数据依据：当前用电数据支持该比较。可解释范围：仅能基于已采集数据判断。建议：继续观察晚间高峰是否持续下降。'), true);
 });
 
 test('accepts compatible providers that return segmented content', () => {
   assert.equal(extractAIText({
     choices: [{ message: { content: [{ type: 'text', text: '结论：正常。' }, { type: 'text', text: '建议：继续观察。' }] } }]
   }), '结论：正常。建议：继续观察。');
-  assert.equal(isUsableAIText('结论：当前用电正常。建议：继续观察今晚的变化。'), true);
+  assert.equal(isUsableAIText('结论：当前用电正常。数据依据：当前数据没有明显增长。可解释范围：不推断具体设备状态。建议：继续观察今晚的变化。'), true);
 });
 
 test('prioritizes Dots and configures DeepSeek as the fallback provider', () => {

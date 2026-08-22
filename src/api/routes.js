@@ -1039,9 +1039,10 @@ router.post('/assistant/chat/stream', async (req, res) => {
   }, 10000);
 
   try {
-    send('status', { phase: 'preparing' });
+    send('status', { phase: 'planning' });
     const answer = await electricityAssistant.answerQuestion(message, {
       onDelta: text => send('delta', { text }),
+      onStatus: status => send('status', status),
       history
     });
     send('done', { answer });

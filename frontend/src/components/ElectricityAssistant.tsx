@@ -19,6 +19,14 @@ const LAST_REMINDER_KEY = 'electricity-assistant-last-reminder';
 const CONVERSATION_KEY = 'electricity-assistant-conversation-v1';
 const REMINDER_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const MAX_SAVED_MESSAGES = 30;
+const PHASE_LABELS: Record<string, string> = {
+  planning: '正在理解你的问题',
+  planning_ai: '正在确认查询范围',
+  reading: '正在读取最新用电数据',
+  comparing: '正在比较近期正常水平',
+  fallback: '主模型响应较慢，已切换备用服务',
+  verifying: '正在核对数字并整理建议'
+};
 
 function readSettings() {
   try {
@@ -51,9 +59,21 @@ function canShowReminder(notification: AssistantNotification, remindersEnabled: 
   return notification.severity === 'critical' || (beijingHour >= 8 && beijingHour < 22);
 }
 
+function chartIsRelevant(answer: AssistantAnswer) {
+  const chart = answer.chart;
+  const plan = answer.plan;
+  if (!chart || chart.labels.length < 2 || !chart.series.some(series => series.values.some(value => Number.isFinite(value)))) return false;
+  if (!plan) return true;
+  if (plan.action === 'compare' || plan.action === 'trend' || plan.metric === 'peak') return true;
+  if (plan.action === 'query') return plan.entities.length > 1 || plan.timeRange.kind === 'rolling_days' || plan.timeRange.kind === 'rolling_months';
+  // A full-home hourly chart helps explain today's total change, but is misleading
+  // for device-level explanations and generic saving recommendations.
+  return plan.action === 'explain' && plan.entities.length === 1 && plan.entities[0] === 'total' && plan.timeRange.kind === 'today';
+}
+
 function AssistantChart({ answer }: { answer: AssistantAnswer }) {
   const option = useMemo(() => {
-    if (!answer.chart) return null;
+    if (!chartIsRelevant(answer) || !answer.chart) return null;
     const isBar = answer.chart.kind === 'bar';
     return {
       animationDuration: 320,
@@ -150,22 +170,25 @@ function AnswerCard({ answer, onQuestion }: { answer: AssistantAnswer; onQuestio
     <div className="assistant-answer">
       <div className="assistant-answer-card">
         <div className={`assistant-answer-mode is-${answer.mode}`}>{modeLabel}</div>
+        <div className="assistant-section-label">结论</div>
         <div className="assistant-answer-heading">{answer.headline}</div>
-        <AssistantBody text={answer.body} />
         {answer.metric && (
           <div className="assistant-metric">
-            <span>{answer.metric.label}</span>
+            <span>关键数字 · {answer.metric.label}</span>
             <strong>{answer.metric.value}<small>{answer.metric.unit}</small></strong>
           </div>
         )}
         <AssistantChart answer={answer} />
         {answer.evidence && (
           <div className="assistant-evidence">
+            <div className="assistant-evidence-heading">判断依据</div>
             {answer.evidence.map(item => (
               <div key={item.label}><span>{item.label}</span><strong>{item.value}</strong></div>
             ))}
           </div>
         )}
+        <div className="assistant-section-label is-analysis">分析与建议</div>
+        <AssistantBody text={answer.body} />
         <div className="assistant-source">
           <span>{answer.source}</span>
           {typeof answer.elapsedMs === 'number' && <span>用时 {(answer.elapsedMs / 1000).toFixed(1)} 秒</span>}
@@ -196,6 +219,7 @@ export default function ElectricityAssistant({ initialBriefing }: { initialBrief
   const [error, setError] = useState<string | null>(null);
   const [lastFailedQuestion, setLastFailedQuestion] = useState('');
   const [streamingText, setStreamingText] = useState('');
+  const [assistantPhase, setAssistantPhase] = useState('planning');
   const [elapsedMs, setElapsedMs] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -283,6 +307,7 @@ export default function ElectricityAssistant({ initialBriefing }: { initialBrief
     setError(null);
     setIsSlow(false);
     setStreamingText('');
+    setAssistantPhase('planning');
     setInput('');
     setIsOpen(true);
     if (appendUser) {
@@ -305,6 +330,7 @@ export default function ElectricityAssistant({ initialBriefing }: { initialBrief
           '/api/assistant/chat/stream',
           { message: question, history },
           event => {
+            if (event.event === 'status' && event.data.phase) setAssistantPhase(event.data.phase);
             if (event.event === 'delta' && event.data.text) {
               receivedDelta = true;
               setStreamingText(text => text + event.data.text);
@@ -422,7 +448,7 @@ export default function ElectricityAssistant({ initialBriefing }: { initialBrief
                 )}
                 {isSending && (
                   <div className="assistant-loading" role="status">
-                    <span>{streamingText ? '正在生成完整回答' : isSlow ? '首次连接较慢，正在自动重试' : '布布正在读取最新用电数据'}</span>
+                    <span>{streamingText ? '正在呈现已核对的分析' : isSlow && assistantPhase !== 'fallback' ? '分析时间稍长，正在继续处理' : PHASE_LABELS[assistantPhase] || '正在整理回答'}</span>
                     <strong>{(elapsedMs / 1000).toFixed(1)} 秒</strong>
                   </div>
                 )}

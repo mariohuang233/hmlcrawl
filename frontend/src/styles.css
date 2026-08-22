@@ -2395,6 +2395,19 @@ body {
   letter-spacing: -0.02em;
 }
 
+.assistant-section-label {
+  margin: 0 0 6px;
+  color: var(--assistant-subtle);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.assistant-section-label.is-analysis {
+  margin-top: 14px;
+}
+
 .assistant-body {
   display: grid;
   margin: 0 0 12px;
@@ -2471,6 +2484,14 @@ body {
 .assistant-evidence {
   margin: 10px 0;
   border-top: 1px solid var(--assistant-border);
+}
+
+.assistant-evidence-heading {
+  padding: 0 0 8px;
+  color: var(--assistant-subtle);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
 }
 
 .assistant-evidence > div {
